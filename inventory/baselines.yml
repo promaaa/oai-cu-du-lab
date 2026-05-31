@@ -1,0 +1,39 @@
+baselines:
+  monolithic_reference:
+    status: confirmed_working_reference
+    observed_throughput: "about 40 Mb/s"
+    oai_commit: unknown
+    evidence_source_repository:
+      - kaust-5g-research
+      - user_confirmed_context
+    rollback_baseline: false
+    notes: "Reference only; not an active maintenance target."
+
+  ethernet_cu_du_sib8:
+    status: confirmed_working
+    observed_throughput: "about 19-23 Mb/s"
+    oai_commit: 102965a669b9444857c27843ec8ce62780bf9d37
+    evidence_source_repository:
+      - cu-du
+      - cu-du-backhauling
+    rollback_baseline: true
+    notes: "Canonical rollback baseline."
+
+  wifi_cu_du_sib8:
+    status: confirmed_working
+    observed_throughput: "about 12 Mb/s"
+    oai_commit: 102965a669b9444857c27843ec8ce62780bf9d37
+    evidence_source_repository:
+      - cu-du-backhauling
+      - kaust-5g-research
+    rollback_baseline: false
+    notes: "Wi-Fi GRE F1 baseline; keep Ethernet available for rollback."
+
+  quectel_f1_backhaul:
+    status: partial_not_stable_baseline
+    observed_throughput: unknown
+    oai_commit: 102965a669b9444857c27843ec8ce62780bf9d37
+    evidence_source_repository:
+      - cu-du-5g-backhauling
+    rollback_baseline: false
+    notes: "Partial packet-path proof only; independent donor path is needed for stable full F1."

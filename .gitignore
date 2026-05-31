@@ -1,0 +1,37 @@
+# Secrets
+secrets/
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+*credentials*
+*subscriber*
+
+# Generated/runtime configurations
+conf/generated/
+!conf/generated/.gitkeep
+
+# Runtime evidence retained locally by default
+logs/
+captures/
+*.pcap
+*.pcapng
+*.log
+
+# Builds and temporary artefacts
+build/
+cmake_targets/
+tmp/
+.cache/
+
+# External source trees
+source/
+openairinterface5g/
+oai-cn5g/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
