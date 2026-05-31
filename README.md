@@ -27,7 +27,7 @@ This repository gives future agents a clean starting point for deployment-orient
 
 ## Confirmed Baselines
 
-- Monolithic OAI reference: working reference, about `40 Mb/s` observed.
+- Monolithic OAI reference: working reference, about `150 Mb/s` observed.
 - Ethernet CU/DU with SIB8: working canonical rollback candidate, about `19-23 Mb/s` observed.
 - Wi-Fi CU/DU with SIB8: working wireless-backhaul candidate, about `12 Mb/s` observed.
 
