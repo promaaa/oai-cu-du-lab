@@ -1,0 +1,498 @@
+#!/usr/bin/env python3
+"""Terminal UI for the OAI CU/DU lab repository.
+
+The TUI is intentionally local and safe: it explains workflows, creates
+sanitized local artifacts, and runs repository checks. It does not SSH, deploy,
+rewrite history, or touch external OAI trees.
+"""
+
+from __future__ import annotations
+
+import argparse
+import curses
+import datetime as dt
+import os
+import re
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
+
+
+REPO = Path(__file__).resolve().parents[1]
+WIDTH = 88
+
+def secret_patterns() -> list[str]:
+    """Patterns used by local scans, assembled to avoid matching this file."""
+    return [
+        "5686" + "e601",
+        "aeb1" + "cabd",
+        "root4" + "SERBER",
+        "894" + "944",
+        "0010100000" + "594",
+        "SSH" + r"PASS=.*[^<]",
+        "Private" + r"Key = [A-Za-z0-9+/=]{20,}",
+        "BEGIN .*PRIVATE" + " KEY",
+        "mysql -u root " + "-p" + r"[^< ]",
+        "oai" + "123",
+        "encPermanent" + "Key",
+        "encOpc" + "Key",
+    ]
+
+
+def rel(path: str) -> Path:
+    return REPO / path
+
+
+def read(path: str) -> str:
+    p = rel(path)
+    if not p.exists():
+        return f"Missing file: {path}\n"
+    return p.read_text(encoding="utf-8")
+
+
+def write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def run(cmd: list[str]) -> tuple[int, str]:
+    proc = subprocess.run(cmd, cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    return proc.returncode, proc.stdout
+
+
+def wrap_block(text: str, width: int = WIDTH) -> str:
+    out: list[str] = []
+    for line in text.splitlines():
+        if not line.strip() or line.startswith((" ", "\t", "|", "#", "-", "*", "```")):
+            out.append(line)
+        else:
+            out.extend(textwrap.wrap(line, width=width, replace_whitespace=False) or [""])
+    return "\n".join(out)
+
+
+def dashboard() -> str:
+    return """# OAI CU/DU Lab TUI
+
+Purpose: make the verified internship deployments easy to understand, restore,
+validate, and extend without burying new users in old repository noise.
+
+Fast path for a newcomer:
+1. Read the baseline summary.
+2. Use the Ethernet CU/DU with SIB8 rollback workflow before risky work.
+3. Use templates to generate local configs outside Git.
+4. Record every run with an experiment report.
+5. Never commit secrets, raw logs, captures, or generated runtime configs.
+
+Verified/high-value workflows in this TUI:
+- Monolithic OAI reference: reference only.
+- Ethernet CU/DU with SIB8: canonical rollback baseline.
+- Wi-Fi GRE CU/DU with SIB8: verified wireless F1 baseline.
+- Quectel/WireGuard F1: next target, partial evidence only.
+- Raspberry Pi DU: future/partial, not validated as the current baseline.
+
+Nothing in this TUI performs live deployment by itself. It gives you the exact
+context, templates, checklists, and report scaffolds needed to work safely.
+"""
+
+
+def baseline_summary() -> str:
+    return read("docs/BASELINES.md") + "\n\n" + read("inventory/baselines.yml")
+
+
+def security_summary() -> str:
+    return read("docs/SECURITY.md") + "\n\nExposure report:\n\n" + read("audit/SECURITY_EXPOSURE.md")
+
+
+def monolithic_workflow() -> str:
+    return """# Workflow: Monolithic OAI Reference
+
+Status: working reference only.
+
+Use this workflow to compare against the split deployments, not as the main
+branch of future work.
+
+Read first:
+- docs/BASELINES.md
+- docs/SYSTEM.md
+- docs/RUNBOOK.md
+
+What this workflow should prove:
+- A single OAI gNB/Core reference path can provide UE service.
+- Throughput is compared against about 150 Mb/s.
+- Any result is clearly labeled reference-only.
+
+Guardrails:
+- Do not make monolithic changes the canonical split baseline.
+- Do not vendor the OAI source tree into this repository.
+- Keep subscriber material in ignored local secret files only.
+- Record only sanitized evidence in an experiment report.
+"""
+
+
+def ethernet_workflow() -> str:
+    return """# Workflow: Restore Ethernet CU/DU With SIB8
+
+Status: canonical rollback baseline.
+
+Read first:
+- AGENTS.md
+- docs/BASELINES.md
+- docs/RUNBOOK.md
+- conf/templates/ethernet-cu.yml
+- conf/templates/ethernet-du.yml
+- patches/sib8/README.md
+
+What this workflow should prove:
+- CU/Core are on serber-firecell.
+- DU and USRP B210 access cell are on serber-minipc.
+- F1-C and F1-U use the Ethernet rollback path.
+- UE registers.
+- SIB8/PWS is observable when relevant.
+- Throughput is compared against about 19-23 Mb/s.
+
+Safe execution pattern:
+1. Confirm external OAI source is pinned to the documented commit.
+2. Apply patches/sib8/oai-pws-sib8-cu-du.patch to that external OAI tree.
+3. Render or manually create OAI configs from the Ethernet templates.
+4. Keep subscriber credentials in ignored local secret files only.
+5. Start Core, CU, and DU using your local runbook.
+6. Collect sanitized evidence: F1 setup, UE registration, PWS observation, throughput.
+7. Write an experiment report from experiments/TEMPLATE.md.
+
+Rollback rule:
+If any experimental backhaul becomes unstable, return to this baseline before
+continuing.
+"""
+
+
+def wifi_workflow() -> str:
+    return """# Workflow: Wi-Fi GRE CU/DU Backhaul
+
+Status: verified wireless F1 baseline candidate.
+
+Read first:
+- docs/BASELINES.md
+- conf/templates/wifi-gre-overlay.yml
+- docs/RUNBOOK.md
+
+What this workflow should prove:
+- F1 remains bound to the original CU/DU addresses.
+- Linux policy routing sends F1 traffic through the GRE tunnel.
+- Ethernet rollback remains available.
+- UE remains registered and throughput is compared against about 12 Mb/s.
+
+Essential guardrails:
+- Do not make the Wi-Fi GRE route the only management path.
+- Do not commit generated routes, logs, or captures.
+- Record only sanitized evidence and exact rollback steps.
+"""
+
+
+def quectel_workflow() -> str:
+    return """# Workflow: Quectel/WireGuard F1 Backhaul
+
+Status: next target, not a stable baseline.
+
+Read first:
+- docs/ROADMAP.md
+- conf/templates/quectel-wireguard.yml
+- patches/backhaul-quectel/README.md
+
+Current evidence:
+- Quectel RM500Q-GL detection: working.
+- OAI cell lock and QMI packet data: evidenced in old repo.
+- WireGuard path before F1 recursion: evidenced.
+- Stable full F1 over the same access cell: blocked by circular dependency.
+
+Target architecture:
+- USRP B210 stays local access radio on serber-minipc.
+- Quectel provides independent IP backhaul for F1.
+- WireGuard carries F1 between 10.250.0.1 and 10.250.0.2.
+
+Success criteria:
+- F1-C SCTP on wg-quectel-f1.
+- F1-U GTP-U on wg-quectel-f1.
+- WireGuard UDP on wwan0.
+- No F1 fallback on Ethernet or Wi-Fi.
+- Stable CU/DU association and commercial UE service.
+
+Hard guardrail:
+Do not claim success for same-cell full F1. The Quectel donor must be
+independent of the minipc DU access cell.
+"""
+
+
+def rpi_workflow() -> str:
+    return """# Workflow: Raspberry Pi DU
+
+Status: future/partial.
+
+Retained facts:
+- Raspberry Pi 5 DU work exists in older research notes.
+- The 16 GB hardware migration has not been physically performed or validated.
+- This is not the canonical rollback path.
+
+Use this workflow only after the Ethernet CU/DU with SIB8 baseline is preserved.
+
+Minimum useful future evidence:
+- Pi hardware version and RAM.
+- OAI commit.
+- PRB/bandwidth profile.
+- F1 setup evidence.
+- CPU/memory headroom.
+- UE and PWS outcomes where applicable.
+- Rollback to serber-minipc DU baseline.
+"""
+
+
+def template_index() -> str:
+    files = [
+        "conf/templates/ethernet-cu.yml",
+        "conf/templates/ethernet-du.yml",
+        "conf/templates/wifi-gre-overlay.yml",
+        "conf/templates/quectel-wireguard.yml",
+        "conf/templates/sib8.conf.template",
+    ]
+    chunks = [read("conf/templates/README.md")]
+    for f in files:
+        chunks.append(f"\n--- {f} ---\n{read(f)}")
+    return "\n".join(chunks)
+
+
+def patch_index() -> str:
+    return "\n\n".join(
+        [
+            read("patches/sib8/README.md"),
+            read("patches/backhaul-quectel/README.md"),
+            read("patches/performance/README.md"),
+            read("patches/rpi-du/README.md"),
+        ]
+    )
+
+
+def phase2_status() -> str:
+    return read("docs/PHASE2_PLAN.md") + "\n\n" + read("audit/MIGRATION_MAP.md")
+
+
+def repo_check() -> str:
+    checks: list[str] = []
+    rc, out = run(["git", "status", "--short", "--branch"])
+    checks.append("## Git status\n" + out.strip())
+
+    rc, out = run(["git", "diff", "--check"])
+    checks.append("## Whitespace check\n" + ("OK" if rc == 0 else out.strip()))
+
+    pattern = "|".join(f"(?:{p})" for p in secret_patterns())
+    rc, out = run(["rg", "-n", "-i", "--hidden", "--glob", "!/.git/**", pattern, "."])
+    checks.append("## Secret-pattern check\n" + ("OK" if rc == 1 else out.strip()))
+
+    required = [
+        "AGENTS.md",
+        "docs/BASELINES.md",
+        "docs/SECURITY.md",
+        "conf/templates/ethernet-cu.yml",
+        "conf/templates/ethernet-du.yml",
+        "patches/sib8/oai-pws-sib8-cu-du.patch",
+        "experiments/TEMPLATE.md",
+    ]
+    missing = [p for p in required if not rel(p).exists()]
+    checks.append("## Required files\n" + ("OK" if not missing else "\n".join(missing)))
+    return "\n\n".join(checks) + "\n"
+
+
+def make_experiment(slug: str) -> Path:
+    clean = re.sub(r"[^A-Za-z0-9_.-]+", "-", slug.strip()).strip("-").lower()
+    if not clean:
+        clean = "experiment"
+    today = dt.date.today().isoformat()
+    path = rel(f"experiments/{today}-{clean}.md")
+    if path.exists():
+        raise FileExistsError(path)
+    template = read("experiments/TEMPLATE.md")
+    body = template.replace("# Experiment Report", f"# Experiment Report: {clean}")
+    body = body.replace("## Date\n", f"## Date\n\n{today}\n")
+    write_text(path, body)
+    return path
+
+
+def make_local_runbook(workflow: str) -> Path:
+    mapping = {
+        "monolithic": monolithic_workflow,
+        "ethernet": ethernet_workflow,
+        "wifi": wifi_workflow,
+        "quectel": quectel_workflow,
+        "rpi": rpi_workflow,
+    }
+    key = workflow.lower()
+    if key not in mapping:
+        raise ValueError("workflow must be one of: monolithic, ethernet, wifi, quectel, rpi")
+    today = dt.date.today().isoformat()
+    path = rel(f"conf/generated/{today}-{key}-runbook.md")
+    write_text(path, mapping[key]())
+    return path
+
+
+class Tui:
+    def __init__(self, stdscr: curses.window):
+        self.stdscr = stdscr
+        self.items: list[tuple[str, callable[[], str]]] = [
+            ("Dashboard", dashboard),
+            ("Baseline summary", baseline_summary),
+            ("Monolithic OAI reference workflow", monolithic_workflow),
+            ("Ethernet CU/DU + SIB8 rollback workflow", ethernet_workflow),
+            ("Wi-Fi GRE backhaul workflow", wifi_workflow),
+            ("Quectel/WireGuard F1 workflow", quectel_workflow),
+            ("Raspberry Pi DU workflow", rpi_workflow),
+            ("Config templates", template_index),
+            ("Patch index", patch_index),
+            ("Create experiment report", self.create_experiment_screen),
+            ("Write local runbook to conf/generated", self.create_runbook_screen),
+            ("Repository checks", repo_check),
+            ("Security policy and exposure report", security_summary),
+            ("Phase 2 status and migration map", phase2_status),
+        ]
+        self.pos = 0
+
+    def run(self) -> None:
+        curses.curs_set(0)
+        self.stdscr.keypad(True)
+        while True:
+            key = self.draw_menu()
+            if key in (ord("q"), 27):
+                return
+            if key in (curses.KEY_UP, ord("k")):
+                self.pos = (self.pos - 1) % len(self.items)
+            elif key in (curses.KEY_DOWN, ord("j")):
+                self.pos = (self.pos + 1) % len(self.items)
+            elif key in (curses.KEY_ENTER, 10, 13):
+                title, fn = self.items[self.pos]
+                self.show_text(title, fn())
+
+    def draw_menu(self) -> int:
+        self.stdscr.erase()
+        h, w = self.stdscr.getmaxyx()
+        title = " OAI CU/DU Lab TUI "
+        self.stdscr.addstr(0, 0, title[: w - 1], curses.A_REVERSE)
+        self.stdscr.addstr(1, 0, "Use up/down or j/k, Enter to open, q to quit."[: w - 1])
+        for idx, (label, _) in enumerate(self.items):
+            y = idx + 3
+            if y >= h - 1:
+                break
+            attr = curses.A_REVERSE if idx == self.pos else curses.A_NORMAL
+            self.stdscr.addstr(y, 2, label[: w - 4], attr)
+        self.stdscr.refresh()
+        return self.stdscr.getch()
+
+    def show_text(self, title: str, text: str) -> None:
+        lines = wrap_block(text, max(40, self.stdscr.getmaxyx()[1] - 4)).splitlines()
+        top = 0
+        while True:
+            self.stdscr.erase()
+            h, w = self.stdscr.getmaxyx()
+            self.stdscr.addstr(0, 0, f" {title} "[: w - 1], curses.A_REVERSE)
+            self.stdscr.addstr(1, 0, "j/k scroll, PgUp/PgDn jump, b back, q quit"[: w - 1])
+            visible = h - 3
+            for i, line in enumerate(lines[top : top + visible]):
+                self.stdscr.addstr(i + 2, 0, line[: w - 1])
+            self.stdscr.refresh()
+            key = self.stdscr.getch()
+            if key in (ord("q"), 27):
+                raise SystemExit
+            if key == ord("b"):
+                return
+            if key in (curses.KEY_DOWN, ord("j")):
+                top = min(max(0, len(lines) - visible), top + 1)
+            elif key in (curses.KEY_UP, ord("k")):
+                top = max(0, top - 1)
+            elif key == curses.KEY_NPAGE:
+                top = min(max(0, len(lines) - visible), top + visible)
+            elif key == curses.KEY_PPAGE:
+                top = max(0, top - visible)
+
+    def prompt(self, prompt_text: str) -> str:
+        curses.echo()
+        curses.curs_set(1)
+        self.stdscr.erase()
+        self.stdscr.addstr(0, 0, prompt_text)
+        self.stdscr.addstr(2, 0, "> ")
+        value = self.stdscr.getstr(2, 2, 80).decode("utf-8", "replace")
+        curses.noecho()
+        curses.curs_set(0)
+        return value
+
+    def create_experiment_screen(self) -> str:
+        slug = self.prompt("Experiment name, e.g. quectel-independent-donor")
+        try:
+            path = make_experiment(slug)
+            return f"Created {path.relative_to(REPO)}\n\nOpen it and fill the template with sanitized evidence only.\n"
+        except Exception as exc:  # noqa: BLE001 - show TUI-friendly error
+            return f"Could not create experiment report: {exc}\n"
+
+    def create_runbook_screen(self) -> str:
+        workflow = self.prompt("Workflow: ethernet, wifi, quectel, or rpi")
+        try:
+            path = make_local_runbook(workflow)
+            return f"Wrote local generated runbook: {path.relative_to(REPO)}\n\nThis path is ignored by Git.\n"
+        except Exception as exc:  # noqa: BLE001
+            return f"Could not write runbook: {exc}\n"
+
+
+def self_test() -> int:
+    failures: list[str] = []
+    for path in [
+        "AGENTS.md",
+        "docs/BASELINES.md",
+        "docs/PHASE2_PLAN.md",
+        "conf/templates/ethernet-cu.yml",
+        "conf/templates/ethernet-du.yml",
+        "conf/templates/quectel-wireguard.yml",
+        "patches/sib8/oai-pws-sib8-cu-du.patch",
+    ]:
+        if not rel(path).exists():
+            failures.append(f"missing {path}")
+
+    rc, out = run(["git", "diff", "--check"])
+    if rc != 0:
+        failures.append(out.strip())
+
+    pattern = "|".join(f"(?:{p})" for p in secret_patterns())
+    rc, out = run(["rg", "-n", "-i", "--hidden", "--glob", "!/.git/**", pattern, "."])
+    if rc not in (1,):
+        failures.append("secret-pattern scan matched:\n" + out.strip())
+
+    if failures:
+        print("\n\n".join(failures))
+        return 1
+    print("OK")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Safe TUI for the OAI CU/DU lab repository")
+    parser.add_argument("--self-test", action="store_true", help="run repository checks")
+    parser.add_argument("--dashboard", action="store_true", help="print dashboard and exit")
+    parser.add_argument("--make-experiment", metavar="NAME", help="create an experiment report")
+    parser.add_argument("--write-runbook", choices=["monolithic", "ethernet", "wifi", "quectel", "rpi"], help="write a local generated runbook")
+    args = parser.parse_args(argv)
+
+    if args.self_test:
+        return self_test()
+    if args.dashboard:
+        print(dashboard())
+        return 0
+    if args.make_experiment:
+        path = make_experiment(args.make_experiment)
+        print(path.relative_to(REPO))
+        return 0
+    if args.write_runbook:
+        path = make_local_runbook(args.write_runbook)
+        print(path.relative_to(REPO))
+        return 0
+
+    curses.wrapper(lambda stdscr: Tui(stdscr).run())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

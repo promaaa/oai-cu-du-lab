@@ -25,6 +25,8 @@ build/
 cmake_targets/
 tmp/
 .cache/
+__pycache__/
+*.pyc
 
 # External source trees
 source/

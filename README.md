@@ -35,6 +35,12 @@ This repository gives future agents a clean starting point for deployment-orient
 
 Establish F1 backhaul through the Quectel module connected to `serber-minipc`, while keeping the USRP B210 on `serber-minipc` for local 5G access.
 
+## Guided TUI
+
+Run `./scripts/oai-lab-tui` for a safe terminal guide to the verified baselines, templates, patch notes, runbook generation, experiment reports, and repo checks.
+
+See `docs/TUI.md` for details.
+
 ## Security Warning
 
 Secrets are never stored here. Use placeholders, local ignored secret files, and sanitized evidence only.
