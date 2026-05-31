@@ -3,7 +3,7 @@
 ## Monolithic OAI Reference
 
 - Status: working reference only.
-- Observed user throughput: about `40 Mb/s`.
+- Observed user throughput: about `150 Mb/s`.
 - Evidence: `kaust-5g-research` progress reports describe monolithic validation and OAI PC checks; the user supplied this throughput as confirmed.
 - OAI commit: not confirmed from repository evidence for this exact baseline.
 
