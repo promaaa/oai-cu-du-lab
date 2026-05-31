@@ -1,0 +1,9 @@
+# Non-secret SIB8/PWS warning template.
+# Edit locally, then copy into the external pinned OAI tree as required by the patch.
+
+messageIdentifier = 1112
+serialNumber = FF00
+dataCodingScheme = 48
+warningType = 0000
+text = "Replace with a test warning message."
+mode = 0

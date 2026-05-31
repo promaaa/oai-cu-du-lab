@@ -1,0 +1,23 @@
+template: wifi-gre-overlay
+purpose: verified Wi-Fi GRE F1 transport overlay
+status: confirmed_working_baseline_candidate
+outer_path:
+  cu_host: serber-firecell
+  cu_outer_ip: 10.76.170.38
+  du_host: serber-minipc
+  du_wifi_ip: 10.85.168.144
+  du_wifi_gateway: 10.85.175.254
+  tunnel_name: test-gre
+inner_path:
+  cu_inner_ip: 10.255.0.1/30
+  du_inner_ip: 10.255.0.2/30
+f1_policy:
+  cu_f1_ip: 10.76.170.38
+  du_f1_ip: 10.76.170.100
+  route_table: 100
+evidence:
+  observed_throughput: "about 12 Mb/s"
+  latency: "about 20-90 ms RTT"
+guardrails:
+  keep_ethernet_rollback: true
+  do_not_store_raw_captures: true

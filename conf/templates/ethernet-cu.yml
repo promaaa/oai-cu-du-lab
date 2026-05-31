@@ -1,0 +1,24 @@
+template: ethernet-cu
+purpose: canonical rollback CU and Core side
+host: serber-firecell
+role: cu
+oai_commit: 102965a669b9444857c27843ec8ce62780bf9d37
+plmn:
+  mcc: 1
+  mnc: 1
+  mnc_length: 2
+amf:
+  ip: 192.168.71.132
+  port: 38412
+cu:
+  f1_local_ip: 10.76.170.38
+  f1_peer_ip: 10.76.170.100
+  f1_port: 2153
+  ng_ip: 192.168.71.129
+  ngu_port: 2152
+  gnb_id: 0xe00
+  gnb_name: gNB-CU-MINIPC
+  tac: 1
+security:
+  subscriber_material: local_secret_only
+  generated_config_destination: conf/generated/

@@ -20,9 +20,9 @@ This repository gives future agents a clean starting point for deployment-orient
 - `inventory/`: compact machine-readable host, radio, and baseline inventory.
 - `experiments/`: future experiment index and report template.
 - `prompts/`: reusable prompt skeletons for future agents.
-- `patches/`: empty future patch areas.
-- `conf/`: templates and generated-config placeholders.
-- `scripts/`: empty placeholder for future vetted scripts.
+- `patches/`: feature-separated patches and concise migration notes.
+- `conf/`: sanitized templates and generated-config placeholders.
+- `scripts/`: intentionally small; only vetted reusable scripts belong here.
 - `audit/`: source repository audit, exposure report, and migration map.
 
 ## Confirmed Baselines
