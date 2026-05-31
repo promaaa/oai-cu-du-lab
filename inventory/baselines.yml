@@ -1,7 +1,7 @@
 baselines:
   monolithic_reference:
     status: confirmed_working_reference
-    observed_throughput: "about 40 Mb/s"
+    observed_throughput: "about 150 Mb/s"
     oai_commit: unknown
     evidence_source_repository:
       - kaust-5g-research

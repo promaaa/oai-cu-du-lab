@@ -1,117 +1,46 @@
-# Phase 2 Plan
+# Phase 2 Status
 
-Migrate scripts, configs, and patches from source repos into this canonical repo.
+Phase 2 has started with an essential-only migration. The goal is to make this repo useful without turning it into a noisy mirror of the old repositories.
 
-## Migration Order
+## Migrated
 
-### 1. Quectel F1 Backhaul (Priority: HIGH)
-**Why**: Current next objective.
+- `patches/sib8/oai-pws-sib8-cu-du.patch`: the core SIB8/PWS OAI patch, whitespace-normalized and scanned for obvious secret patterns.
+- `patches/sib8/README.md`: patch source, expected OAI commit, and use rules.
+- `conf/templates/ethernet-cu.yml`: sanitized CU/Core rollback baseline facts.
+- `conf/templates/ethernet-du.yml`: sanitized DU/USRP rollback baseline facts.
+- `conf/templates/wifi-gre-overlay.yml`: sanitized Wi-Fi GRE overlay facts.
+- `conf/templates/quectel-wireguard.yml`: sanitized Quectel/WireGuard target facts and validation guardrails.
+- `conf/templates/sib8.conf.template`: non-secret warning-message template.
+- `scripts/README.md`: policy for keeping scripts small and vetted.
+- Short README files under `patches/backhaul-quectel/`, `patches/performance/`, and `patches/rpi-du/`.
 
-Target: `scripts/quectel-f1/`
+## Intentionally Not Migrated
 
-```
-cu-du-5g-backhauling/scripts/quectel-backhaul/
-├── 00_detect_quectel.sh
-├── 02_setup_wireguard_firecell.sh    # strip keys/IPs
-├── 03_setup_wireguard_minipc.sh      # strip keys/IPs
-├── 05_generate_f1_configs_quectel.sh
-├── 06_start_core.sh
-├── 07_start_cu_over_quectel.sh
-├── 08_start_du_over_quectel.sh
-├── 11_attempt_full_f1_over_quectel.sh
-├── rollback_live_f1_policy_to_eth.sh
-└── common.sh
-```
+- Old one-command deployment scripts.
+- Password-based SSH wrappers.
+- Subscriber database seed scripts.
+- Generated OAI configs.
+- Raw logs, captures, or long command diaries.
+- Broad research notes and presentations.
 
-**Security**: Remove private keys, modem passwords, ICCID/IMSI from all scripts.
+## Why
 
----
+The source scripts are useful evidence but too host-specific and secret-adjacent to import directly. Future executable scripts should be rewritten from the templates and runbook, not copied wholesale.
 
-### 2. Wi-Fi GRE Backhaul (Priority: MEDIUM)
-**Why**: Verified working baseline for wireless F1.
+## Future Migration Criteria
 
-Target: `scripts/wifi-gre/`
+A future script or config is worth adding only if it:
+- supports a current workflow;
+- has no secrets or subscriber values;
+- is parameterized rather than hardcoded to a single run;
+- fails closed when required local inputs are missing;
+- writes generated outputs to ignored paths;
+- has a clear rollback or validation role.
 
-```
-cu-du-backhauling/scripts/
-├── setup-gre-policy-routing.sh
-├── validate-working-config.sh
-├── deploy-cu.sh
-└── deploy-du.sh
-```
+## Next Useful Additions
 
-**Security**: Parameterize IPs, remove hardcoded credentials.
+1. A small renderer that turns `conf/templates/*.yml` into local generated OAI configs.
+2. A dry-run Quectel/WireGuard validator that checks prerequisites without changing host state.
+3. A sanitized baseline-validation checklist script that only reads logs and prints pass/fail hints.
 
----
-
-### 3. SIB8/PWS Baseline (Priority: MEDIUM)
-**Why**: Rollback baseline must be reproducible from this repo.
-
-Target: `scripts/pws/`
-
-```
-cu-du/
-├── scripts/
-│   ├── apply-pws-sib8-cu-du.sh
-│   ├── deploy-cu.sh
-│   ├── deploy-du.sh
-│   └── validate-working-config.sh
-├── patches/oai-pws-sib8-cu-du.patch  → patches/sib8/
-└── conf/*.yml                         → conf/templates/
-```
-
-**Security**: Sanitize IMSI, Ki, OPc placeholders in configs.
-
----
-
-### 4. RPi-DU Skeleton (Priority: LOW)
-**Why**: Future work, not immediate.
-
-Target: `scripts/rpi-du/` + `patches/rpi-du/`
-
-- Review `cu-du/scripts/deploy-pi.sh` structure
-- Create minimal stubs only
-
----
-
-## What Stays Out of Git
-
-| Category | Reason |
-|---|---|
-| Generated configs with live IMSIs | Secret risk |
-| WireGuard private keys | Secret risk |
-| Modem credentials / passwords | Secret risk |
-| Raw logs / packet captures | Secret + noise |
-| Live `.env` files | Secret risk |
-
----
-
-## Migration Rules
-
-1. **Review → Sanitize → Commit** — never skip security review
-2. **Commit format**: `migrate: <feature> — <sanitization summary>`
-3. **Scripts must fail closed** when required secrets are missing
-4. **OAI commit**: `102965a669b9444857c27843ec8ce62780bf9d37` — pin it
-5. **Evidence**: store only minimal sanitized excerpts, not full logs
-
----
-
-## Expected Outcome
-
-```
-scripts/
-├── quectel-f1/     # Quectel detection, WireGuard, F1, rollback
-├── wifi-gre/        # GRE setup, validation, rollback
-├── pws/             # SIB8/PWS patch, deploy, validation
-└── rpi-du/          # minimal stubs (future)
-
-conf/
-├── templates/       # sanitized baseline configs
-└── generated/      # .gitkeep only (local, not tracked)
-
-patches/
-├── sib8/            # verified oai-pws-sib8-cu-du.patch
-├── quectel/         # future Quectel-specific patches
-├── wifi-gre/        # future Wi-Fi GRE patches
-└── rpi-du/          # future RPi-DU patches
-```
+Anything larger should stay out until it proves it reduces confusion.
