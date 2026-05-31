@@ -12,6 +12,7 @@ secrets/
 # Generated/runtime configurations
 conf/generated/
 !conf/generated/.gitkeep
+conf/local/
 
 # Runtime evidence retained locally by default
 logs/

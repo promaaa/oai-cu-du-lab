@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Terminal UI for the OAI CU/DU lab repository.
+"""Operator TUI for the OAI CU/DU lab.
 
-The TUI is intentionally local and safe: it explains workflows, creates
-sanitized local artifacts, and runs repository checks. It does not SSH, deploy,
-rewrite history, or touch external OAI trees.
+This is a launch-first TUI. It can start/stop/status the deployed lab modes
+using local commands or SSH, while keeping credentials and machine-specific
+overrides in ignored local files.
 """
 
 from __future__ import annotations
@@ -13,17 +13,23 @@ import curses
 import datetime as dt
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import textwrap
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 
 REPO = Path(__file__).resolve().parents[1]
-WIDTH = 88
+LOCAL_ENV = REPO / "conf/local/lab.env"
+EXAMPLE_ENV = REPO / "conf/lab.env.example"
+WIDTH = 92
+
 
 def secret_patterns() -> list[str]:
-    """Patterns used by local scans, assembled to avoid matching this file."""
     return [
         "5686" + "e601",
         "aeb1" + "cabd",
@@ -40,25 +46,336 @@ def secret_patterns() -> list[str]:
     ]
 
 
-def rel(path: str) -> Path:
-    return REPO / path
+DEFAULTS = {
+    "LAB_SSH_OPTS": "-o BatchMode=yes -o ConnectTimeout=8",
+    "LAB_SUDO": "sudo -n",
+    "MONO_HOST": "serber-firecell",
+    "MONO_CN_DIR": "/home/serber/monolithic/oai-cn5g",
+    "MONO_OAI_DIR": "/home/serber/monolithic/openairinterface5g",
+    "MONO_GNB_CONF": "/home/serber/monolithic/openairinterface5g/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.usrpb210.conf",
+    "MONO_LOG": "/tmp/oai-mono-gnb.log",
+    "CU_HOST": "serber-firecell",
+    "DU_HOST": "serber-minipc",
+    "CU_CN_DIR": "/home/serber/cu-du-minipc/oai-cn5g-minipc",
+    "CU_CN_COMPOSE": "docker-compose-minipc.yaml",
+    "CU_OAI_DIR": "/home/serber/cu-du-minipc-backhaul/source/openairinterface5g",
+    "DU_OAI_DIR": "/home/serber/cu-du/source/openairinterface5g",
+    "CU_ETH_CONF": "/home/serber/cu-du-minipc-backhaul/source/openairinterface5g/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu-minipc.conf",
+    "DU_ETH_CONF": "/home/serber/cu-du/source/openairinterface5g/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-minipc.conf",
+    "CU_LOG": "/tmp/oai-cu-ethernet.log",
+    "DU_LOG": "/tmp/oai-du-ethernet.log",
+    "GRE_NAME": "test-gre",
+    "GRE_CU_IP": "10.76.170.38",
+    "GRE_DU_IP": "10.76.170.100",
+    "GRE_DU_WIFI_IP": "10.85.168.144",
+    "GRE_DU_WIFI_GW": "10.85.175.254",
+    "QUECTEL_IFACE": "wwan0",
+    "WG_IF": "wg-quectel-f1",
+    "WG_CU_IP": "10.250.0.1",
+    "WG_DU_IP": "10.250.0.2",
+    "CU_QUECTEL_CONF": "/home/serber/cu-du-minipc-backhaul/source/openairinterface5g/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu-minipc-quectel-backhaul.conf",
+    "DU_QUECTEL_CONF": "/home/serber/cu-du/source/openairinterface5g/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-minipc-quectel-backhaul.conf",
+    "CU_QUECTEL_LOG": "/tmp/oai-cu-quectel.log",
+    "DU_QUECTEL_LOG": "/tmp/oai-du-quectel.log",
+    "QUECTEL_INDEPENDENT_DONOR": "0",
+}
+
+
+def parse_env_file(path: Path) -> dict[str, str]:
+    data: dict[str, str] = {}
+    if not path.exists():
+        return data
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        data[key.strip()] = value.strip().strip('"').strip("'")
+    return data
+
+
+def load_config() -> dict[str, str]:
+    cfg = dict(DEFAULTS)
+    cfg.update(parse_env_file(LOCAL_ENV))
+    for key in list(cfg):
+        if key in os.environ:
+            cfg[key] = os.environ[key]
+    return cfg
+
+
+def q(value: str) -> str:
+    return shlex.quote(str(value))
+
+
+def rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(REPO))
+    except ValueError:
+        return str(path)
+
+
+@dataclass
+class CommandResult:
+    title: str
+    host: str
+    command: str
+    rc: int
+    output: str
+
+    def render(self) -> str:
+        status = "OK" if self.rc == 0 else f"FAILED rc={self.rc}"
+        return f"## {self.title} [{status}]\nHost: {self.host}\nCommand: {self.command}\n\n{self.output.strip()}\n"
+
+
+class Runner:
+    def __init__(self, cfg: dict[str, str], dry_run: bool = False):
+        self.cfg = cfg
+        self.dry_run = dry_run
+
+    def is_local(self, host: str) -> bool:
+        return host in {"", "local", "localhost", "127.0.0.1", os.uname().nodename}
+
+    def host_cmd(self, host: str, cmd: str) -> list[str]:
+        if self.is_local(host):
+            return ["bash", "-lc", cmd]
+        return ["ssh", *shlex.split(self.cfg["LAB_SSH_OPTS"]), host, cmd]
+
+    def run(self, title: str, host: str, cmd: str, timeout: int = 60) -> CommandResult:
+        printable = " ".join(shlex.quote(part) for part in self.host_cmd(host, cmd))
+        if self.dry_run:
+            return CommandResult(title, host, printable, 0, "dry-run: command not executed\n")
+        proc = subprocess.run(
+            self.host_cmd(host, cmd),
+            cwd=REPO,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        )
+        return CommandResult(title, host, printable, proc.returncode, proc.stdout)
+
+    def step(self, results: list[CommandResult], title: str, host: str, cmd: str, timeout: int = 60, required: bool = True) -> bool:
+        res = self.run(title, host, cmd, timeout)
+        results.append(res)
+        return res.rc == 0 or not required
+
+
+def sudo(cfg: dict[str, str]) -> str:
+    return cfg["LAB_SUDO"]
+
+
+def oai_build_dir(oai_dir: str) -> str:
+    return f"{oai_dir}/cmake_targets/ran_build/build"
+
+
+def docker_compose_cmd(directory: str, compose_file: str | None, action: str) -> str:
+    compose = f"-f {q(compose_file)} " if compose_file else ""
+    return f"cd {q(directory)} && docker compose {compose}{action}"
+
+
+def detect_usrp_cmd(cfg: dict[str, str]) -> str:
+    s = sudo(cfg)
+    return (
+        "set -e; "
+        "if command -v uhd_find_devices >/dev/null 2>&1; then "
+        f"(uhd_find_devices || {s} uhd_find_devices); "
+        "else lsusb | grep -Ei 'ettus|usrp|b210|national instruments|ni'; fi"
+    )
+
+
+def reset_usrp_cmd(cfg: dict[str, str]) -> str:
+    s = sudo(cfg)
+    return (
+        "if command -v b2xx_fx3_utils >/dev/null 2>&1; then "
+        f"{s} b2xx_fx3_utils -U || true; "
+        "elif [ -x /usr/local/lib/uhd/utils/b2xx_fx3_utils ]; then "
+        f"{s} /usr/local/lib/uhd/utils/b2xx_fx3_utils -U || true; "
+        "fi; sleep 2"
+    )
+
+
+def start_softmodem_cmd(cfg: dict[str, str], oai_dir: str, conf: str, log: str, extra: str = "") -> str:
+    build = oai_build_dir(oai_dir)
+    s = sudo(cfg)
+    inner = f"nohup ./nr-softmodem -O {q(conf)} {extra} > {q(log)} 2>&1 < /dev/null &"
+    return (
+        "set -e; "
+        f"test -x {q(build + '/nr-softmodem')}; test -f {q(conf)}; "
+        f"cd {q(build)}; "
+        f"{s} pkill -9 -x nr-softmodem 2>/dev/null || true; "
+        f"cd {q(build)} && {s} bash -lc {q(inner)}; "
+        "sleep 2; pgrep -a nr-softmodem || "
+        f"(echo 'nr-softmodem did not start; recent log:'; tail -80 {q(log)} 2>/dev/null; false)"
+    )
+
+
+def stop_softmodem_cmd(cfg: dict[str, str]) -> str:
+    return f"{sudo(cfg)} pkill -9 -x nr-softmodem 2>/dev/null || true; pgrep -a nr-softmodem || true"
+
+
+def status_cmd(cn_dir: str | None = None, compose: str | None = None, log: str | None = None) -> str:
+    parts = [
+        "hostname",
+        "pgrep -a nr-softmodem || true",
+        "ip -br addr | sed -n '1,12p'",
+    ]
+    if cn_dir:
+        parts.append(docker_compose_cmd(cn_dir, compose, "ps") + " || true")
+    if log:
+        parts.append(f"tail -40 {q(log)} 2>/dev/null || true")
+    return "; ".join(parts)
+
+
+def start_monolithic(r: Runner) -> list[CommandResult]:
+    c = r.cfg
+    host = c["MONO_HOST"]
+    results: list[CommandResult] = []
+    r.step(results, "Detect USRP", host, detect_usrp_cmd(c), 25)
+    r.step(results, "Reset USRP", host, reset_usrp_cmd(c), 20, required=False)
+    r.step(results, "Start core", host, docker_compose_cmd(c["MONO_CN_DIR"], None, "up -d"), 90)
+    r.step(results, "Start monolithic gNB", host, start_softmodem_cmd(c, c["MONO_OAI_DIR"], c["MONO_GNB_CONF"], c["MONO_LOG"], "-E --continuous-tx"), 35)
+    r.step(results, "Status", host, status_cmd(c["MONO_CN_DIR"], None, c["MONO_LOG"]), 25, required=False)
+    return results
+
+
+def stop_monolithic(r: Runner) -> list[CommandResult]:
+    c = r.cfg
+    host = c["MONO_HOST"]
+    results: list[CommandResult] = []
+    r.step(results, "Stop monolithic gNB", host, stop_softmodem_cmd(c), 20, required=False)
+    r.step(results, "Stop monolithic core", host, docker_compose_cmd(c["MONO_CN_DIR"], None, "down"), 60, required=False)
+    return results
+
+
+def start_ethernet(r: Runner) -> list[CommandResult]:
+    c = r.cfg
+    results: list[CommandResult] = []
+    r.step(results, "Check CU SSH", c["CU_HOST"], "echo connected && hostname", 15)
+    r.step(results, "Check DU SSH", c["DU_HOST"], "echo connected && hostname", 15)
+    r.step(results, "Detect DU USRP", c["DU_HOST"], detect_usrp_cmd(c), 25)
+    r.step(results, "Reset DU USRP", c["DU_HOST"], reset_usrp_cmd(c), 20, required=False)
+    r.step(results, "Start core on CU host", c["CU_HOST"], docker_compose_cmd(c["CU_CN_DIR"], c["CU_CN_COMPOSE"], "up -d"), 90)
+    r.step(results, "Start CU", c["CU_HOST"], start_softmodem_cmd(c, c["CU_OAI_DIR"], c["CU_ETH_CONF"], c["CU_LOG"], "--log_config.global_log_level info"), 35)
+    r.step(results, "Start DU", c["DU_HOST"], start_softmodem_cmd(c, c["DU_OAI_DIR"], c["DU_ETH_CONF"], c["DU_LOG"], "--log_config.global_log_level info -E"), 35)
+    r.step(results, "CU status", c["CU_HOST"], status_cmd(c["CU_CN_DIR"], c["CU_CN_COMPOSE"], c["CU_LOG"]), 30, required=False)
+    r.step(results, "DU status", c["DU_HOST"], status_cmd(log=c["DU_LOG"]), 30, required=False)
+    return results
+
+
+def stop_ethernet(r: Runner) -> list[CommandResult]:
+    c = r.cfg
+    results: list[CommandResult] = []
+    r.step(results, "Stop DU", c["DU_HOST"], stop_softmodem_cmd(c), 20, required=False)
+    r.step(results, "Stop CU", c["CU_HOST"], stop_softmodem_cmd(c), 20, required=False)
+    return results
+
+
+def start_wifi_gre(r: Runner) -> list[CommandResult]:
+    c = r.cfg
+    s = sudo(c)
+    name = q(c["GRE_NAME"])
+    cu_ip = q(c["GRE_CU_IP"])
+    du_ip = q(c["GRE_DU_IP"])
+    du_wifi = q(c["GRE_DU_WIFI_IP"])
+    du_gw = q(c["GRE_DU_WIFI_GW"])
+    results: list[CommandResult] = []
+    cu_cmd = (
+        f"{s} ip tunnel del {name} 2>/dev/null || true; "
+        f"{s} ip tunnel add {name} mode gre remote {du_wifi} local {cu_ip} ttl 255; "
+        f"{s} ip addr add 10.255.0.1/30 dev {name}; {s} ip link set {name} up; "
+        f"{s} sysctl -w net.ipv4.conf.{c['GRE_NAME']}.rp_filter=0 >/dev/null; "
+        f"{s} ip rule del from {cu_ip} lookup 100 2>/dev/null || true; "
+        f"{s} ip route del {du_ip}/32 dev {name} table 100 2>/dev/null || true; "
+        f"{s} ip rule add from {cu_ip} lookup 100; {s} ip route add {du_ip}/32 dev {name} table 100; "
+        f"ip -s link show {name}"
+    )
+    du_cmd = (
+        f"{s} ip tunnel del {name} 2>/dev/null || true; "
+        f"{s} ip tunnel add {name} mode gre remote {cu_ip} local {du_wifi} ttl 255; "
+        f"{s} ip addr add 10.255.0.2/30 dev {name}; {s} ip link set {name} up; "
+        f"{s} sysctl -w net.ipv4.conf.all.rp_filter=0 >/dev/null; "
+        f"{s} sysctl -w net.ipv4.conf.{c['GRE_NAME']}.rp_filter=0 >/dev/null; "
+        f"{s} ip route del {cu_ip}/32 via {du_gw} dev wlp3s0 2>/dev/null || true; "
+        f"{s} ip route add {cu_ip}/32 via {du_gw} dev wlp3s0; "
+        f"{s} ip rule del from {du_ip} lookup 100 2>/dev/null || true; "
+        f"{s} ip route del {cu_ip}/32 dev {name} table 100 2>/dev/null || true; "
+        f"{s} ip rule add from {du_ip} lookup 100; {s} ip route add {cu_ip}/32 dev {name} table 100; "
+        f"ip -s link show {name}"
+    )
+    r.step(results, "Start GRE on CU host", c["CU_HOST"], cu_cmd, 30)
+    r.step(results, "Start GRE on DU host", c["DU_HOST"], du_cmd, 30)
+    return results
+
+
+def stop_wifi_gre(r: Runner) -> list[CommandResult]:
+    c = r.cfg
+    s = sudo(c)
+    name = q(c["GRE_NAME"])
+    cu_ip = q(c["GRE_CU_IP"])
+    du_ip = q(c["GRE_DU_IP"])
+    results: list[CommandResult] = []
+    cu_cmd = f"{s} ip rule del from {cu_ip} lookup 100 2>/dev/null || true; {s} ip tunnel del {name} 2>/dev/null || true"
+    du_cmd = f"{s} ip rule del from {du_ip} lookup 100 2>/dev/null || true; {s} ip tunnel del {name} 2>/dev/null || true"
+    r.step(results, "Stop GRE on DU host", c["DU_HOST"], du_cmd, 20, required=False)
+    r.step(results, "Stop GRE on CU host", c["CU_HOST"], cu_cmd, 20, required=False)
+    return results
+
+
+def quectel_preflight(r: Runner) -> list[CommandResult]:
+    c = r.cfg
+    iface = q(c["QUECTEL_IFACE"])
+    wg = q(c["WG_IF"])
+    cmd = (
+        "hostname; "
+        "lsusb | grep -Ei 'quectel|qualcomm|5g|lte|wwan|modem' || true; "
+        f"ip -br addr show dev {iface} || true; "
+        f"ip route get {q(c['CU_HOST'])} 2>/dev/null || true; "
+        f"{sudo(c)} wg show {wg} 2>/dev/null || true"
+    )
+    results: list[CommandResult] = []
+    r.step(results, "Quectel preflight on DU", c["DU_HOST"], cmd, 25, required=False)
+    return results
+
+
+def start_quectel(r: Runner) -> list[CommandResult]:
+    c = r.cfg
+    results: list[CommandResult] = []
+    if c.get("QUECTEL_INDEPENDENT_DONOR") != "1":
+        results.append(CommandResult(
+            "Quectel safety gate",
+            "local",
+            "QUECTEL_INDEPENDENT_DONOR=1",
+            1,
+            "Refusing to start full Quectel F1: the same-cell path is known to be circular. Set QUECTEL_INDEPENDENT_DONOR=1 in conf/local/lab.env only after the modem has an independent donor path.",
+        ))
+        return results
+    results.extend(quectel_preflight(r))
+    r.step(results, "Start core on CU host", c["CU_HOST"], docker_compose_cmd(c["CU_CN_DIR"], c["CU_CN_COMPOSE"], "up -d"), 90)
+    r.step(results, "Start CU over Quectel/WireGuard", c["CU_HOST"], start_softmodem_cmd(c, c["CU_OAI_DIR"], c["CU_QUECTEL_CONF"], c["CU_QUECTEL_LOG"], "--log_config.global_log_level info"), 35)
+    r.step(results, "Start DU over Quectel/WireGuard", c["DU_HOST"], start_softmodem_cmd(c, c["DU_OAI_DIR"], c["DU_QUECTEL_CONF"], c["DU_QUECTEL_LOG"], "--log_config.global_log_level info -E"), 35)
+    return results
+
+
+def lab_status(r: Runner) -> list[CommandResult]:
+    c = r.cfg
+    results: list[CommandResult] = []
+    for label, host, cmd in [
+        ("Monolithic host status", c["MONO_HOST"], status_cmd(c["MONO_CN_DIR"], None, c["MONO_LOG"])),
+        ("CU host status", c["CU_HOST"], status_cmd(c["CU_CN_DIR"], c["CU_CN_COMPOSE"], c["CU_LOG"])),
+        ("DU host status", c["DU_HOST"], status_cmd(log=c["DU_LOG"])),
+        ("DU USRP detect", c["DU_HOST"], detect_usrp_cmd(c)),
+    ]:
+        r.step(results, label, host, cmd, 25, required=False)
+    return results
+
+
+def render_results(results: list[CommandResult]) -> str:
+    return "\n\n".join(res.render() for res in results) + "\n"
 
 
 def read(path: str) -> str:
-    p = rel(path)
-    if not p.exists():
-        return f"Missing file: {path}\n"
-    return p.read_text(encoding="utf-8")
-
-
-def write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
-def run(cmd: list[str]) -> tuple[int, str]:
-    proc = subprocess.run(cmd, cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    return proc.returncode, proc.stdout
+    p = REPO / path
+    return p.read_text(encoding="utf-8") if p.exists() else f"Missing file: {path}\n"
 
 
 def wrap_block(text: str, width: int = WIDTH) -> str:
@@ -71,288 +388,104 @@ def wrap_block(text: str, width: int = WIDTH) -> str:
     return "\n".join(out)
 
 
-def dashboard() -> str:
-    return """# OAI CU/DU Lab TUI
-
-Purpose: make the verified internship deployments easy to understand, restore,
-validate, and extend without burying new users in old repository noise.
-
-Fast path for a newcomer:
-1. Read the baseline summary.
-2. Use the Ethernet CU/DU with SIB8 rollback workflow before risky work.
-3. Use templates to generate local configs outside Git.
-4. Record every run with an experiment report.
-5. Never commit secrets, raw logs, captures, or generated runtime configs.
-
-Verified/high-value workflows in this TUI:
-- Monolithic OAI reference: reference only.
-- Ethernet CU/DU with SIB8: canonical rollback baseline.
-- Wi-Fi GRE CU/DU with SIB8: verified wireless F1 baseline.
-- Quectel/WireGuard F1: next target, partial evidence only.
-- Raspberry Pi DU: future/partial, not validated as the current baseline.
-
-Nothing in this TUI performs live deployment by itself. It gives you the exact
-context, templates, checklists, and report scaffolds needed to work safely.
-"""
-
-
-def baseline_summary() -> str:
-    return read("docs/BASELINES.md") + "\n\n" + read("inventory/baselines.yml")
-
-
-def security_summary() -> str:
-    return read("docs/SECURITY.md") + "\n\nExposure report:\n\n" + read("audit/SECURITY_EXPOSURE.md")
-
-
-def monolithic_workflow() -> str:
-    return """# Workflow: Monolithic OAI Reference
-
-Status: working reference only.
-
-Use this workflow to compare against the split deployments, not as the main
-branch of future work.
-
-Read first:
-- docs/BASELINES.md
-- docs/SYSTEM.md
-- docs/RUNBOOK.md
-
-What this workflow should prove:
-- A single OAI gNB/Core reference path can provide UE service.
-- Throughput is compared against about 150 Mb/s.
-- Any result is clearly labeled reference-only.
-
-Guardrails:
-- Do not make monolithic changes the canonical split baseline.
-- Do not vendor the OAI source tree into this repository.
-- Keep subscriber material in ignored local secret files only.
-- Record only sanitized evidence in an experiment report.
-"""
-
-
-def ethernet_workflow() -> str:
-    return """# Workflow: Restore Ethernet CU/DU With SIB8
-
-Status: canonical rollback baseline.
-
-Read first:
-- AGENTS.md
-- docs/BASELINES.md
-- docs/RUNBOOK.md
-- conf/templates/ethernet-cu.yml
-- conf/templates/ethernet-du.yml
-- patches/sib8/README.md
-
-What this workflow should prove:
-- CU/Core are on serber-firecell.
-- DU and USRP B210 access cell are on serber-minipc.
-- F1-C and F1-U use the Ethernet rollback path.
-- UE registers.
-- SIB8/PWS is observable when relevant.
-- Throughput is compared against about 19-23 Mb/s.
-
-Safe execution pattern:
-1. Confirm external OAI source is pinned to the documented commit.
-2. Apply patches/sib8/oai-pws-sib8-cu-du.patch to that external OAI tree.
-3. Render or manually create OAI configs from the Ethernet templates.
-4. Keep subscriber credentials in ignored local secret files only.
-5. Start Core, CU, and DU using your local runbook.
-6. Collect sanitized evidence: F1 setup, UE registration, PWS observation, throughput.
-7. Write an experiment report from experiments/TEMPLATE.md.
-
-Rollback rule:
-If any experimental backhaul becomes unstable, return to this baseline before
-continuing.
-"""
-
-
-def wifi_workflow() -> str:
-    return """# Workflow: Wi-Fi GRE CU/DU Backhaul
-
-Status: verified wireless F1 baseline candidate.
-
-Read first:
-- docs/BASELINES.md
-- conf/templates/wifi-gre-overlay.yml
-- docs/RUNBOOK.md
-
-What this workflow should prove:
-- F1 remains bound to the original CU/DU addresses.
-- Linux policy routing sends F1 traffic through the GRE tunnel.
-- Ethernet rollback remains available.
-- UE remains registered and throughput is compared against about 12 Mb/s.
-
-Essential guardrails:
-- Do not make the Wi-Fi GRE route the only management path.
-- Do not commit generated routes, logs, or captures.
-- Record only sanitized evidence and exact rollback steps.
-"""
-
-
-def quectel_workflow() -> str:
-    return """# Workflow: Quectel/WireGuard F1 Backhaul
-
-Status: next target, not a stable baseline.
-
-Read first:
-- docs/ROADMAP.md
-- conf/templates/quectel-wireguard.yml
-- patches/backhaul-quectel/README.md
-
-Current evidence:
-- Quectel RM500Q-GL detection: working.
-- OAI cell lock and QMI packet data: evidenced in old repo.
-- WireGuard path before F1 recursion: evidenced.
-- Stable full F1 over the same access cell: blocked by circular dependency.
-
-Target architecture:
-- USRP B210 stays local access radio on serber-minipc.
-- Quectel provides independent IP backhaul for F1.
-- WireGuard carries F1 between 10.250.0.1 and 10.250.0.2.
-
-Success criteria:
-- F1-C SCTP on wg-quectel-f1.
-- F1-U GTP-U on wg-quectel-f1.
-- WireGuard UDP on wwan0.
-- No F1 fallback on Ethernet or Wi-Fi.
-- Stable CU/DU association and commercial UE service.
-
-Hard guardrail:
-Do not claim success for same-cell full F1. The Quectel donor must be
-independent of the minipc DU access cell.
-"""
-
-
-def rpi_workflow() -> str:
-    return """# Workflow: Raspberry Pi DU
-
-Status: future/partial.
-
-Retained facts:
-- Raspberry Pi 5 DU work exists in older research notes.
-- The 16 GB hardware migration has not been physically performed or validated.
-- This is not the canonical rollback path.
-
-Use this workflow only after the Ethernet CU/DU with SIB8 baseline is preserved.
-
-Minimum useful future evidence:
-- Pi hardware version and RAM.
-- OAI commit.
-- PRB/bandwidth profile.
-- F1 setup evidence.
-- CPU/memory headroom.
-- UE and PWS outcomes where applicable.
-- Rollback to serber-minipc DU baseline.
-"""
-
-
-def template_index() -> str:
-    files = [
-        "conf/templates/ethernet-cu.yml",
-        "conf/templates/ethernet-du.yml",
-        "conf/templates/wifi-gre-overlay.yml",
-        "conf/templates/quectel-wireguard.yml",
-        "conf/templates/sib8.conf.template",
-    ]
-    chunks = [read("conf/templates/README.md")]
-    for f in files:
-        chunks.append(f"\n--- {f} ---\n{read(f)}")
-    return "\n".join(chunks)
-
-
-def patch_index() -> str:
-    return "\n\n".join(
-        [
-            read("patches/sib8/README.md"),
-            read("patches/backhaul-quectel/README.md"),
-            read("patches/performance/README.md"),
-            read("patches/rpi-du/README.md"),
-        ]
-    )
-
-
-def phase2_status() -> str:
-    return read("docs/PHASE2_PLAN.md") + "\n\n" + read("audit/MIGRATION_MAP.md")
+def init_local_config(overwrite: bool = False) -> Path:
+    LOCAL_ENV.parent.mkdir(parents=True, exist_ok=True)
+    if LOCAL_ENV.exists() and not overwrite:
+        return LOCAL_ENV
+    shutil.copyfile(EXAMPLE_ENV, LOCAL_ENV)
+    os.chmod(LOCAL_ENV, 0o600)
+    return LOCAL_ENV
 
 
 def repo_check() -> str:
     checks: list[str] = []
-    rc, out = run(["git", "status", "--short", "--branch"])
-    checks.append("## Git status\n" + out.strip())
-
-    rc, out = run(["git", "diff", "--check"])
-    checks.append("## Whitespace check\n" + ("OK" if rc == 0 else out.strip()))
-
+    for cmd, title in [
+        (["git", "status", "--short", "--branch"], "Git status"),
+        (["git", "diff", "--check"], "Whitespace check"),
+    ]:
+        proc = subprocess.run(cmd, cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        checks.append(f"## {title}\n" + ("OK" if proc.returncode == 0 and not proc.stdout else proc.stdout.strip()))
     pattern = "|".join(f"(?:{p})" for p in secret_patterns())
-    rc, out = run(["rg", "-n", "-i", "--hidden", "--glob", "!/.git/**", pattern, "."])
-    checks.append("## Secret-pattern check\n" + ("OK" if rc == 1 else out.strip()))
-
-    required = [
-        "AGENTS.md",
-        "docs/BASELINES.md",
-        "docs/SECURITY.md",
-        "conf/templates/ethernet-cu.yml",
-        "conf/templates/ethernet-du.yml",
-        "patches/sib8/oai-pws-sib8-cu-du.patch",
-        "experiments/TEMPLATE.md",
-    ]
-    missing = [p for p in required if not rel(p).exists()]
-    checks.append("## Required files\n" + ("OK" if not missing else "\n".join(missing)))
+    proc = subprocess.run(["rg", "-n", "-i", "--hidden", "--glob", "!/.git/**", pattern, "."], cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    checks.append("## Secret-pattern check\n" + ("OK" if proc.returncode == 1 else proc.stdout.strip()))
     return "\n\n".join(checks) + "\n"
 
 
+def dashboard() -> str:
+    cfg = load_config()
+    profile = rel(LOCAL_ENV) if LOCAL_ENV.exists() else "missing; run Init local profile"
+    return f"""# OAI Lab Operator
+
+This TUI launches the deployed lab modes from one place.
+
+Local profile: {profile}
+Sudo mode: {cfg['LAB_SUDO']}
+SSH opts: {cfg['LAB_SSH_OPTS']}
+
+Available launch modes:
+- Monolithic reference: starts Core + gNB on {cfg['MONO_HOST']} and detects the local USRP.
+- Ethernet CU/DU: starts Core/CU on {cfg['CU_HOST']} and DU/USRP on {cfg['DU_HOST']}.
+- Wi-Fi GRE overlay: creates the verified GRE/policy-route backhaul, then use Ethernet CU/DU start.
+- Quectel/WireGuard F1: safety-gated until an independent donor is configured.
+
+Credentials are not stored in Git. Put local machine overrides in conf/local/lab.env.
+"""
+
+
 def make_experiment(slug: str) -> Path:
-    clean = re.sub(r"[^A-Za-z0-9_.-]+", "-", slug.strip()).strip("-").lower()
-    if not clean:
-        clean = "experiment"
+    clean = re.sub(r"[^A-Za-z0-9_.-]+", "-", slug.strip()).strip("-").lower() or "experiment"
     today = dt.date.today().isoformat()
-    path = rel(f"experiments/{today}-{clean}.md")
+    path = REPO / f"experiments/{today}-{clean}.md"
     if path.exists():
         raise FileExistsError(path)
     template = read("experiments/TEMPLATE.md")
     body = template.replace("# Experiment Report", f"# Experiment Report: {clean}")
     body = body.replace("## Date\n", f"## Date\n\n{today}\n")
-    write_text(path, body)
+    path.write_text(body, encoding="utf-8")
     return path
 
 
-def make_local_runbook(workflow: str) -> Path:
-    mapping = {
-        "monolithic": monolithic_workflow,
-        "ethernet": ethernet_workflow,
-        "wifi": wifi_workflow,
-        "quectel": quectel_workflow,
-        "rpi": rpi_workflow,
-    }
-    key = workflow.lower()
-    if key not in mapping:
-        raise ValueError("workflow must be one of: monolithic, ethernet, wifi, quectel, rpi")
-    today = dt.date.today().isoformat()
-    path = rel(f"conf/generated/{today}-{key}-runbook.md")
-    write_text(path, mapping[key]())
-    return path
+Action = Callable[[Runner], list[CommandResult]]
 
 
 class Tui:
     def __init__(self, stdscr: curses.window):
         self.stdscr = stdscr
-        self.items: list[tuple[str, callable[[], str]]] = [
+        self.cfg = load_config()
+        self.dry_run = False
+        self.items: list[tuple[str, Callable[[], str]]] = [
             ("Dashboard", dashboard),
-            ("Baseline summary", baseline_summary),
-            ("Monolithic OAI reference workflow", monolithic_workflow),
-            ("Ethernet CU/DU + SIB8 rollback workflow", ethernet_workflow),
-            ("Wi-Fi GRE backhaul workflow", wifi_workflow),
-            ("Quectel/WireGuard F1 workflow", quectel_workflow),
-            ("Raspberry Pi DU workflow", rpi_workflow),
-            ("Config templates", template_index),
-            ("Patch index", patch_index),
+            ("Init local profile", self.init_profile),
+            ("Toggle dry-run", self.toggle_dry_run),
+            ("Lab status", self.action(lab_status)),
+            ("Start monolithic Core + gNB", self.confirmed("start monolithic", start_monolithic)),
+            ("Stop monolithic", self.confirmed("stop monolithic", stop_monolithic)),
+            ("Start Ethernet CU/DU + SIB8", self.confirmed("start Ethernet CU/DU", start_ethernet)),
+            ("Stop Ethernet CU/DU", self.confirmed("stop Ethernet CU/DU", stop_ethernet)),
+            ("Start Wi-Fi GRE overlay", self.confirmed("start Wi-Fi GRE overlay", start_wifi_gre)),
+            ("Stop Wi-Fi GRE overlay", self.confirmed("stop Wi-Fi GRE overlay", stop_wifi_gre)),
+            ("Quectel preflight", self.action(quectel_preflight)),
+            ("Start Quectel/WireGuard F1", self.confirmed("start Quectel/WireGuard F1", start_quectel)),
             ("Create experiment report", self.create_experiment_screen),
-            ("Write local runbook to conf/generated", self.create_runbook_screen),
-            ("Repository checks", repo_check),
-            ("Security policy and exposure report", security_summary),
-            ("Phase 2 status and migration map", phase2_status),
+            ("Repo checks", repo_check),
+            ("Baselines", lambda: read("docs/BASELINES.md")),
+            ("Config profile example", lambda: read("conf/lab.env.example")),
         ]
         self.pos = 0
+
+    def runner(self) -> Runner:
+        self.cfg = load_config()
+        return Runner(self.cfg, self.dry_run)
+
+    def action(self, fn: Action) -> Callable[[], str]:
+        return lambda: render_results(fn(self.runner()))
+
+    def confirmed(self, label: str, fn: Action) -> Callable[[], str]:
+        def inner() -> str:
+            if not self.ask_yes_no(f"Run action: {label}?"):
+                return "Cancelled.\n"
+            return render_results(fn(self.runner()))
+        return inner
 
     def run(self) -> None:
         curses.curs_set(0)
@@ -367,14 +500,19 @@ class Tui:
                 self.pos = (self.pos + 1) % len(self.items)
             elif key in (curses.KEY_ENTER, 10, 13):
                 title, fn = self.items[self.pos]
-                self.show_text(title, fn())
+                try:
+                    self.show_text(title, fn())
+                except SystemExit:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    self.show_text(title, f"Error: {exc}\n")
 
     def draw_menu(self) -> int:
         self.stdscr.erase()
         h, w = self.stdscr.getmaxyx()
-        title = " OAI CU/DU Lab TUI "
-        self.stdscr.addstr(0, 0, title[: w - 1], curses.A_REVERSE)
-        self.stdscr.addstr(1, 0, "Use up/down or j/k, Enter to open, q to quit."[: w - 1])
+        mode = "DRY-RUN" if self.dry_run else "LIVE"
+        self.stdscr.addstr(0, 0, f" OAI Lab Operator [{mode}] "[: w - 1], curses.A_REVERSE)
+        self.stdscr.addstr(1, 0, "j/k or arrows, Enter to open, q to quit. Configure conf/local/lab.env first."[: w - 1])
         for idx, (label, _) in enumerate(self.items):
             y = idx + 3
             if y >= h - 1:
@@ -416,51 +554,44 @@ class Tui:
         self.stdscr.erase()
         self.stdscr.addstr(0, 0, prompt_text)
         self.stdscr.addstr(2, 0, "> ")
-        value = self.stdscr.getstr(2, 2, 80).decode("utf-8", "replace")
+        value = self.stdscr.getstr(2, 2, 100).decode("utf-8", "replace")
         curses.noecho()
         curses.curs_set(0)
         return value
 
-    def create_experiment_screen(self) -> str:
-        slug = self.prompt("Experiment name, e.g. quectel-independent-donor")
-        try:
-            path = make_experiment(slug)
-            return f"Created {path.relative_to(REPO)}\n\nOpen it and fill the template with sanitized evidence only.\n"
-        except Exception as exc:  # noqa: BLE001 - show TUI-friendly error
-            return f"Could not create experiment report: {exc}\n"
+    def ask_yes_no(self, prompt_text: str) -> bool:
+        value = self.prompt(prompt_text + " Type yes to continue.")
+        return value.strip().lower() == "yes"
 
-    def create_runbook_screen(self) -> str:
-        workflow = self.prompt("Workflow: ethernet, wifi, quectel, or rpi")
-        try:
-            path = make_local_runbook(workflow)
-            return f"Wrote local generated runbook: {path.relative_to(REPO)}\n\nThis path is ignored by Git.\n"
-        except Exception as exc:  # noqa: BLE001
-            return f"Could not write runbook: {exc}\n"
+    def init_profile(self) -> str:
+        path = init_local_config()
+        return f"Local profile ready: {rel(path)}\nEdit it for your host paths, SSH options, and sudo mode.\n"
+
+    def toggle_dry_run(self) -> str:
+        self.dry_run = not self.dry_run
+        return f"Dry-run is now {'ON' if self.dry_run else 'OFF'}.\n"
+
+    def create_experiment_screen(self) -> str:
+        slug = self.prompt("Experiment name, e.g. ethernet-baseline-validation")
+        path = make_experiment(slug)
+        return f"Created {rel(path)}\n"
 
 
 def self_test() -> int:
     failures: list[str] = []
-    for path in [
-        "AGENTS.md",
-        "docs/BASELINES.md",
-        "docs/PHASE2_PLAN.md",
-        "conf/templates/ethernet-cu.yml",
-        "conf/templates/ethernet-du.yml",
-        "conf/templates/quectel-wireguard.yml",
-        "patches/sib8/oai-pws-sib8-cu-du.patch",
-    ]:
-        if not rel(path).exists():
+    for path in ["conf/lab.env.example", "scripts/oai-lab-tui", "docs/BASELINES.md"]:
+        if not (REPO / path).exists():
             failures.append(f"missing {path}")
-
-    rc, out = run(["git", "diff", "--check"])
-    if rc != 0:
-        failures.append(out.strip())
-
+    proc = subprocess.run([sys.executable, "-m", "py_compile", str(REPO / "scripts/oai-lab-tui")], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if proc.returncode:
+        failures.append(proc.stdout)
+    proc = subprocess.run(["git", "diff", "--check"], cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if proc.returncode:
+        failures.append(proc.stdout)
     pattern = "|".join(f"(?:{p})" for p in secret_patterns())
-    rc, out = run(["rg", "-n", "-i", "--hidden", "--glob", "!/.git/**", pattern, "."])
-    if rc not in (1,):
-        failures.append("secret-pattern scan matched:\n" + out.strip())
-
+    proc = subprocess.run(["rg", "-n", "-i", "--hidden", "--glob", "!/.git/**", pattern, "."], cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if proc.returncode != 1:
+        failures.append("secret-pattern scan matched:\n" + proc.stdout)
     if failures:
         print("\n\n".join(failures))
         return 1
@@ -468,26 +599,43 @@ def self_test() -> int:
     return 0
 
 
+CLI_ACTIONS: dict[str, Action] = {
+    "status": lab_status,
+    "start-monolithic": start_monolithic,
+    "stop-monolithic": stop_monolithic,
+    "start-ethernet": start_ethernet,
+    "stop-ethernet": stop_ethernet,
+    "start-wifi-gre": start_wifi_gre,
+    "stop-wifi-gre": stop_wifi_gre,
+    "quectel-preflight": quectel_preflight,
+    "start-quectel": start_quectel,
+}
+
+
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description="Safe TUI for the OAI CU/DU lab repository")
-    parser.add_argument("--self-test", action="store_true", help="run repository checks")
-    parser.add_argument("--dashboard", action="store_true", help="print dashboard and exit")
-    parser.add_argument("--make-experiment", metavar="NAME", help="create an experiment report")
-    parser.add_argument("--write-runbook", choices=["monolithic", "ethernet", "wifi", "quectel", "rpi"], help="write a local generated runbook")
+    parser = argparse.ArgumentParser(description="Operator TUI for the OAI CU/DU lab")
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--init-local-config", action="store_true")
+    parser.add_argument("--dashboard", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--action", choices=sorted(CLI_ACTIONS))
+    parser.add_argument("--make-experiment")
     args = parser.parse_args(argv)
 
     if args.self_test:
         return self_test()
+    if args.init_local_config:
+        print(rel(init_local_config()))
+        return 0
     if args.dashboard:
         print(dashboard())
         return 0
     if args.make_experiment:
-        path = make_experiment(args.make_experiment)
-        print(path.relative_to(REPO))
+        print(rel(make_experiment(args.make_experiment)))
         return 0
-    if args.write_runbook:
-        path = make_local_runbook(args.write_runbook)
-        print(path.relative_to(REPO))
+    if args.action:
+        runner = Runner(load_config(), dry_run=args.dry_run)
+        print(render_results(CLI_ACTIONS[args.action](runner)))
         return 0
 
     curses.wrapper(lambda stdscr: Tui(stdscr).run())

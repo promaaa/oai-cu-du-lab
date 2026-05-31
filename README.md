@@ -1,6 +1,6 @@
 # oai-cu-du-lab
 
-Private canonical context for an OAI 5G NR CU/DU split research lab.
+Private canonical control repo for an OAI 5G NR CU/DU split research lab.
 
 ## Objective
 
@@ -8,11 +8,11 @@ Investigate an OAI CU/DU split that can broadcast SIB8/PWS messages and later ca
 
 ## Current Status
 
-Phase 1 contains documentation, inventory, audit reports, and future experiment templates only. Scripts, runtime configs, OAI source, and patches remain outside this repository until a later migration phase.
+This repo now contains the lean lab context plus an operator TUI that can launch the deployed baselines from one place. OAI source trees, generated runtime configs, logs, captures, and credentials remain outside Git.
 
 ## Repository Purpose
 
-This repository gives future agents a clean starting point for deployment-oriented work without requiring them to rediscover old public repositories.
+This repository gives future operators and agents a clean starting point for deployment-oriented work without requiring them to rediscover old public repositories.
 
 ## Directory Overview
 
@@ -22,7 +22,7 @@ This repository gives future agents a clean starting point for deployment-orient
 - `prompts/`: reusable prompt skeletons for future agents.
 - `patches/`: feature-separated patches and concise migration notes.
 - `conf/`: sanitized templates and generated-config placeholders.
-- `scripts/`: intentionally small; only vetted reusable scripts belong here.
+- `scripts/`: the launch TUI and vetted reusable helpers.
 - `audit/`: source repository audit, exposure report, and migration map.
 
 ## Confirmed Baselines
@@ -35,12 +35,25 @@ This repository gives future agents a clean starting point for deployment-orient
 
 Establish F1 backhaul through the Quectel module connected to `serber-minipc`, while keeping the USRP B210 on `serber-minipc` for local 5G access.
 
-## Guided TUI
+## Operator TUI
 
-Run `./scripts/oai-lab-tui` for a safe terminal guide to the verified baselines, templates, patch notes, runbook generation, experiment reports, and repo checks.
+Run `./scripts/oai-lab-tui` to launch and inspect the deployed lab modes:
+
+- monolithic Core + gNB with local USRP detection/reset;
+- Ethernet CU/DU with Core/CU on the CU host and DU/USRP on the DU host;
+- Wi-Fi GRE overlay for the verified wireless-backhaul baseline;
+- Quectel/WireGuard F1 preflight, safety-gated until an independent donor path is configured.
+
+First create the ignored local profile:
+
+```bash
+./scripts/oai-lab-tui --init-local-config
+```
+
+Then edit `conf/local/lab.env` for hostnames, paths, SSH options, and sudo behavior. The TUI uses SSH and local commands only; it does not store passwords.
 
 See `docs/TUI.md` for details.
 
 ## Security Warning
 
-Secrets are never stored here. Use placeholders, local ignored secret files, and sanitized evidence only.
+Secrets are never stored here. Use `conf/local/lab.env`, SSH config/agents, local ignored secret files, and sanitized evidence only.
