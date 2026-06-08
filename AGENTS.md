@@ -10,6 +10,8 @@ Immutable rules:
 - OAI source remains external and pinned by commit.
 - Future modifications must be stored as feature-separated patches under `patches/`.
 - Do not claim success without evidence: logs, packet captures, UE state, throughput, or PWS observation must be sanitized and recorded.
+- Work directly on `main` unless the user explicitly asks for another branch. Do not create or push extra branches for normal repo updates.
+- Commit messages, branch names, docs, and pushed changes should read like ordinary maintainer work; do not mention external tooling.
 
 Workflow: read the baseline and security docs, make a small scoped change, pin the OAI commit, keep generated configs out of Git, collect sanitized evidence, compare against the rollback baseline, and document rollback.
 

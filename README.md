@@ -33,26 +33,34 @@ This repository gives future operators and agents a clean starting point for dep
 
 ## Immediate Next Objective
 
-Establish F1 backhaul through the Quectel module connected to `serber-minipc`, while keeping the USRP B210 on `serber-minipc` for local 5G access.
+Establish F1 backhaul through the Quectel module connected to `serber-minipc` using the single-CU target: one 5GC, one CU, and a firecell donor DU on `serber-firecell`; one minipc access DU with B210 serial `8002816`; minipc F1 over WireGuard-over-Quectel.
 
 ## Operator TUI
 
 Run `./scripts/oai-lab-tui` to launch and inspect the deployed lab modes:
 
-- monolithic Core + gNB with local USRP detection/reset;
-- Ethernet CU/DU with Core/CU on the CU host and DU/USRP on the DU host;
-- Wi-Fi GRE overlay for the verified wireless-backhaul baseline;
-- Quectel/WireGuard F1 preflight, safety-gated until an independent donor path is configured.
+- monolithic Core + gNB using the existing monolithic demo style;
+- Ethernet CU/DU rollback with Core/CU on the CU host and DU/USRP on the DU host;
+- PWS/SIB8 message apply for monolithic and Ethernet split modes;
+- guided phone throughput entry and timestamped local run records;
+- read-only discovery for Raspberry Pi DU, `oai-pc` DU, and nrUE internet-through-radio workflows until they are validated.
 
-First create the ignored local profile:
+The TUI is hard-coded for the current professor-demo lab targets:
 
-```bash
-./scripts/oai-lab-tui --init-local-config
+```text
+serber-firecell = serber@10.76.170.38
+serber-minipc   = serber@10.76.170.100
 ```
 
-Then edit `conf/local/lab.env` for hostnames, paths, SSH options, and sudo behavior. The TUI uses SSH and local commands only; it does not store passwords.
+Monolithic reference startup is pinned to `serber-firecell` to match the
+existing monolithic demo workflow. Ethernet CU/DU startup first stops the
+firecell monolithic core containers so the split core is the only active OAI CN
+stack, then installs a temporary CU-side SCTP drop rule for the stale `oai-pc`
+F1 peer at `10.76.170.90`. `Stop Ethernet CU/DU` removes that temporary rule.
 
-See `docs/TUI.md` for details.
+It uses SSH and local commands only; it does not store passwords.
+
+See `docs/tui/TUI.md`, `docs/tui/TUI_DEMO_GUIDE.md`, and `docs/tui/TUI_DISCOVERED_COMMANDS.md` for details.
 
 ## Security Warning
 

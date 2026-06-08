@@ -30,10 +30,19 @@ baselines:
     notes: "Wi-Fi GRE F1 baseline; keep Ethernet available for rollback."
 
   quectel_f1_backhaul:
-    status: partial_not_stable_baseline
+    status: validation_in_progress
     observed_throughput: unknown
     oai_commit: 102965a669b9444857c27843ec8ce62780bf9d37
     evidence_source_repository:
-      - cu-du-5g-backhauling
+      - oai-cu-du-lab
     rollback_baseline: false
-    notes: "Partial packet-path proof only; independent donor path is needed for stable full F1."
+    notes: "Canonical Quectel backhaul is single-CU only: serber-firecell runs one 5GC, one CU, and a local-F1 firecell donor DU for Quectel; serber-minipc runs the access DU over wg-quectel-f1. No monolithic or oai-pc donor path is part of this baseline."
+
+  raspberry_pi_16gb_du_split:
+    status: confirmed_working
+    observed_throughput: "about 18-23 Mb/s; commercial Nothing Phone fully connected (RNTI bfa2)"
+    oai_commit: 102965a669b9444857c27843ec8ce62780bf9d37
+    evidence_source_repository:
+      - cu-du
+    rollback_baseline: false
+    notes: "Raspberry Pi 5 16 GB active DU candidate. Configured on 10.76.170.18. Thread pinning deployed. MTU fix applied (TCP MSS set to 1360). F1AP SIB8/PWS warnings broadcasted successfully."

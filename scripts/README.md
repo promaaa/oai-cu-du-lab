@@ -1,44 +1,40 @@
 # Scripts
 
-This directory intentionally stays small.
-
 ## Operator TUI
 
-Run the lab launcher from the repository root:
+Run from the repository root:
 
 ```bash
 ./scripts/oai-lab-tui
 ```
 
-Create the ignored machine profile first:
+Useful non-interactive checks:
 
 ```bash
-./scripts/oai-lab-tui --init-local-config
+./scripts/oai-lab-tui --verify
 ```
 
-Useful non-interactive commands:
+Read-only split performance evidence window:
 
 ```bash
-./scripts/oai-lab-tui --dashboard
-./scripts/oai-lab-tui --self-test
-./scripts/oai-lab-tui --dry-run --action status
-./scripts/oai-lab-tui --dry-run --action start-monolithic
-./scripts/oai-lab-tui --dry-run --action start-ethernet
-./scripts/oai-lab-tui --action quectel-preflight
-./scripts/oai-lab-tui --make-experiment quectel-independent-donor
+./scripts/collect-split-performance-window.sh 60
 ```
 
-The launcher is allowed to SSH and run the deployed lab modes. Keep it:
+Run it only after intentionally starting the scenario to measure. It creates an
+ignored local directory under `experiments/20*/` with process state, host
+counters, SCTP summaries, ping timing, and filtered logs. It does not start or
+stop OAI processes and does not collect raw packet captures.
 
-- parameterized by `conf/local/lab.env` and environment variables;
-- free of passwords, subscriber values, generated configs, raw logs, and private keys;
-- dry-run friendly for launch commands;
-- explicit about stop/rollback behavior and safety gates.
+The launcher is intentionally hard-coded for the current professor-demo lab:
 
-Do not migrate old one-command deployment scripts unless they are rewritten to be:
-- parameterized by environment variables or template files;
-- free of passwords, subscriber values, generated configs, raw logs, and host-specific assumptions;
-- dry-run friendly where practical;
-- paired with rollback and sanitized evidence collection.
+- `serber-firecell`: `serber@10.76.170.38`
+- `serber-minipc`: `serber@10.76.170.100`
 
-Prefer the operator TUI for repeated lab actions and the templates in `conf/templates/` for config changes.
+Monolithic reference startup runs on `serber-firecell`, matching the existing
+monolithic demo workflow. Ethernet rollback startup runs Core/CU on
+`serber-firecell`, DU/radio on `serber-minipc`, stops the firecell monolithic
+core first, and temporarily blocks the stale `oai-pc` F1 peer (`10.76.170.90`)
+so the minipc DU can attach without ID collision.
+
+Keep it free of passwords, subscriber values, generated configs, raw logs, and
+private keys. Runtime evidence stays in ignored `experiments/20*/` directories.

@@ -17,6 +17,7 @@ conf/local/
 # Runtime evidence retained locally by default
 logs/
 captures/
+experiments/20*/
 *.pcap
 *.pcapng
 *.log

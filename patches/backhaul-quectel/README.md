@@ -12,7 +12,7 @@ Essential retained facts are in:
 
 Future scripts should be limited to:
 - modem detection;
-- independent donor connectivity check;
+- firecell donor DU connectivity check;
 - WireGuard config rendering with local-only private keys;
 - F1 path validation that proves no Ethernet/Wi-Fi fallback;
 - rollback to Ethernet CU/DU with SIB8.

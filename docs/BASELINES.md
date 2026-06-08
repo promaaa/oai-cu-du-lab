@@ -2,29 +2,31 @@
 
 ## Monolithic OAI Reference
 
-- Status: working reference only.
+- Status: working gated TUI reference.
 - Observed user throughput: about `150 Mb/s`.
-- Evidence: `kaust-5g-research` progress reports describe monolithic validation and OAI PC checks; the user supplied this throughput as confirmed.
+- Role: reference only. It is not used by the Quectel F1 backhaul target.
 - OAI commit: not confirmed from repository evidence for this exact baseline.
 
 ## Ethernet CU/DU With SIB8
 
 - Status: working canonical rollback baseline.
 - Observed user throughput: about `19-23 Mb/s`.
-- Evidence: `cu-du/README.md` documents working CU/DU split and PWS/SIB8 over split; `cu-du/docs/PWS_SIB8_CU_DU_DEPLOYMENT.md` records phone PWS reception and data working with `oai` APN/DNN; `cu-du-backhauling/BACKHAULING.md` records Ethernet throughput evidence.
-- OAI commit: `102965a669b9444857c27843ec8ce62780bf9d37` is supported by `cu-du/conf/env.sh`, `cu-du/README.md`, and PWS deployment docs.
+- OAI commit: `102965a669b9444857c27843ec8ce62780bf9d37`.
 - Rollback baseline: yes.
 
 ## Wi-Fi CU/DU With SIB8
 
 - Status: working wireless-backhaul baseline candidate.
 - Observed user throughput: about `12 Mb/s`.
-- Evidence: `cu-du-backhauling/README.md` and `BACKHAULING.md` document Wi-Fi GRE F1 migration, UE registration, low BLER, and rollback to Ethernet. `kaust-5g-research` progress reports also describe PWS/SIB8 validation with Wi-Fi backhaul.
-- OAI commit: `102965a669b9444857c27843ec8ce62780bf9d37` is supported by `cu-du-backhauling/conf/env.sh` and deployment scripts.
+- OAI commit: `102965a669b9444857c27843ec8ce62780bf9d37`.
 - Rollback baseline: no, but documented as confirmed working.
 
 ## Quectel F1 Backhaul
 
-- Status: not a verified stable baseline.
-- Evidence: `cu-du-5g-backhauling/README.md` and `docs/quectel-f1-backhaul.md` show modem detection, OAI cell lock, QMI data, WireGuard path, partial F1 packet steering, and circular-dependency failure for same-cell full F1.
-- OAI commit: `102965a669b9444857c27843ec8ce62780bf9d37` is supported by `cu-du-5g-backhauling/conf/env.sh`.
+- Status: implementation in place; runtime PASS requires live packet-gated validation.
+- OAI commit: `102965a669b9444857c27843ec8ce62780bf9d37`.
+- Rollback baseline: no; rollback target is Ethernet CU/DU.
+- Canonical architecture: one 5GC and one CU on `serber-firecell`, firecell donor DU on `serber-firecell`, minipc access DU on `serber-minipc`, F1 over WireGuard-over-Quectel only for the minipc access DU.
+- Donor rule: Quectel attaches only to the firecell donor DU, PCI `1`, TAC `2`, DU ID `0xe11`; it must never attach to the minipc access DU.
+- Access rule: B210 serial `8002816` remains access-cell only, PCI `0`, TAC `1`, DU ID `0xe01`.
+- PASS rule: no PASS without tcpdump proof for minipc F1-C/F1-U on `wg-quectel-f1`, WireGuard outer UDP on `wwan0`, donor F1 on a local firecell path, and no minipc F1 on Ethernet/WiFi.
