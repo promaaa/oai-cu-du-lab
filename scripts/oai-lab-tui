@@ -881,7 +881,45 @@ async function startMonolithic() {
   await prompt('Press Enter to continue');
 }
 
+async function statusView() {
+  console.clear();
+  printHeader('Lab Status');
+  const minipc = await discoverMinipcTarget();
+  const checks = [
+    ['serber-firecell host', FIRECELL, 'hostname; ip -br addr | sed -n "1,12p"; pgrep -a nr-softmodem || true; docker ps --format "{{.Names}}: {{.Status}}" | head -15'],
+    [`serber-minipc host (${minipc.host})`, minipc.host, 'hostname; ip -br addr | sed -n "1,12p"; pgrep -a nr-softmodem || true; if pgrep -x nr-softmodem >/dev/null; then echo "USRP check: skipped because nr-softmodem is running and may own the B210"; else uhd_find_devices 2>&1 | tail -20 || true; fi'],
+  ];
+  for (const [label, host, cmd] of checks) {
+    console.log(`\n  ${BOLD}${label}${RESET}`);
+    console.log('  ' + '─'.repeat(54));
+    const out = await sshLoose(host, cmd, 25000);
+    if (out.ok) await showLines(out.combined);
+    else printError(out.combined);
+  }
+  await prompt('Press Enter to continue');
+}
 
+async function logsView() {
+  console.clear();
+  printHeader('Logs and Milestones');
+  const minipc = await discoverMinipcTarget();
+  const logs = [
+    ['CU Ethernet', FIRECELL, CU_LOG],
+    [`DU Ethernet (${minipc.host})`, minipc.host, DU_LOG],
+    ['CU caged Quectel', FIRECELL, CU_QUECTEL_LOG],
+    ['Firecell donor DU local-F1', FIRECELL, FIRECELL_DONOR_DU_LOG],
+    [`Minipc access DU Quectel (${minipc.host})`, minipc.host, DU_QUECTEL_LOG],
+    ['Monolithic gNB', MONO_HOST, MONO_LOG],
+  ];
+  for (const [label, host, file] of logs) {
+    console.log(`\n  ${BOLD}${label}${RESET} ${GRAY}${file}${RESET}`);
+    console.log('  ' + '─'.repeat(54));
+    const out = await sshLoose(host, `grep -Ei "F1|connected|registration|UE|PWS|SIB8|MCS|BLER|SNR|error|assert|timeout" ${file} 2>/dev/null | tail -35 || tail -35 ${file} 2>/dev/null || true`, 20000);
+    if (out.combined) await showLines(out.combined);
+    else printWarn('No log output found');
+  }
+  await prompt('Press Enter to continue');
+}
 
 function sib8Conf(message) {
   const text = message.replace(/[;\r\n]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1308,7 +1346,82 @@ async function launchSingleCuQuectelBackhaul() {
   await prompt('Press Enter to continue');
 }
 
-// validateSingleCuQuectelBackhaul has been removed
+async function validateSingleCuQuectelBackhaul() {
+  console.clear();
+  printHeader('Validate Single-CU Quectel Backhaul');
+  const dir = runDir('caged_quectel_f1_backhaul_validate');
+  printInfo(`Evidence directory: ${dir}`);
+  const gate = {};
+  let minipc = null;
+  let quectel = null;
+  const apn = await prompt('Quectel APN for live PDU refresh', 'oai');
+
+  try {
+    printStep(1, 7, 'Discover live minipc and Quectel PDU');
+    minipc = await discoverMinipcTarget();
+    printSuccess(`serber-minipc via ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
+    appendEvidence(dir, 'system-status/minipc-discovery.txt', minipc.raw);
+    quectel = await discoverQuectel(minipc.host, apn);
+    await showLines(quectel.raw);
+    appendEvidence(dir, 'system-status/quectel-qmi.txt', quectel.raw);
+    if (!quectel.settings.ip || !quectel.settings.gateway) throw new Error('Live Quectel PDU did not expose IPv4 address and gateway');
+    printSuccess(`Quectel PDU: ${quectel.iface} ${quectel.settings.ip}/${quectel.settings.prefix} via ${quectel.settings.gateway}`);
+    gate.quectel = true;
+
+    printStep(2, 7, 'Refresh routes over live Quectel PDU');
+    const routes = await ensurePduRoutes(minipc.host, quectel);
+    await showLines(routes.minipcOut);
+    await showLines(routes.firecellOut);
+    appendEvidence(dir, 'system-status/routes.txt', `${routes.minipcOut}\n\n${routes.firecellOut}`);
+    gate.routes = true;
+
+    printStep(3, 7, 'Refresh WireGuard tunnel');
+    const wg = await ensureWireGuard(minipc.host, quectel);
+    await showLines(wg.minipc);
+    await showLines(wg.firecell);
+    appendEvidence(dir, 'system-status/wireguard.txt', `${wg.minipc}\n\n${wg.firecell}`);
+    gate.wireguard = true;
+
+    printStep(4, 7, 'Validate independent donor path via AT commands and ping');
+    const donorVal = await execLocal('bash ./scripts/quectel-f1-backhaul/02_validate_independent_donor.sh', 40000);
+    await showLines(donorVal.combined);
+    if (!donorVal.ok) throw new Error(`Independent donor validation failed: ${donorVal.combined}`);
+    gate.donorVal = true;
+
+    printStep(5, 7, 'Confirm running CU, firecell donor DU, and minipc access DU split state');
+    const cu = await sshChecked(FIRECELL, `grep -Ei "F1AP_CU_SCTP_REQ|CU_handle_F1_SETUP_REQUEST|GTPU.*2153|SCTP|error|fail" ${CU_QUECTEL_LOG} 2>/dev/null | tail -80 || true`, 15000);
+    const donor = await sshChecked(FIRECELL, `grep -Ei "DU_handle_F1_SETUP_RESPONSE|received F1 Setup Response|got sync|B210|SCTP|error|fail" ${FIRECELL_DONOR_DU_LOG} 2>/dev/null | tail -80 || true`, 15000);
+    const du = await sshChecked(minipc.host, `grep -Ei "DU_handle_F1_SETUP_RESPONSE|received F1 Setup Response|got sync|B210|SCTP|error|fail" ${DU_QUECTEL_LOG} 2>/dev/null | tail -80 || true`, 15000);
+    await showLines(cu);
+    await showLines(donor);
+    await showLines(du);
+    appendEvidence(dir, 'logs/cu-du-running-validation.log', `${cu}\n\n${donor}\n\n${du}`);
+    if (!/F1AP_CU_SCTP_REQ|CU_handle_F1_SETUP_REQUEST/i.test(cu)) throw new Error('CU log did not show running F1 evidence');
+    if (!/DU_handle_F1_SETUP_RESPONSE|received F1 Setup Response/i.test(donor)) throw new Error('Firecell donor DU log did not show running F1 setup evidence');
+    if (!/DU_handle_F1_SETUP_RESPONSE|received F1 Setup Response/i.test(du)) throw new Error('DU log did not show running F1 setup evidence');
+    await validateDonorLocalF1(dir);
+    gate.cuDu = true;
+
+    printStep(6, 7, 'Packet validation: F1 on tunnel, WireGuard on Quectel, no management F1');
+    await validateCagedPacketPlacement(dir, minipc.host, quectel);
+    gate.packet = true;
+
+    printStep(7, 7, 'UE/F1-U validation during phone traffic');
+    await validateCagedF1u(dir, minipc.host, 3);
+    gate.ueF1u = true;
+
+    await checkSsh(FIRECELL, 'serber-firecell management');
+    await checkSsh(minipc.host, 'serber-minipc management');
+    appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
+    printSuccess('PASS: donor DU F1 is local, minipc F1-C/F1-U are on wg-quectel-f1, WireGuard UDP is on the live Quectel interface, and management interfaces carried no minipc F1');
+  } catch (err) {
+    appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
+    printError(err.message);
+    printWarn('No PASS claimed. The split can remain running while the phone attach/APN/user-plane issue is corrected and this validation is retried.');
+  }
+
+  await prompt('Press Enter to continue');
+}
 
 async function quectelShowcase() {
   console.clear();
@@ -1345,7 +1458,10 @@ async function mainMenu() {
       { name: 'Launch Ethernet CU/DU split: firecell CU + live minipc DU', value: 'start-split' },
       { name: 'Launch monolithic firecell core + gNB', value: 'start-mono' },
       { name: 'Launch single-CU Quectel backhaul', value: 'start-caged-quectel' },
+      { name: 'Validate single-CU Quectel backhaul', value: 'validate-caged-quectel' },
       { name: 'Change PWS/SIB8 warning text for all TUI configs', value: 'pws' },
+      { name: 'View live host/process/core status', value: 'status' },
+      { name: 'View recent OAI logs and milestones', value: 'logs' },
       { name: 'Stop the current config', value: 'stop-all' },
       { name: 'Exit', value: 'exit' },
     ]);
@@ -1353,7 +1469,10 @@ async function mainMenu() {
     if (action === 'start-split') await startEthernetRollback();
     if (action === 'start-mono') await startMonolithic();
     if (action === 'pws') await applyPws();
+    if (action === 'status') await statusView();
+    if (action === 'logs') await logsView();
     if (action === 'start-caged-quectel') await launchSingleCuQuectelBackhaul();
+    if (action === 'validate-caged-quectel') await validateSingleCuQuectelBackhaul();
     if (action === 'stop-all') await stopAllConfigs();
   }
 }
@@ -1380,7 +1499,10 @@ async function cli() {
     await launchSingleCuQuectelBackhaul();
     process.exit(0);
   }
-  // --validate-caged-quectel has been removed
+  if (arg === '--validate-caged-quectel') {
+    await validateSingleCuQuectelBackhaul();
+    process.exit(0);
+  }
   if (arg === '--rollback-caged-quectel') {
     await stopAllConfigs();
     process.exit(0);

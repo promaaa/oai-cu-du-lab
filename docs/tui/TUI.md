@@ -61,8 +61,9 @@ The main menu intentionally shows only the operator-ready workflows:
 
 - launch Ethernet CU/DU split;
 - launch monolithic firecell core + gNB;
-- launch single-CU Quectel backhaul;
+- launch or validate single-CU Quectel backhaul;
 - change PWS/SIB8 warning text everywhere;
+- view live status/logs;
 - stop the current config.
 
 Experimental preflight helpers for Raspberry Pi DU, `oai-pc`, nrUE, and older
@@ -180,6 +181,12 @@ The scenario prints **PASS** only after all required packet gates pass:
 The UE/F1-U gate gives the operator three phone-traffic attempts. If no
 `UDP/2153` appears on `wg-quectel-f1`, the TUI fails closed and records
 `No PASS claimed`.
+
+If the split is already running and only phone traffic needs another attempt,
+use `Validate single-CU Quectel backhaul` or
+`./scripts/oai-lab-tui --validate-caged-quectel`. That action refreshes the
+live Quectel PDU routes and WireGuard tunnel, runs the independent donor check,
+rechecks packet placement, then reruns the F1-U gate without restarting the donor, CU, or DU.
 
 ## Evidence
 
