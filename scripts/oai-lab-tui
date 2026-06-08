@@ -1445,6 +1445,29 @@ async function quectelShowcase() {
   await prompt('Press Enter to continue');
 }
 
+async function getRunningConfig() {
+  try {
+    const proc = await sshLoose(FIRECELL, 'pgrep -a nr-softmodem || true', 3000);
+    if (!proc.ok) return 'unknown (unreachable)';
+    const out = proc.combined || '';
+    if (out.includes('gnb-cu-minipc-quectel-backhaul.conf') || out.includes('gnb-du-firecell-donor-local-f1.conf')) {
+      return 'single-CU Quectel backhaul';
+    }
+    if (out.includes('gnb-cu-minipc.conf')) {
+      return 'Ethernet CU/DU split';
+    }
+    if (out.includes('gnb.sa.band78.fr1.106PRB.usrpb210.conf')) {
+      return 'monolithic firecell core + gNB';
+    }
+    if (out.trim().length > 0) {
+      return 'running (unknown config)';
+    }
+    return 'none';
+  } catch (err) {
+    return 'unknown (unreachable)';
+  }
+}
+
 async function mainMenu() {
   while (true) {
     console.clear();
@@ -1454,6 +1477,16 @@ async function mainMenu() {
     console.log(`    Monolithic reference: ${FIRECELL}`);
     console.log('    DU/USRP: discovered live for Ethernet and caged Quectel');
     console.log('\n  Ethernet and caged Quectel discover the live minipc management path each run.\n');
+    const running = await getRunningConfig();
+    let statusStr = running;
+    if (running === 'none') {
+      statusStr = `${GRAY}none${RESET}`;
+    } else if (running.startsWith('unknown') || running.startsWith('running')) {
+      statusStr = `${YELLOW}${running}${RESET}`;
+    } else {
+      statusStr = `${GREEN}${BOLD}${running}${RESET}`;
+    }
+    console.log(`  currently running config: ${statusStr}\n`);
     const action = await choose('What would you like to do?', [
       { name: 'Launch Ethernet CU/DU split: firecell CU + live minipc DU', value: 'start-split' },
       { name: 'Launch monolithic firecell core + gNB', value: 'start-mono' },
@@ -1508,7 +1541,6 @@ async function cli() {
     process.exit(0);
   }
   await mainMenu();
-  console.log('\n  Thanks for using OAI CU/DU Lab Demo Console.\n');
   rl.close();
 }
 
