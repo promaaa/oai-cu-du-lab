@@ -68,7 +68,14 @@ const YELLOW = '\x1b[33m';
 const CYAN = '\x1b[36m';
 const GRAY = '\x1b[90m';
 
-const scriptedInput = input.isTTY ? null : readFileSync(0, 'utf8').split(/\r?\n/);
+let scriptedInput = null;
+if (!input.isTTY) {
+  try {
+    scriptedInput = readFileSync(0, 'utf8').split(/\r?\n/);
+  } catch (err) {
+    // Stdin is not readable or EAGAIN
+  }
+}
 let scriptedInputIndex = 0;
 const rl = createInterface({ input, output });
 
