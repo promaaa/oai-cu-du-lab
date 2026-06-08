@@ -64,7 +64,7 @@ The main menu intentionally shows only the operator-ready workflows:
 - launch or validate single-CU Quectel backhaul;
 - change PWS/SIB8 warning text everywhere;
 - view live status/logs;
-- stop the active scenario.
+- stop the current config.
 
 Experimental preflight helpers for Raspberry Pi DU, `oai-pc`, nrUE, and older
 Quectel showcase checks remain in the script but are hidden from the main
@@ -103,8 +103,7 @@ having both plain `oai-*` containers and `oai-cn5g-minipc-*` containers active
 during the split demo. It restarts the split core cleanly, then adds a
 temporary CU-side iptables rule that drops SCTP/F1 traffic from the stale
 `oai-pc` peer at `10.76.170.90`. This prevents the old `gNB-DU-OAI-PC` process
-from claiming the same DU identity before the minipc DU attaches. `Stop
-Ethernet CU/DU` removes that temporary rule.
+from claiming the same DU identity before the minipc DU attaches. `Stop the current config` removes that temporary rule.
 
 The Ethernet scenario prints **PASS** only after F1 setup, SIB8/PWS delivery,
 DU radio sync, F1-C SCTP on the discovered Ethernet interfaces, and no F1-C or

@@ -805,14 +805,7 @@ async function startEthernetRollback() {
   await prompt('Press Enter to continue');
 }
 
-async function stopEthernet() {
-  console.clear();
-  printHeader('Stop Ethernet CU/DU');
-  const minipc = await discoverMinipcTarget();
-  await hardStopSplit(minipc.host);
-  await unblockOaiPcF1();
-  await prompt('Press Enter to continue');
-}
+// stopEthernet has been combined into stopAllConfigs
 
 async function startMonolithic() {
   console.clear();
@@ -1101,12 +1094,41 @@ async function nruePreflight() {
   await prompt('Press Enter to continue');
 }
 
-async function stopSingleCuQuectelBackhaul(minipcHost = null) {
+async function stopAllConfigs(minipcHost = null) {
   console.clear();
-  printHeader('Stop Single-CU Quectel Backhaul');
-  const target = minipcHost || (await discoverMinipcTarget()).host;
-  printInfo(`Minipc target: ${target}`);
+  printHeader('Stop Running Configuration');
+  printInfo('This action stops every possible running configuration (monolithic, Ethernet split, Quectel split).');
 
+  let target = MINIPC;
+  let minipc = null;
+  try {
+    minipc = await discoverMinipcTarget();
+    target = minipc.host;
+    printSuccess(`Discovered minipc: ${target}`);
+  } catch (err) {
+    printWarn('Minipc target not auto-discovered; using default host address for stop commands.');
+  }
+
+  const fullStop = await confirm('Stop split 5GC core on firecell as well?', false);
+  const totalSteps = fullStop ? 7 : 6;
+
+  // Step 1: Stop monolithic nr-softmodem and containers
+  printStep(1, totalSteps, 'Stopping monolithic stack');
+  await sshLoose(MONO_HOST, stopSoftmodemByConfigCmd(MONO_CONF), 15000);
+  await sshLoose(MONO_HOST, `cd ${MONO_CN} && docker compose down 2>/dev/null || docker-compose down 2>/dev/null || true`, 60000);
+  printSuccess('Monolithic stack stopped');
+
+  // Step 2: Stop split softmodems (Ethernet, Quectel)
+  printStep(2, totalSteps, 'Stopping all CU/DU/donor DU softmodem processes');
+  await hardStopSplit(target);
+  printSuccess('All softmodem processes stopped');
+
+  // Step 3: Remove temporary oai-pc F1 block rule if present
+  printStep(3, totalSteps, 'Removing F1 blocking rules');
+  await unblockOaiPcF1();
+  printSuccess('F1 blocking rules removed');
+
+  // Step 4: Query Quectel IP
   let settingsIp = '';
   try {
     const quectel = await discoverQuectel(target, 'oai');
@@ -1114,27 +1136,11 @@ async function stopSingleCuQuectelBackhaul(minipcHost = null) {
       settingsIp = quectel.settings.ip;
     }
   } catch (err) {
-    // Ignore discovery errors during rollback/stop
+    // Ignore discovery errors during stop
   }
 
-  const fullStop = await confirm('Stop split 5GC core on firecell as well?', false);
-  const totalSteps = fullStop ? 7 : 6;
-
-  printStep(1, totalSteps, 'Stop minipc access DU by Quectel config path');
-  const duStop = await sshLoose(target, stopSoftmodemByConfigCmd(DU_QUECTEL_CONF), 15000);
-  if (duStop.combined) await showLines(duStop.combined);
-  printSuccess('DU stop check completed');
-
-  printStep(2, totalSteps, 'Stop firecell CU by Quectel config path');
-  const cuStop = await sshLoose(FIRECELL, stopSoftmodemByConfigCmd(CU_QUECTEL_CONF), 15000);
-  if (cuStop.combined) await showLines(cuStop.combined);
-  printSuccess('CU stop check completed');
-
-  printStep(3, totalSteps, 'Stop firecell donor DU by local-F1 config path');
-  await sshLoose(FIRECELL, stopSoftmodemByConfigCmd(FIRECELL_DONOR_DU_CONF), 15000);
-  printSuccess('Donor DU stop check completed');
-
-  printStep(4, totalSteps, 'Stop WireGuard and remove Quectel-specific routes/rules');
+  // Step 5: Stop WireGuard and clean Quectel routes/rules
+  printStep(4, totalSteps, 'Stopping WireGuard and cleaning Quectel routes');
   await sshLoose(target, `sudo -n systemctl stop wg-quick@${WG_IF} || true`, 15000);
   await sshLoose(FIRECELL, `sudo -n systemctl stop wg-quick@${WG_IF} || true`, 15000);
 
@@ -1155,7 +1161,7 @@ async function stopSingleCuQuectelBackhaul(minipcHost = null) {
 
   let currentStep = 5;
   if (fullStop) {
-    printStep(currentStep, totalSteps, 'Stop split 5GC core on serber-firecell');
+    printStep(currentStep, totalSteps, 'Stopping split 5GC core on serber-firecell');
     const stopCoreCmd = `cd ${CU_CN_DIR} && (docker compose -f ${CU_CN_COMPOSE} down || docker-compose -f ${CU_CN_COMPOSE} down || true)`;
     const stopCoreOut = await sshLoose(FIRECELL, stopCoreCmd, 60000);
     if (stopCoreOut.combined) await showLines(stopCoreOut.combined);
@@ -1163,7 +1169,8 @@ async function stopSingleCuQuectelBackhaul(minipcHost = null) {
     currentStep++;
   }
 
-  printStep(currentStep, totalSteps, 'Confirm management access remains available');
+  // Step 7: Confirm management access
+  printStep(currentStep, totalSteps, 'Confirming management access');
   await checkSsh(FIRECELL, 'serber-firecell');
   await checkSsh(target, 'serber-minipc');
   await prompt('Press Enter to continue');
@@ -1455,22 +1462,18 @@ async function mainMenu() {
       { name: 'Change PWS/SIB8 warning text for all TUI configs', value: 'pws' },
       { name: 'View live host/process/core status', value: 'status' },
       { name: 'View recent OAI logs and milestones', value: 'logs' },
-      { name: 'Stop Ethernet CU/DU split', value: 'stop-split' },
-      { name: 'Stop monolithic firecell stack', value: 'stop-mono' },
-      { name: 'Stop single-CU Quectel backhaul', value: 'rollback-caged-quectel' },
+      { name: 'Stop the current config', value: 'stop-all' },
       { name: 'Exit', value: 'exit' },
     ]);
     if (action === 'exit') break;
     if (action === 'start-split') await startEthernetRollback();
-    if (action === 'stop-split') await stopEthernet();
     if (action === 'start-mono') await startMonolithic();
-    if (action === 'stop-mono') { console.clear(); printHeader('Stop Monolithic'); await stopMonolithicOnly(); await prompt('Press Enter to continue'); }
     if (action === 'pws') await applyPws();
     if (action === 'status') await statusView();
     if (action === 'logs') await logsView();
     if (action === 'start-caged-quectel') await launchSingleCuQuectelBackhaul();
     if (action === 'validate-caged-quectel') await validateSingleCuQuectelBackhaul();
-    if (action === 'rollback-caged-quectel') await stopSingleCuQuectelBackhaul();
+    if (action === 'stop-all') await stopAllConfigs();
   }
 }
 
@@ -1501,7 +1504,7 @@ async function cli() {
     process.exit(0);
   }
   if (arg === '--rollback-caged-quectel') {
-    await stopSingleCuQuectelBackhaul();
+    await stopAllConfigs();
     process.exit(0);
   }
   await mainMenu();
