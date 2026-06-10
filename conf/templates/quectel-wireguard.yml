@@ -1,5 +1,5 @@
 template: quectel-wireguard
-purpose: single-CU Quectel F1 backhaul overlay
+purpose: monolithic-donor Quectel F1 backhaul overlay
 status: runtime_validation_required
 hosts:
   cu: serber-firecell
@@ -16,14 +16,12 @@ quectel:
   modem: Quectel RM500Q-GL
   management_device: /dev/cdc-wdm2
   apn: oai
-  donor_requirement: firecell_donor_du_only
+  donor_requirement: firecell_monolithic_donor_gnb_only
   donor_pci: 1
   donor_tac: 2
 f1:
   cu_access_f1_ip: 10.250.0.1
   minipc_access_du_f1_ip: 10.250.0.2
-  firecell_donor_du_f1_ip: 127.0.0.2
-  firecell_donor_cu_f1_ip: 127.0.0.1
   port: 2153
 validation_required:
   - f1_c_sctp_on_wireguard
@@ -34,5 +32,5 @@ validation_required:
   - commercial_ue_service
 guardrails:
   same_cell_full_f1_is_blocked: true
-  monolithic_donor_gnb_is_blocked: true
+  local_f1_donor_du_is_blocked: true
   generated_configs_go_to: conf/generated/

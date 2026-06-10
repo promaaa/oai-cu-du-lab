@@ -4,23 +4,23 @@
 
 Establish the Quectel 5G F1 backhaul using the lab's single-CU split architecture:
 
-- `serber-firecell`: one OAI 5GC, one OAI CU, and the firecell donor DU.
+- `serber-firecell`: one OAI 5GC, one OAI CU, and the monolithic firecell donor gNB.
 - `serber-minipc`: minipc access DU with USRP B210 serial `8002816`.
-- Quectel RM500Q-GL: outside the cage, attached only to the firecell donor DU.
+- Quectel RM500Q-GL: outside the cage, attached only to the firecell monolithic donor gNB.
 - F1 from minipc access DU to CU: `wg-quectel-f1` over the Quectel PDU session.
-- F1 from firecell donor DU to CU: local firecell path only.
+- Donor gNB path: no F1; it attaches to the same 5GC and serves only the Quectel modem.
 
-The old oai-pc/monolithic donor path is removed from the Quectel backhaul plan.
-The monolithic deployment remains a separate reference baseline, not a donor for
-Quectel F1.
+The failed single-CU donor-DU path is removed from the Quectel backhaul plan.
+The old oai-pc donor path remains removed. The supported donor is the dedicated
+monolithic firecell donor gNB.
 
 ## Work In Progress
 
 - Security and repository audit: complete.
 - Ethernet rollback baseline: complete.
 - Quectel modem and network inventory: complete, refresh live values per run.
-- Firecell donor DU local-F1 config and start flow: implemented.
-- Shared CU plus minipc access DU WireGuard-F1 configs: implemented.
+- Firecell monolithic donor gNB start flow: implemented in the TUI.
+- CU plus minipc access DU WireGuard-F1 configs: implemented.
 - Packet-gated validation: implemented; runtime PASS still requires live
   tcpdump evidence and caged phone traffic.
 

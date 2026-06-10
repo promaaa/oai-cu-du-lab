@@ -12,13 +12,15 @@ The lab studies an OAI 5G NR CU/DU split that supports SIB8/PWS broadcast and ca
 
 Quectel backhaul always refers to this specific setup:
 
-- `serber-firecell`: one OAI 5GC, one OAI CU, and a firecell donor DU.
-- firecell donor DU: local F1 to the CU, PCI `1`, TAC `2`, DU ID `0xe11`.
-- Quectel RM500Q-GL: outside the cage, attached only to the firecell donor DU.
+- `serber-firecell`: one OAI 5GC, one OAI CU, and a monolithic firecell donor gNB.
+- firecell donor gNB: serves only the Quectel modem outside the cage, PCI `1`, TAC `2`.
+- Quectel RM500Q-GL: outside the cage, attached only to the firecell monolithic donor gNB.
 - `serber-minipc`: access DU with B210 serial `8002816`, PCI `0`, TAC `1`, DU ID `0xe01`.
 - minipc F1: `10.250.0.2` to CU `10.250.0.1` on `wg-quectel-f1`, with WireGuard outer UDP over `wwan0`.
 
-No monolithic donor gNB is part of the Quectel backhaul target. The monolithic OAI deployment remains a separate reference-only baseline.
+The failed local-F1 donor-DU experiment is deprecated. The monolithic reference
+demo remains separate, but the Quectel target intentionally starts a dedicated
+monolithic donor gNB on `serber-firecell` for the modem.
 
 ## SIB8/PWS Role
 

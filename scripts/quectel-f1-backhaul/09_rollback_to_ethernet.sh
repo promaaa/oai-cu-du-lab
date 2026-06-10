@@ -46,8 +46,16 @@ ssh_host "$CU_HOST" "bash -s '$CU_QUECTEL_CONF' <<'REMOTE_STOP'
 $stop_by_config_cmd
 REMOTE_STOP"
 
-log "--- Stopping firecell donor DU by config path ---"
+log "--- Stopping deprecated firecell donor DU by config path if present ---"
 ssh_host "$CU_HOST" "bash -s '$FIRECELL_DONOR_DU_CONF' <<'REMOTE_STOP'
+$stop_by_config_cmd
+REMOTE_STOP"
+
+log "--- Stopping firecell monolithic donor gNB by config path ---"
+ssh_host "$CU_HOST" "bash -s '$FIRECELL_DONOR_PROD_CONF' <<'REMOTE_STOP'
+$stop_by_config_cmd
+REMOTE_STOP"
+ssh_host "$CU_HOST" "bash -s '/tmp/oai-tui-firecell-donor-monolithic-runtime.conf' <<'REMOTE_STOP'
 $stop_by_config_cmd
 REMOTE_STOP"
 
@@ -117,7 +125,7 @@ log "  2. Register Nothing Phone"
 log "  3. Verify throughput ~19-23 Mb/s"
 log ""
 log "To resume Quectel F1 experiments:"
-log "  1. Ensure Quectel donor is non-recursive (firecell donor DU PCI=$DONOR_PCI/TAC=$DONOR_TAC, not minipc access DU)"
+log "  1. Ensure Quectel donor is non-recursive (firecell donor gNB PCI=$DONOR_PCI/TAC=$DONOR_TAC, not minipc access DU)"
 log "  2. Run 01_check_quectel_connectivity.sh"
 log "  3. Run 02_setup_wireguard_firecell.sh"
 log "  4. Run 03_setup_wireguard_minipc.sh"

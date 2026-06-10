@@ -1,11 +1,12 @@
-# Single-CU Caged CU/DU Split With Quectel 5G Backhaul Launch Runbook
+# Caged CU/DU Split With Quectel 5G Backhaul And Monolithic Donor Runbook
 
 **Date updated**: 2026-06-07
 **Scenario**: `serber-minipc` DU and access USRP B210 inside a Faraday cage; Quectel modem, `serber-firecell`, and firecell donor USRP outside the cage.
-**Target result**: one OAI 5GC, one OAI CU, one local firecell donor DU for Quectel, and one caged minipc access DU whose F1 backhaul crosses WireGuard-over-Quectel.
+**Target result**: one OAI 5GC, one OAI CU, one monolithic firecell donor gNB for Quectel, and one caged minipc access DU whose F1 backhaul crosses WireGuard-over-Quectel.
 
-This runbook is the supported Quectel backhaul procedure. It does not start a
-monolithic donor gNB on `serber-firecell`.
+This runbook is the supported Quectel backhaul procedure. It intentionally uses
+the monolithic donor gNB on `serber-firecell`; the failed local-F1 donor-DU path
+is deprecated.
 
 Do not store passwords, WireGuard private keys, SIM Ki/OPc, raw subscriber material, or unsanitized packet captures in this repository.
 
@@ -17,13 +18,13 @@ Do not store passwords, WireGuard private keys, SIM Ki/OPc, raw subscriber mater
 serber-firecell
   one OAI 5GC
   one OAI CU
-  firecell donor DU + outside USRP
-    DU ID 0xe11, gNB ID 0xe10, NR Cell ID 22345678, PCI 1, TAC 2
-    F1 local only: 127.0.0.2 -> shared CU 127.0.0.1
+  monolithic firecell donor gNB + outside USRP
+    NR Cell ID 22345678, PCI 1, TAC 2
+    serves only the Quectel modem; no F1 path
   wg-quectel-f1: 10.250.0.1/30
 
 Quectel RM500Q-GL outside cage
-  attaches only to firecell donor DU
+  attaches only to firecell monolithic donor gNB
   PDU session on serber-minipc wwan0
   WireGuard outer UDP on wwan0
 
@@ -37,7 +38,7 @@ Nothing Phone inside cage
 ```
 
 The important fix is avoiding same-cell recursion. The Quectel modem must attach
-only through the firecell donor DU. The minipc B210 remains the access cell for
+only through the firecell monolithic donor gNB. The minipc B210 remains the access cell for
 the Nothing Phone and is never used for backhaul.
 
 ### Launch Sequence
@@ -45,13 +46,13 @@ the Nothing Phone and is never used for backhaul.
 ```bash
 ./scripts/quectel-f1-backhaul/05_generate_quectel_f1_configs.sh
 ./scripts/quectel-f1-backhaul/05_start_core.sh
-./scripts/quectel-f1-backhaul/06_start_cu_quectel.sh
-./scripts/quectel-f1-backhaul/06_start_firecell_donor_du_quectel.sh
+# Start the firecell monolithic donor gNB from the TUI or the validated lab command.
 ./scripts/quectel-f1-backhaul/01_check_quectel_connectivity.sh
 ./scripts/quectel-f1-backhaul/02_validate_independent_donor.sh
 ./scripts/quectel-f1-backhaul/03_setup_wireguard_minipc.sh
 ./scripts/quectel-f1-backhaul/02_setup_wireguard_firecell.sh
 ./scripts/quectel-f1-backhaul/04_validate_backhaul_path.sh
+./scripts/quectel-f1-backhaul/06_start_cu_quectel.sh
 ./scripts/quectel-f1-backhaul/07_start_du_quectel.sh
 ./scripts/quectel-f1-backhaul/08_validate_f1.sh
 ```
@@ -66,7 +67,7 @@ The TUI path is:
 
 Do not claim PASS unless packet captures prove all of the following:
 
-- firecell donor DU F1 is visible on the local firecell path, not through Quectel;
+- firecell monolithic donor gNB is in service and the Quectel camps on PCI `1` / TAC `2`;
 - minipc access DU F1-C SCTP is on `wg-quectel-f1`;
 - minipc access DU F1-U UDP/2153 is on `wg-quectel-f1` during phone traffic;
 - WireGuard outer UDP is on `wwan0`;
@@ -78,20 +79,21 @@ Do not claim PASS unless packet captures prove all of the following:
 ./scripts/quectel-f1-backhaul/09_rollback_to_ethernet.sh
 ```
 
-Rollback stops the minipc access DU, shared CU, and firecell donor DU by exact
+Rollback stops the minipc access DU, CU, and monolithic donor gNB by exact
 config path, preserves management SSH, removes stale Quectel routes, and restarts
 the Ethernet CU/DU baseline.
 
 ## 2. Historical Values From The Earlier Caged Run
 
 The remaining sections retain evidence from the earlier monolithic-donor bring-up.
-Use them for troubleshooting values only, not as the preferred launch procedure.
+Use them for troubleshooting values only. The monolithic-donor evidence below is
+the basis for the current supported launch procedure.
 
 ### Host Reachability Used
 
 | Host | Management path used | Notes |
 |---|---:|---|
-| `serber-firecell` | `serber@10.76.170.38` | Core, shared CU, outside donor DU |
+| `serber-firecell` | `serber@10.76.170.38` | Core, CU, outside monolithic donor gNB |
 | `serber-minipc` | `serber@10.85.168.144` | WiFi management worked during this run |
 | `serber-minipc` Ethernet | `10.76.170.109/25` on `enp4s0` | It was not at the older `10.76.170.100` address |
 
@@ -207,9 +209,8 @@ Expected:
 
 ## 5. Generate Split CU/DU Configs
 
-Do not start the historical monolithic donor gNB on `serber-firecell`. Generate
-the shared CU config, the firecell donor DU local-F1 config, and the minipc
-access DU WireGuard-F1 config:
+Generate the CU config bound to `10.250.0.1` and the minipc access DU
+WireGuard-F1 config:
 
 ```bash
 ./scripts/quectel-f1-backhaul/05_generate_quectel_f1_configs.sh
@@ -218,19 +219,9 @@ access DU WireGuard-F1 config:
 Expected identity split:
 
 ```text
-shared CU: accepts both DU associations
-firecell donor DU: DU ID 0xe11, gNB ID 0xe10, NR Cell ID 22345678, PCI 1, TAC 2
+CU: binds F1-C/F1-U to 10.250.0.1 on wg-quectel-f1
 minipc access DU: DU ID 0xe01, gNB ID 0xe00, NR Cell ID 12345678, PCI 0, TAC 1
 minipc access radio: B210 serial 8002816
-```
-
-The donor DU config is generated from the firecell donor radio baseline, but the
-runtime role is split DU with local F1. Its F1 addresses must be:
-
-```text
-local_s_address/local_n_address: 127.0.0.2
-remote_s_address/remote_n_address: 127.0.0.1
-local_n_if_name: lo
 ```
 
 The minipc access DU F1 addresses must be:
@@ -363,7 +354,7 @@ latest WireGuard handshake: fresh on both peers
 ## 8. Start Split CU On Firecell
 
 Do not use a script that blindly kills all `nr-softmodem` processes on firecell.
-Firecell intentionally runs both the shared CU and the donor DU.
+Firecell intentionally runs both the CU and the monolithic donor gNB.
 
 Working CU config:
 
@@ -374,13 +365,13 @@ Working CU config:
 Expected CU F1 bindings:
 
 ```text
-F1-C: shared listener for local donor DU and wg-quectel-f1 access DU
-F1-U: shared listener; minipc access DU path sources through 10.250.0.1
+F1-C: 10.250.0.1 -> 10.250.0.2 on wg-quectel-f1
+F1-U: 10.250.0.1 -> 10.250.0.2 on wg-quectel-f1
 N2/N3/core side: 192.168.71.129
 ```
 
 Launch with the repository script. It stops only an existing CU using this exact
-config path and leaves the donor DU alone:
+config path and leaves the donor gNB alone:
 
 ```bash
 ./scripts/quectel-f1-backhaul/06_start_cu_quectel.sh
@@ -390,30 +381,30 @@ Expected CU evidence:
 
 ```text
 Received NGSetupResponse from AMF
-F1AP_CU_SCTP_REQ / F1 setup activity for both DU associations
+F1AP_CU_SCTP_REQ / F1 setup activity for the minipc access DU
 GTP-U / UDP 2153 initialization
 ```
 
 ---
 
-## 9. Start Firecell Donor DU Locally
+## 9. Firecell Monolithic Donor GNB
 
-Start the donor as a DU attached to the shared CU. Its local F1 path must stay on
-`serber-firecell`; it must never use the Quectel PDU session or WireGuard tunnel.
+The donor gNB should already be running before Quectel registration. It serves
+only the Quectel modem and has no F1 path.
 
 ```bash
-./scripts/quectel-f1-backhaul/06_start_firecell_donor_du_quectel.sh
+./scripts/oai-lab-tui --start-caged-quectel
 ```
 
-Expected donor DU evidence:
+Expected donor gNB evidence:
 
 ```text
-F1 Setup Response
-donor radio detected / synchronized
+Received NGSetupResponse from AMF
 cell in service with PCI 1 and TAC 2
+donor radio detected / synchronized
 ```
 
-After the donor DU is in service, reset/register the Quectel and start or verify
+After the donor gNB is in service, reset/register the Quectel and start or verify
 the PDU session:
 
 ```bash
@@ -638,7 +629,7 @@ The TUI should model this as a state machine with explicit gates:
 
 1. **Hardware gate**: B210 serial `8002816` visible on minipc; Quectel QMI device and `wwan0` visible.
 2. **Core gate**: firecell split core containers healthy.
-3. **Donor gate**: firecell donor DU in service with DU ID `0xe11`, PCI `1`, TAC `2`, and local F1.
+3. **Donor gate**: firecell monolithic donor gNB in service with PCI `1` and TAC `2`.
 4. **Quectel gate**: QMI PDU connected and `wwan0` has IPv4 settings.
 5. **Route gate**: minipc route to `192.168.71.129` via Quectel gateway; firecell route back to Quectel PDU IP.
 6. **WireGuard gate**: fresh handshake and bidirectional ping between `10.250.0.1` and `10.250.0.2`.
@@ -649,11 +640,11 @@ The TUI should model this as a state machine with explicit gates:
 
 Useful TUI warnings:
 
-- Do not run helpers that kill all `nr-softmodem` processes on firecell while the shared CU/donor DU split is running.
+- Do not run helpers that kill all `nr-softmodem` processes on firecell while the CU/donor-gNB pair is running.
 - Do not assume minipc Ethernet is `10.76.170.100`; discover management IP and interface each run.
 - Do not assume the Quectel PDU IP is stable; parse QMI current settings and update routes/hooks accordingly.
 - ICMP to public internet can fail even when TCP/HTTP and private OAI routing work.
-- Same-cell Quectel backhaul is recursive and unstable; the Quectel modem must use the firecell donor DU or another non-recursive donor path.
+- Same-cell Quectel backhaul is recursive and unstable; the Quectel modem must use the firecell monolithic donor gNB or another non-recursive donor path.
 
 ---
 

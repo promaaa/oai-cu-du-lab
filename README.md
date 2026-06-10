@@ -33,7 +33,7 @@ This repository gives future operators and agents a clean starting point for dep
 
 ## Immediate Next Objective
 
-Establish F1 backhaul through the Quectel module connected to `serber-minipc` using the single-CU target: one 5GC, one CU, and a firecell donor DU on `serber-firecell`; one minipc access DU with B210 serial `8002816`; minipc F1 over WireGuard-over-Quectel.
+Establish F1 backhaul through the Quectel module connected to `serber-minipc` using the known-working caged target: one 5GC, one CU, and one monolithic donor gNB on `serber-firecell`; one minipc access DU with B210 serial `8002816`; minipc F1 over WireGuard-over-Quectel.
 
 ## Operator TUI
 
@@ -42,6 +42,7 @@ Run `./scripts/oai-lab-tui` to launch and inspect the deployed lab modes:
 - monolithic Core + gNB using the existing monolithic demo style;
 - Ethernet CU/DU rollback with Core/CU on the CU host and DU/USRP on the DU host;
 - PWS/SIB8 message apply for monolithic and Ethernet split modes;
+- caged Quectel F1 backhaul with a monolithic firecell donor gNB for the modem;
 - guided phone throughput entry and timestamped local run records;
 - read-only discovery for Raspberry Pi DU, `oai-pc` DU, and nrUE internet-through-radio workflows until they are validated.
 

@@ -40,7 +40,7 @@ The TUI records the updated remote paths in the local evidence directory for
 the message update. A scenario restart is still required before the new warning
 text is broadcast, because OAI reads `sib8.conf` during process startup.
 
-The single-CU Quectel actions also support direct launch and retry:
+The caged Quectel monolithic-donor actions also support direct launch and retry:
 
 ```bash
 ./scripts/oai-lab-tui --start-caged-quectel
@@ -53,7 +53,7 @@ The single-CU Quectel actions also support direct launch and retry:
 - Ethernet CU/DU with SIB8 rollback baseline.
 - Monolithic reference on `serber-firecell`, matching the existing demo
   workflow.
-- Single-CU Quectel Backhaul, using
+- Caged Quectel F1 Backhaul, Monolithic Donor, using
   `docs/quectel-f1-backhaul/single-cu-firecell-donor-launch-runbook.md` as a
   gated launch sequence.
 
@@ -61,7 +61,7 @@ The main menu intentionally shows only the operator-ready workflows:
 
 - launch Ethernet CU/DU split;
 - launch monolithic firecell core + gNB;
-- launch or validate single-CU Quectel backhaul;
+- launch or validate caged Quectel F1 backhaul with monolithic donor;
 - change PWS/SIB8 warning text everywhere;
 - view live status/logs;
 - stop the current config.
@@ -135,7 +135,7 @@ The Raspberry Pi DU, `oai-pc` DU, and nrUE internet-through-radio workflows are
 preflight/discovery only until the real commands and validation evidence are
 recorded.
 
-## Single-CU Quectel Backhaul
+## Caged Quectel F1 Backhaul, Monolithic Donor
 
 The Quectel scenario does not use the older fixed minipc management target
 for launch decisions. It discovers the live `serber-minipc` SSH target,
@@ -151,22 +151,22 @@ The TUI gates the run in this order:
 2. Firecell core.
 3. Quectel subscriber provisioning in the active split core.
 4. Generate CU/DU configs using the external generator script.
-5. Start shared CU.
-6. Start firecell donor DU locally and check loopback F1.
-7. Quectel donor registration reset and validation of PCI 1 / TAC 2.
-8. Quectel QMI/PDU.
-9. Routes.
-10. WireGuard.
-11. Validate independent donor path (PCI/TAC/IP/routes/ping gates).
+5. Start firecell monolithic donor gNB.
+6. Quectel donor registration reset and validation of PCI 1 / TAC 2.
+7. Quectel QMI/PDU.
+8. Routes.
+9. WireGuard.
+10. Validate independent donor path (PCI/TAC/IP/routes/ping gates).
+11. Start firecell CU bound to `10.250.0.1`.
 12. Start minipc access DU over WireGuard.
 13. Packet validation.
 14. UE/F1-U validation and rollback readiness.
 
-The donor gate uses the firecell donor DU config with PCI `1`, TAC `2`, and
-local F1 to the shared CU. The WireGuard gate updates the peer hooks from the
-live Quectel PDU address and gateway before restarting `wg-quectel-f1`.
+The donor gate uses the firecell monolithic donor gNB config with PCI `1` and
+TAC `2`. The WireGuard gate updates the peer hooks from the live Quectel PDU
+address and gateway before restarting `wg-quectel-f1`.
 
-The firecell donor DU and split CU may run together, so Quectel start and
+The firecell donor gNB and split CU may run together, so Quectel start and
 stop functions target only the relevant config paths. They do not kill
 all firecell `nr-softmodem` processes.
 
@@ -183,7 +183,7 @@ The UE/F1-U gate gives the operator three phone-traffic attempts. If no
 `No PASS claimed`.
 
 If the split is already running and only phone traffic needs another attempt,
-use `Validate single-CU Quectel backhaul` or
+use `Validate caged Quectel F1 backhaul, monolithic donor` or
 `./scripts/oai-lab-tui --validate-caged-quectel`. That action refreshes the
 live Quectel PDU routes and WireGuard tunnel, runs the independent donor check,
 rechecks packet placement, then reruns the F1-U gate without restarting the donor, CU, or DU.

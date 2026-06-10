@@ -12,7 +12,7 @@
 Determine the current state of the Quectel RM500Q-GL modem on `serber-minipc` and the network paths available to `serber-firecell`, before configuring any F1 backhaul overlay.
 
 The primary goal is to verify that the Quectel modem can reach `serber-firecell`
-through the firecell donor DU, not through the OAI access cell emitted by the
+through the firecell monolithic donor gNB, not through the OAI access cell emitted by the
 B210 on `serber-minipc`.
 
 ---
@@ -176,7 +176,7 @@ If the Quectel modem connects to a carrier-grade NAT (CG-NAT) cellular network, 
 Answer the following before proceeding:
 
 1. **Which network does the Quectel modem attach to?**
-   - Is it the firecell donor DU cell, PCI `1`, TAC `2`?
+   - Is it the firecell donor gNB cell, PCI `1`, TAC `2`?
    - Is it the local OAI access cell emitted by `serber-minipc`?
    - Is it some other private network?
 
@@ -247,7 +247,7 @@ Based on this inventory, one of the following will be determined:
 | Outcome | Condition | Action |
 |---|---|---|
 | **Proceed with Quectel F1** | Independent donor confirmed, IP connectivity exists, route to CU established | Continue to Phase 3 |
-| **Firecell donor DU blocked** | Modem only attaches to minipc access cell | Stop full F1 migration. Fix donor DU registration. |
+| **Firecell donor gNB blocked** | Modem only attaches to minipc access cell | Stop full F1 migration. Fix donor gNB registration. |
 | **Modem not functional** | Modem not detected, no data session | Investigate modem hardware, SIM, driver. |
 | **CG-NAT / no direct reachability** | Modem has private IP, CU not directly reachable | Consider relay/tailscale approach or document as blocking. |
 

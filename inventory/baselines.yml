@@ -36,7 +36,7 @@ baselines:
     evidence_source_repository:
       - oai-cu-du-lab
     rollback_baseline: false
-    notes: "Canonical Quectel backhaul is single-CU only: serber-firecell runs one 5GC, one CU, and a local-F1 firecell donor DU for Quectel; serber-minipc runs the access DU over wg-quectel-f1. No monolithic or oai-pc donor path is part of this baseline."
+    notes: "Canonical Quectel backhaul uses serber-firecell for one 5GC, one CU, and a monolithic donor gNB for Quectel; serber-minipc runs the access DU over wg-quectel-f1. The failed local-F1 donor-DU path and old oai-pc donor path are not part of this baseline."
 
   raspberry_pi_16gb_du_split:
     status: confirmed_working

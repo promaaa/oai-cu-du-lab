@@ -9,7 +9,7 @@ Move the minipc access DU F1-C/F1-U from the Ethernet baseline to a Quectel
 RM500Q-GL + WireGuard overlay path, while preserving:
 
 - One OAI 5GC and one OAI CU on `serber-firecell`.
-- A firecell donor DU on `serber-firecell` for the outside Quectel modem.
+- A monolithic firecell donor gNB on `serber-firecell` for the outside Quectel modem.
 - A minipc access DU on `serber-minipc` for the Nothing Phone.
 - USRP B210 serial `8002816` for the minipc access cell only.
 - Management SSH connectivity on Ethernet/WiFi.
@@ -31,9 +31,9 @@ serber-minipc (access DU)
        v
 serber-firecell
   ├─ OAI 5GC
-  ├─ OAI CU, shared by both DUs
-  ├─ firecell donor DU + outside USRP (PCI 1, TAC 2, DU ID 0xe11)
-  │    └─ local F1 only, never through Quectel
+  ├─ OAI CU for the minipc access DU
+  ├─ monolithic firecell donor gNB + outside USRP (PCI 1, TAC 2)
+  │    └─ serves only the Quectel modem; no F1 path
   └─ wg-quectel-f1 (10.250.0.1/30)
 ```
 
@@ -43,9 +43,9 @@ The Quectel modem must NOT attach to the minipc access cell it is backhauling.
 This creates a circular dependency: the access DU needs F1, F1 needs Quectel,
 Quectel needs the access cell, and the access cell needs F1.
 
-The supported donor is now the firecell donor DU attached to the same CU, not a
-monolithic donor gNB and not the minipc B210. Same-PLMN operation is allowed only
-because the donor and access cells have explicit distinct PCI/TAC/cell/DU IDs.
+The supported donor is the firecell monolithic donor gNB, not the minipc B210
+and not the failed local-F1 donor-DU experiment. Same-PLMN operation is allowed
+only because the donor and access cells have explicit distinct PCI/TAC/cell IDs.
 
 ## Scripts
 
@@ -58,12 +58,12 @@ because the donor and access cells have explicit distinct PCI/TAC/cell/DU IDs.
 | `02_setup_wireguard_firecell.sh` | WireGuard server on serber-firecell (generates key locally) |
 | `03_setup_wireguard_minipc.sh` | WireGuard client on serber-minipc over Quectel (generates key locally) |
 | `04_validate_backhaul_path.sh` | Ping, SCTP port check, WireGuard tunnel validation |
-| `05_generate_quectel_f1_configs.sh` | Generate shared CU, firecell donor DU, and minipc access DU configs |
+| `05_generate_quectel_f1_configs.sh` | Generate firecell CU and minipc access DU WireGuard-F1 configs |
 | `05_start_core.sh` | Start OAI 5G Core Network on serber-firecell |
-| `06_start_cu_quectel.sh` | Start the shared CU without killing donor/access DUs |
-| `06_start_firecell_donor_du_quectel.sh` | Start firecell donor DU with local F1 to the shared CU |
+| `06_start_cu_quectel.sh` | Start the CU bound to `10.250.0.1` without killing the donor gNB |
+| `06_start_firecell_donor_du_quectel.sh` | Deprecated fail-closed shim for the removed donor-DU path |
 | `07_start_du_quectel.sh` | Start minipc access DU with WireGuard F1 and B210 access |
-| `08_validate_f1.sh` | Validate local donor F1 plus minipc F1-C/F1-U over Quectel/WireGuard |
+| `08_validate_f1.sh` | Validate donor gNB service plus minipc F1-C/F1-U over Quectel/WireGuard |
 | `09_rollback_to_ethernet.sh` | Stop Quectel/WireGuard F1 and restore Ethernet baseline |
 
 ## Deployment Sequence
@@ -73,12 +73,13 @@ because the donor and access cells have explicit distinct PCI/TAC/cell/DU IDs.
 ./scripts/quectel-f1-backhaul/00_detect_quectel.sh
 ./scripts/quectel-f1-backhaul/05_generate_quectel_f1_configs.sh
 
-# Phase 2: shared firecell services and local donor DU
+# Phase 2: firecell core and monolithic donor gNB
 ./scripts/quectel-f1-backhaul/05_start_core.sh
-./scripts/quectel-f1-backhaul/06_start_cu_quectel.sh
-./scripts/quectel-f1-backhaul/06_start_firecell_donor_du_quectel.sh
+# Start the firecell monolithic donor gNB by the TUI, or use the documented
+# lab command for:
+# /home/serber/monolithic/openairinterface5g/.../gnb-firecell-donor-single-core-51prb.conf
 
-# Phase 3: Quectel PDU through the firecell donor DU
+# Phase 3: Quectel PDU through the firecell donor gNB
 ./scripts/quectel-f1-backhaul/01_check_quectel_connectivity.sh
 ./scripts/quectel-f1-backhaul/02_validate_independent_donor.sh
 
@@ -90,7 +91,8 @@ MINIPC_PUBLIC_KEY=<key> ./scripts/quectel-f1-backhaul/02_setup_wireguard_firecel
 FIRECELL_PUBLIC_KEY=<key> ./scripts/quectel-f1-backhaul/03_setup_wireguard_minipc.sh
 ./scripts/quectel-f1-backhaul/04_validate_backhaul_path.sh
 
-# Phase 5: minipc access DU over wg-quectel-f1
+# Phase 5: firecell CU and minipc access DU over wg-quectel-f1
+./scripts/quectel-f1-backhaul/06_start_cu_quectel.sh
 ./scripts/quectel-f1-backhaul/07_start_du_quectel.sh
 
 # Phase 6: packet-gated validation
@@ -99,8 +101,9 @@ FIRECELL_PUBLIC_KEY=<key> ./scripts/quectel-f1-backhaul/03_setup_wireguard_minip
 ```
 
 Do not claim PASS unless tcpdump proves minipc access DU F1-C SCTP and F1-U
-UDP/2153 on `wg-quectel-f1`, WireGuard outer UDP on `wwan0`, firecell donor DU
-F1 on a local firecell path, and no minipc F1 on Ethernet/WiFi.
+UDP/2153 on `wg-quectel-f1`, WireGuard outer UDP on `wwan0`, the firecell
+monolithic donor gNB is in service for the Quectel modem, and no minipc F1 is
+visible on Ethernet/WiFi.
 
 ## Rollback
 

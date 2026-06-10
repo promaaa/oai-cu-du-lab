@@ -19,7 +19,8 @@ fi
 CU_LOG="${CU_QUECTEL_LOG:-$CU_LOG}"
 
 log "=== Phase 5a: Starting shared CU on $CU_HOST ==="
-log "F1 binding: shared CU accepts local firecell donor DU and minipc access DU over $WG_IF"
+log "F1 binding: CU $WG_CU_IP accepts the minipc access DU $WG_DU_IP over $WG_IF"
+log "Donor role: firecell monolithic donor gNB attaches to the same 5GC; it is not a DU and has no F1 path."
 log ""
 
 ssh_host "$CU_HOST" "
@@ -45,19 +46,20 @@ log \"Build dir: \$BUILD_DIR\"
 log \"Log file: \$CU_LOG\"
 
 # Stop only an existing CU launched with this config. Do not kill the firecell
-# donor DU; it intentionally runs on the same host.
+# monolithic donor gNB; it intentionally runs on the same host.
 log 'Stopping any existing CU process by config path...'
 pids=\"\$(ps -eo pid=,comm=,args= | awk -v conf=\"\$CU_CONF\" '\$2 == \"nr-softmodem\" && index(\$0, conf) > 0 { print \$1 }')\"
 if [ -n \"\$pids\" ]; then echo \"\$pids\" | xargs -r sudo -n kill -9 2>/dev/null || true; fi
 sleep 2
 
-# WireGuard must exist before minipc access DU starts, but the donor DU uses a
-# local path. Warn rather than fail here so the local donor can still attach.
+# WireGuard must exist before the CU starts because this config binds F1 to
+# $WG_CU_IP.
 log 'Checking WireGuard interface for minipc access DU path...'
 if ip link show '$WG_IF' >/dev/null 2>&1; then
   sudo wg show '$WG_IF' 2>/dev/null || true
 else
-  warn 'WireGuard interface $WG_IF is down. Start it before launching the minipc access DU.'
+  warn 'WireGuard interface $WG_IF is down. Start it before launching this CU.'
+  exit 1
 fi
 
 # Start CU

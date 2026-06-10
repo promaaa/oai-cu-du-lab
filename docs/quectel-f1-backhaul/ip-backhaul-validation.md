@@ -1,6 +1,6 @@
 # Quectel IP Backhaul Validation
 
-**Status**: validation procedure for the single-CU firecell donor DU target.
+**Status**: validation procedure for the caged monolithic-donor target.
 
 ## Objective
 
@@ -11,13 +11,13 @@ for SSH, diagnostics, and rollback.
 ## Architecture Under Test
 
 ```text
-firecell donor DU (serber-firecell)
-  local F1 only: 127.0.0.2 -> CU 127.0.0.1
+firecell monolithic donor gNB (serber-firecell)
+  serves only the Quectel modem; no F1 path
   serves Quectel modem outside cage
 
 Quectel RM500Q-GL
   wwan0 PDU session on serber-minipc
-  attaches only to firecell donor DU PCI 1 / TAC 2
+  attaches only to firecell donor gNB PCI 1 / TAC 2
 
 wg-quectel-f1
   serber-firecell: 10.250.0.1/30

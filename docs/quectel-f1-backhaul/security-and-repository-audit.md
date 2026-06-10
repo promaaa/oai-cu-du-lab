@@ -26,8 +26,8 @@
 |---|---|---|
 | `docs/BASELINES.md` | Baseline status, throughput, rollback flags | Yes — Quectel entry is marked `partial_not_stable_baseline` |
 | `docs/DECISIONS.md` | ADRs: secrets, rollback baseline, external OAI pin | Yes — must follow ADR-004 (Ethernet is rollback), ADR-005 (no secrets), ADR-003 (external OAI pin) |
-| `docs/NETWORK.md` | Host roles, IP addresses, backhaul variants | Yes — Quectel `wwan0`, WireGuard tunnel, and firecell donor DU constraint documented here |
-| `docs/ROADMAP.md` | Next objective: single-CU Quectel F1 backhaul | Yes — authoritative statement that same-cell full F1 and monolithic donor paths are not valid |
+| `docs/NETWORK.md` | Host roles, IP addresses, backhaul variants | Yes — Quectel `wwan0`, WireGuard tunnel, and firecell monolithic donor-gNB constraint documented here |
+| `docs/ROADMAP.md` | Next objective: caged Quectel F1 backhaul | Yes — authoritative statement that same-cell full F1 and local-F1 donor-DU paths are not valid |
 | `docs/RUNBOOK.md` | Pre-change evidence, rollback, validation sequence | Yes — must apply validation sequence before and after Quectel changes |
 | `docs/SYSTEM.md` | CU/DU role split, F1 backhaul variants, SIB8/PWS role | Yes — clarifies B210 is access radio; Quectel is backhaul only |
 | `docs/SECURITY.md` | Placeholder strategy, rotation rule, evidence rule | Yes — must not commit real credentials, logs, or keys |
@@ -38,7 +38,7 @@
 |---|---|---|
 | `conf/templates/ethernet-cu.yml` | Ethernet F1 CU config template (rollforward/rollback reference) | Yes — provides F1 endpoint values: CU `10.76.170.38`, DU `10.76.170.100` |
 | `conf/templates/ethernet-du.yml` | Ethernet F1 DU config template (rollforward/rollback reference) | Yes — DU F1 local IP, B210 radio, band 78, PRB 106, SCS 30kHz |
-| `conf/templates/quectel-wireguard.yml` | Quectel/WireGuard overlay config | Yes — WireGuard tunnel `10.250.0.1/2`, firecell donor DU local F1, and access DU F1 bind IPs |
+| `conf/templates/quectel-wireguard.yml` | Quectel/WireGuard overlay config | Yes — WireGuard tunnel `10.250.0.1/2` and access DU F1 bind IPs |
 | `conf/templates/wifi-gre-overlay.yml` | Verified Wi-Fi GRE F1 baseline | Yes — F1-C/F1-U addresses, policy routing table 100, throughput `~12 Mb/s` |
 
 ### Inventory records
@@ -69,9 +69,9 @@
 
 | File | Purpose | Relevant for Quectel work |
 |---|---|---|
-| `scripts/oai-lab-tui` | Operator TUI for launching baselines | Yes — must support Quectel backhaul launch and firecell donor DU gate |
+| `scripts/oai-lab-tui` | Operator TUI for launching baselines | Yes — must support Quectel backhaul launch and firecell monolithic donor-gNB gate |
 | `scripts/README.md` | TUI usage guide | Yes |
-| `conf/local/lab.env` | Ignored local profile (SSH, paths, backhaul params) | Yes — firecell donor DU confirmation gate |
+| `conf/local/lab.env` | Ignored local profile (SSH, paths, backhaul params) | Yes — firecell donor-gNB confirmation gate |
 
 ---
 
@@ -84,7 +84,7 @@ The source repository `cu-du-5g-backhauling` contains partial Quectel work:
 - **QMI packet data**: data sessions established on `wwan0`.
 - **WireGuard overlay**: tunnel established from `serber-minipc` to `serber-firecell` over `wwan0`.
 - **Partial F1 packet steering**: F1-C/F1-U packets observed through WireGuard interface.
-- **Full F1 stable operation**: requires the current firecell donor DU target and packet-gated validation. The old same-cell and monolithic donor paths are not valid Quectel backhaul configurations.
+- **Full F1 stable operation**: requires the current firecell monolithic donor-gNB target and packet-gated validation. The old same-cell and local-F1 donor-DU paths are not valid Quectel backhaul configurations.
 
 **Root cause of prior failure**: Same-cell design creates circular dependency.
 The DU needs F1 connectivity to the CU before the access cell can operate.
@@ -138,7 +138,7 @@ Per `audit/SECURITY_EXPOSURE.md`, multiple source repositories contain committed
 
 ## 7. Dependency Warnings
 
-1. **Circular dependency**: Full F1 over Quectel requires the firecell donor DU. The modem must NOT attach to the same minipc access cell the DU is trying to backhaul, and the Quectel target must not use a monolithic donor gNB.
+1. **Circular dependency**: Full F1 over Quectel requires the firecell monolithic donor gNB. The modem must NOT attach to the same minipc access cell the DU is trying to backhaul, and the Quectel target must not use the failed local-F1 donor-DU path.
 2. **Ethernet rollback baseline must remain restorable**: No change to OAI source, configuration generation, or routing should make Ethernet F1 unrecoverable.
 3. **Management connectivity**: SSH access to both hosts must remain on the management interface during experiments. Policy routing must protect management traffic from the experimental Quectel path.
 4. **OAI commit pin**: All changes assume OAI commit `102965a669b9444857c27843ec8ce62780bf9d37`. Rebuild and test SIB8/PWS if any OAI source tree is modified.

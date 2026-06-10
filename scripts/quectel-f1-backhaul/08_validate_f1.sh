@@ -19,8 +19,8 @@ fi
 CU_LOG="${CU_QUECTEL_LOG:-$CU_LOG}"
 DU_LOG="${DU_QUECTEL_LOG:-$DU_LOG}"
 
-log "=== Phase 6: Single-CU Quectel F1 Validation ==="
-log "Checking local donor DU F1 plus minipc access DU F1 over Quectel/WireGuard"
+log "=== Phase 6: Monolithic-donor Quectel F1 Validation ==="
+log "Checking firecell donor gNB service plus minipc access DU F1 over Quectel/WireGuard"
 log ""
 
 # --- Check F1-C (SCTP) ---
@@ -45,13 +45,13 @@ else
 fi
 "
 
-log "Firecell donor DU log: checking for local F1 setup..."
+log "Firecell monolithic donor gNB log: checking for donor service..."
 ssh_host "$CU_HOST" "
 set -euo pipefail
-if [ -f '$FIRECELL_DONOR_DU_LOG' ]; then
-  grep -E '(F1Setup|F1AP|SetupRequest|SetupResponse|waiting for F1|SCTP)' '$FIRECELL_DONOR_DU_LOG' | tail -n 20 || echo 'No donor F1-related entries found'
+if [ -f '$FIRECELL_DONOR_GNB_LOG' ]; then
+  grep -E '(NGSetup|in service|Cell ID|UHD|B200|B210|got sync|PRACH|RNTI|error|fail|assert)' '$FIRECELL_DONOR_GNB_LOG' | tail -n 40 || echo 'No donor gNB service entries found'
 else
-  echo 'Donor DU log file not found: $FIRECELL_DONOR_DU_LOG'
+  echo 'Donor gNB log file not found: $FIRECELL_DONOR_GNB_LOG'
 fi
 "
 
@@ -87,7 +87,7 @@ fi
 
 # --- Packet capture proof (hard PASS gate) ---
 log "--- Packet Path Verification ---"
-log "PASS requires tcpdump proof for local donor F1, access F1-C/F1-U on $WG_IF, WireGuard outer UDP on $QUECTEL_IFACE, and no minipc F1 on management."
+log "PASS requires donor gNB service evidence, access F1-C/F1-U on $WG_IF, WireGuard outer UDP on $QUECTEL_IFACE, and no minipc F1 on management."
 log "For F1-U, start traffic from the Nothing Phone when prompted."
 
 packet_summary="$(mktemp)"
@@ -151,7 +151,6 @@ record_capture() {
   printf '__END__ %s\n' "$marker" >>"$packet_summary"
 }
 
-record_capture "__DONOR_LOCAL_F1__" "firecell donor local F1" "$CU_HOST" lo "sctp or udp port 2153" 30 40
 record_capture "__ACCESS_F1C_WG__" "minipc access F1-C on WireGuard" "$DU_HOST" "$WG_IF" "sctp" 45 40
 record_capture "__WG_OUTER_UDP__" "WireGuard outer UDP on Quectel" "$DU_HOST" "$QUECTEL_IFACE" "udp port $WG_PORT or udp port 40016" 30 30
 
@@ -177,13 +176,13 @@ for iface in enp6s0 enp4s0 wlp3s0 wlan0; do
   record_capture "$marker" "firecell management no-minipc-F1 check" "$CU_HOST" "$iface" "host $WG_DU_IP and (sctp or udp port 2153)" 12 5
 done
 
-donor_local_ok=0
+donor_gnb_ok=0
 access_f1c_ok=0
 access_f1u_ok=0
 outer_udp_ok=0
 mgmt_clean_ok=1
 
-capture_has_packets "__DONOR_LOCAL_F1__" && donor_local_ok=1
+ssh_host "$CU_HOST" "test -f '$FIRECELL_DONOR_GNB_LOG' && grep -Eiq 'NGSetup|in service|Cell ID' '$FIRECELL_DONOR_GNB_LOG'" && donor_gnb_ok=1
 capture_has_packets "__ACCESS_F1C_WG__" && access_f1c_ok=1
 capture_has_packets "__ACCESS_F1U_WG__" && access_f1u_ok=1
 capture_has_packets "__WG_OUTER_UDP__" && outer_udp_ok=1
@@ -203,7 +202,7 @@ pass_fail() {
 
 log ''
 log "=== Packet Gate Summary ==="
-log "firecell donor DU local F1 on lo: $(pass_fail "$donor_local_ok")"
+log "firecell monolithic donor gNB in service: $(pass_fail "$donor_gnb_ok")"
 log "minipc access DU F1-C SCTP on $WG_IF: $(pass_fail "$access_f1c_ok")"
 log "minipc access DU F1-U UDP/2153 on $WG_IF during phone traffic: $(pass_fail "$access_f1u_ok")"
 log "WireGuard outer UDP on $QUECTEL_IFACE: $(pass_fail "$outer_udp_ok")"
@@ -211,7 +210,7 @@ log "Ethernet/WiFi management interfaces carry no minipc F1: $(pass_fail "$mgmt_
 log "Nothing Phone served by minipc access cell PCI=$ACCESS_PCI/TAC=$ACCESS_TAC: $(pass_fail "$phone_access_ok")"
 log ""
 
-if [ "$donor_local_ok" != 1 ] || [ "$access_f1c_ok" != 1 ] || [ "$access_f1u_ok" != 1 ] || [ "$outer_udp_ok" != 1 ] || [ "$mgmt_clean_ok" != 1 ] || [ "$phone_access_ok" != 1 ]; then
+if [ "$donor_gnb_ok" != 1 ] || [ "$access_f1c_ok" != 1 ] || [ "$access_f1u_ok" != 1 ] || [ "$outer_udp_ok" != 1 ] || [ "$mgmt_clean_ok" != 1 ] || [ "$phone_access_ok" != 1 ]; then
   warn "Packet gate FAILED. No PASS claimed."
   warn "Fix the failed item above, then rerun this script. Rollback: ./09_rollback_to_ethernet.sh"
   exit 2

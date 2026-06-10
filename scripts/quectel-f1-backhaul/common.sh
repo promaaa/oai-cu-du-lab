@@ -28,12 +28,14 @@ FIRECELL_DONOR_PROD_CONF="${FIRECELL_DONOR_PROD_CONF:-/home/serber/monolithic/op
 # --- OAI config files (Quectel/WireGuard backhaul) ---
 CU_QUECTEL_CONF="${CU_QUECTEL_CONF:-$FIRECELL_OAI_DIR/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu-minipc-quectel-backhaul.conf}"
 DU_QUECTEL_CONF="${DU_QUECTEL_CONF:-$MINIPC_OAI_DIR/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-minipc-quectel-backhaul.conf}"
+# Deprecated: retained only so old rollback commands can stop stale processes.
 FIRECELL_DONOR_DU_CONF="${FIRECELL_DONOR_DU_CONF:-$FIRECELL_OAI_DIR/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du-firecell-donor-local-f1.conf}"
 
 # --- Logs ---
 CU_LOG="${CU_LOG:-/tmp/oai-cu-quectel.log}"
 DU_LOG="${DU_LOG:-/tmp/oai-du-quectel.log}"
 FIRECELL_DONOR_DU_LOG="${FIRECELL_DONOR_DU_LOG:-/tmp/oai-du-firecell-donor-local-f1.log}"
+FIRECELL_DONOR_GNB_LOG="${FIRECELL_DONOR_GNB_LOG:-/tmp/oai-firecell-donor-monolithic.log}"
 
 # --- WireGuard ---
 WG_IF="${WG_IF:-wg-quectel-f1}"
@@ -62,14 +64,14 @@ QUECTEL_IFACE="${QUECTEL_IFACE:-wwan0}"
 QUECTEL_MGMT_DEV="${QUECTEL_MGMT_DEV:-}"
 # AT command port used for donor registration checks. Leave empty to auto-detect.
 QUECTEL_AT_PORT="${QUECTEL_AT_PORT:-}"
-# APN for the firecell donor DU Quectel path.
-# MUST NOT be the minipc access cell — see Decision Gate 1.
-QUECTEL_APN="${QUECTEL_APN:-internet}"
+# APN for the Quectel PDU session through the firecell monolithic donor gNB.
+# MUST NOT depend on the minipc access cell.
+QUECTEL_APN="${QUECTEL_APN:-oai}"
 # Local lab PLMN must never be accepted as a donor for F1 backhaul.
 QUECTEL_REJECT_PLMN_MCC="${QUECTEL_REJECT_PLMN_MCC:-001}"
 QUECTEL_REJECT_PLMN_MNC="${QUECTEL_REJECT_PLMN_MNC:-01}"
 # Same-PLMN donors are allowed only when their PCI/TAC is explicit. Defaults
-# match the firecell donor DU, not the minipc access DU.
+# match the firecell monolithic donor gNB, not the minipc access DU.
 QUECTEL_EXPECTED_DONOR_PCI="${QUECTEL_EXPECTED_DONOR_PCI:-1}"
 QUECTEL_EXPECTED_DONOR_TAC="${QUECTEL_EXPECTED_DONOR_TAC:-2}"
 # Static IP to assign to wwan0 when QMI doesn't assign one
@@ -151,19 +153,18 @@ if [ -n "$iface" ]; then
   ip -4 -o addr show dev "$iface" | awk "{print \$4}" | cut -d/ -f1 | head -1
 fi'
 
-# --- Guard: require firecell donor DU confirmation ---
+# --- Guard: require firecell monolithic donor gNB confirmation ---
 check_quectel_donor() {
   local donor_flag="${QUECTEL_INDEPENDENT_DONOR:-0}"
   if [ "$donor_flag" != "1" ]; then
     warn "QUECTEL_INDEPENDENT_DONOR is not set to 1 in conf/local/lab.env"
-    warn "The Quectel modem must attach through the firecell donor DU,"
-    warn "never through the minipc access DU it backhauls and never through a"
-    warn "monolithic donor gNB."
+    warn "The Quectel modem must attach through the firecell monolithic donor gNB,"
+    warn "never through the minipc access DU it backhauls."
     warn "Same-cell recursion fails because access DU needs F1 -> F1 needs"
     warn "Quectel -> Quectel needs access cell -> access cell needs F1."
     warn ""
     warn "Before proceeding, confirm:"
-    warn "  1. The Quectel modem is registered on firecell donor DU PCI=$DONOR_PCI/TAC=$DONOR_TAC"
+    warn "  1. The Quectel modem is registered on firecell monolithic donor gNB PCI=$DONOR_PCI/TAC=$DONOR_TAC"
     warn "  2. The modem has obtained an IP address on wwan0"
     warn "  3. The modem can reach the internet without depending on the local access cell"
     warn ""

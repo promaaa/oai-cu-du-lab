@@ -97,10 +97,10 @@ scenarios:
       - connectivity_bound_to_tunnel
 
   caged_quectel_f1_backhaul:
-    label: "Single-CU Caged Quectel F1 Backhaul"
+    label: "Caged Quectel F1 Backhaul, Monolithic Donor"
     status: gated_launch_runtime_validation_required
     roles:
-      serber-firecell: "one 5GC + one CU + firecell donor DU for Quectel, local F1 only"
+      serber-firecell: "one 5GC + one CU + monolithic donor gNB for Quectel"
       serber-minipc: "caged access DU + B210 serial 8002816 + Quectel PDU backhaul"
     rollback_target: false
     pws_supported: true
@@ -111,8 +111,7 @@ scenarios:
       - live_minipc_management_ip_and_interface
       - live_quectel_interface_pdu_ip_and_gateway
       - firecell_core_health
-      - firecell_donor_du_in_service_with_unique_du_id_cell_id_pci_1_tac_2
-      - donor_du_f1_on_local_firecell_path
+      - firecell_monolithic_donor_gnb_in_service_with_pci_1_tac_2
       - wireguard_handshake_and_tunnel_ping
       - shared_cu_two_du_f1_logs
       - f1_c_sctp_on_wg_quectel_f1

@@ -1,0 +1,108 @@
+diff -ruN a/openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_dlsch.c b/openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_dlsch.c
+--- a/openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_dlsch.c
++++ b/openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_dlsch.c
+@@ -718,8 +718,48 @@
+         int new_mcs = min(bo->max_mcs, max_mcs);
+         selected_mcs = max(bo->min_mcs, new_mcs);
+         sched_ctrl->dl_bler_stats.mcs = selected_mcs;
+-      } else
++        LOG_I(NR_MAC,
++              "[MCSDBG][DL] UE %04x %4d.%2d harq_round_max_1 selected_mcs %d min_mcs %d bo_max_mcs %d dl_max_mcs %u max_mcs_table %d max_mcs %d buf_bytes %d ta_apply %d\n",
++              UE->rnti,
++              frame,
++              slot,
++              selected_mcs,
++              bo->min_mcs,
++              bo->max_mcs,
++              sched_ctrl->dl_max_mcs,
++              max_mcs_table,
++              max_mcs,
++              sched_ctrl->num_total_bytes,
++              sched_ctrl->ta_apply);
++      } else {
++        const NR_bler_stats_t old_bler_stats = sched_ctrl->dl_bler_stats;
+         selected_mcs = get_mcs_from_bler(bo, stats, &sched_ctrl->dl_bler_stats, max_mcs, frame);
++        const int num_dl_sched = (int)(stats->rounds[0] - old_bler_stats.rounds[0]);
++        const int num_dl_retx = (int)(stats->rounds[1] - old_bler_stats.rounds[1]);
++        const char *limit = selected_mcs >= max_mcs ? (sched_ctrl->dl_max_mcs <= max_mcs_table ? "dl_max_mcs" : "mcs_table") : "bler";
++        LOG_I(NR_MAC,
++              "[MCSDBG][DL] UE %04x %4d.%2d old_mcs %u selected_mcs %d min_mcs %d bo_max_mcs %d dl_max_mcs %u max_mcs_table %d max_mcs %d limit %s num_dl_sched %d num_dl_retx %d bler_before %.6f bler_after %.6f rounds %lu/%lu/%lu/%lu old_rounds %lu/%lu/%lu/%lu buf_bytes %d ta_apply %d thr_ue %.3f\n",
++              UE->rnti,
++              frame,
++              slot,
++              old_bler_stats.mcs,
++              selected_mcs,
++              bo->min_mcs,
++              bo->max_mcs,
++              sched_ctrl->dl_max_mcs,
++              max_mcs_table,
++              max_mcs,
++              limit,
++              num_dl_sched,
++              num_dl_retx,
++              old_bler_stats.bler,
++              sched_ctrl->dl_bler_stats.bler,
++              stats->rounds[0], stats->rounds[1], stats->rounds[2], stats->rounds[3],
++              old_bler_stats.rounds[0], old_bler_stats.rounds[1], old_bler_stats.rounds[2], old_bler_stats.rounds[3],
++              sched_ctrl->num_total_bytes,
++              sched_ctrl->ta_apply,
++              UE->dl_thr_ue);
++      }
+       int l = get_dl_nrOfLayers(sched_ctrl, current_BWP->dci_format);
+       const uint8_t Qm = nr_get_Qm_dl(selected_mcs, current_BWP->mcsTableIdx);
+       const uint16_t R = nr_get_code_rate_dl(selected_mcs, current_BWP->mcsTableIdx);
+diff -ruN a/openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_primitives.c b/openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_primitives.c
+--- a/openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_primitives.c
++++ b/openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_primitives.c
+@@ -3058,6 +3058,17 @@
+   // Initialize bler_stats
+   init_bler_stats(&nr_mac->dl_bler, &sched_ctrl->dl_bler_stats, nr_mac->frame);
+   init_bler_stats(&nr_mac->ul_bler, &sched_ctrl->ul_bler_stats, nr_mac->frame);
++  LOG_I(NR_MAC,
++        "[MCSDBG][UE_INIT] UE %04x frame %d dl_min_mcs %d dl_max_mcs %u dl_bler_lower %.6f dl_bler_upper %.6f dl_bler_initial %.6f ul_min_mcs %d ul_bler_initial %.6f\n",
++        UE->rnti,
++        nr_mac->frame,
++        nr_mac->dl_bler.min_mcs,
++        sched_ctrl->dl_max_mcs,
++        nr_mac->dl_bler.lower,
++        nr_mac->dl_bler.upper,
++        sched_ctrl->dl_bler_stats.bler,
++        nr_mac->ul_bler.min_mcs,
++        sched_ctrl->ul_bler_stats.bler);
+
+   dump_nr_list(UE_info->connected_ue_list);
+   return true;
+diff -ruN a/openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_uci.c b/openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_uci.c
+--- a/openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_uci.c
++++ b/openair2/LAYER2/NR_MAC_gNB/gNB_scheduler_uci.c
+@@ -548,6 +548,14 @@
+   sched_ctrl->dl_max_mcs = get_mcs_from_SINRx10(mcs_table, sinr_report->SINRx10[0], nrOfLayers);
+
+   LOG_D(MAC, "Reported SSB-SINR = %d.%d, dl_max_mcs %d\n", sinr_report->SINRx10[0] / 10, sinr_report->SINRx10[0] % 10, sched_ctrl->dl_max_mcs);
++  LOG_I(NR_MAC,
++        "[MCSDBG][SINR] UE %04x ssb_sinrx10 %d nrOfLayers %d mcs_table %d dl_max_mcs %u num_sinr_meas %d\n",
++        UE->rnti,
++        sinr_report->SINRx10[0],
++        nrOfLayers,
++        mcs_table,
++        sched_ctrl->dl_max_mcs,
++        stats->num_sinr_meas);
+ }
+
+ static void evaluate_rsrp_report(gNB_MAC_INST *nrmac,
+@@ -684,6 +692,15 @@
+   sched_ctrl->dl_max_mcs = get_mcs_from_cqi(mcs_table, cqi_Table, cqi_idx);
+
+   LOG_D(MAC, "Reported CQI = %d, dl_max_mcs %d\n", temp_cqi, sched_ctrl->dl_max_mcs);
++  LOG_I(NR_MAC,
++        "[MCSDBG][CQI] UE %04x wb_cqi_1tb %d wb_cqi_2tb %d cqi_table %u mcs_table %d dl_max_mcs %u cqi_bitlen %d\n",
++        UE->rnti,
++        sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.wb_cqi_1tb,
++        sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.wb_cqi_2tb,
++        cqi_Table,
++        mcs_table,
++        sched_ctrl->dl_max_mcs,
++        cqi_bitlen);
+ }
+
+ static uint8_t evaluate_pmi_report(uint8_t *payload,

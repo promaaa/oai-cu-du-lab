@@ -14,7 +14,7 @@ log "=== Phase 2: Quectel Connectivity Check on $DU_HOST ==="
 log "Purpose: verify wwan0 IP, packet service, internet, and route to CU"
 log ""
 
-# Load lab.env for firecell donor DU confirmation
+# Load lab.env for firecell monolithic donor-gNB confirmation
 if [ -f "$REPO_BASE/conf/local/lab.env" ]; then
   # shellcheck source=conf/local/lab.env
   source "$REPO_BASE/conf/local/lab.env" 2>/dev/null || true

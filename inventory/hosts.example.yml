@@ -1,0 +1,33 @@
+# Example host inventory for ignored local overrides.
+# Copy details into conf/local/lab.env or an ignored inventory when needed.
+
+hosts:
+  serber-firecell:
+    ssh_target: serber@10.76.170.38
+    role:
+      - core-network
+      - cu
+      - monolithic-reference
+    status: verified_ssh_2026-06-01
+
+  serber-minipc:
+    ssh_target: serber@10.76.170.100
+    role:
+      - du
+      - access-radio-host
+      - nrue-host
+      - quectel-backhaul-host
+    status: verified_ssh_2026-06-01
+
+  serber-pi:
+    ssh_target: serber-pi
+    role:
+      - experimental-lightweight-du
+    status: blocked_ssh_timeout_2026-06-01
+
+  oai-pc:
+    ssh_target: oai-pc
+    role:
+      - validation-pc
+      - hardware-limit-control
+    status: blocked_unresolvable_2026-06-01
