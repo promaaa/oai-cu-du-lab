@@ -269,6 +269,20 @@ function stopSoftmodemsByConfigsCmd(configs) {
   return configs.map(conf => stopSoftmodemByConfigCmd(conf)).join('\n');
 }
 
+async function waitForRemoteLogMilestones(host, log, grepPattern, checks, timeoutMs = 60000, pollMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  let latest = '';
+
+  while (Date.now() < deadline) {
+    latest = await sshChecked(host, `tail -n 320 ${log} 2>/dev/null | grep -Ei ${shellQuote(grepPattern)} || true`, 15000);
+    if (checks.every(check => check.test(latest))) return latest;
+    await sleep(pollMs);
+  }
+
+  latest = await sshChecked(host, `tail -n 320 ${log} 2>/dev/null | grep -Ei ${shellQuote(grepPattern)} || true`, 15000);
+  return latest;
+}
+
 function maskIpv4ToPrefix(mask) {
   if (!mask) return '32';
   const parts = mask.trim().split('.').map(Number);
@@ -319,9 +333,8 @@ async function discoverMinipcTarget() {
     if (!out.ok || !/hostname=.*minipc|serber-minipc/i.test(out.combined)) continue;
     const route = out.combined.match(/route_to_firecell=(.*)/)?.[1] || '';
     const { dev, src } = parseRouteDevSrc(route);
-    const user = candidate.includes('@') ? candidate.split('@')[0] : 'serber';
     return {
-      host: src ? `${user}@${src}` : candidate,
+      host: candidate,
       discoveredVia: candidate,
       hostname: out.combined.match(/hostname=(.*)/)?.[1]?.trim() || 'serber-minipc',
       mgmtIface: dev,
@@ -638,7 +651,8 @@ async function prepareMonolithicDonorRuntimeConfig(dir) {
 async function validateMonolithicDonorInService(dir) {
   const status = await sshChecked(FIRECELL, [
     `ps -eo pid=,comm=,args= | awk -v prod=${shellQuote(FIRECELL_DONOR_PROD_CONF)} -v run=${shellQuote(FIRECELL_DONOR_GNB_RUNTIME_CONF)} '$2 == "nr-softmodem" && (index($0, prod) > 0 || index($0, run) > 0)' || true`,
-    `grep -Ei "NGSetup|in service|Cell ID|physCellId|UHD|B200|B210|got sync|PRACH|RNTI|error|fail|assert" ${FIRECELL_DONOR_GNB_LOG} 2>/dev/null | tail -120 || true`,
+    `grep -Ei "NGSetup|in service|Cell ID|physCellId|UHD|B200|B210|got sync" ${FIRECELL_DONOR_GNB_LOG} 2>/dev/null | head -80 || true`,
+    `grep -Ei "NGSetup|in service|Cell ID|physCellId|UHD|B200|B210|got sync|PRACH|RNTI|UE |BLER|SNR|error|fail|assert" ${FIRECELL_DONOR_GNB_LOG} 2>/dev/null | tail -120 || true`,
   ].join('\n'), 20000);
   appendEvidence(dir, 'logs/firecell-monolithic-donor-gnb.log', status);
   await showLines(status);
@@ -1557,15 +1571,22 @@ async function launchSingleCuQuectelBackhaul() {
       `test -f ${DU_QUECTEL_CONF}`,
       stopSoftmodemByConfigCmd(DU_QUECTEL_CONF),
       startSoftmodemCmd(`${DU_OAI}/cmake_targets/ran_build/build`, DU_QUECTEL_CONF, DU_QUECTEL_LOG, '--log_config.global_log_level info -E'),
-      'sleep 12',
       'pgrep -a nr-softmodem || true',
-      `tail -n 260 ${DU_QUECTEL_LOG} 2>/dev/null | grep -Ei "F1|SCTP|GTP|UHD|B200|B210|in service|PRACH|RNTI|error|fail|assert|Setup|sync" || true`,
     ].join('\n'), 60000);
-    await showLines(duStart);
-    appendEvidence(dir, 'logs/du-quectel.log', duStart);
-    const duHasF1Setup = /F1 Setup Response|DU_handle_F1_SETUP_RESPONSE|received F1 Setup Response/i.test(duStart);
-    const duHasRadio = /got sync|B210|Detected Device/i.test(duStart);
-    if (!duHasF1Setup || !duHasRadio) throw new Error('DU log did not show both F1 setup response and radio sync evidence');
+    const duMilestones = await waitForRemoteLogMilestones(
+      minipc.host,
+      DU_QUECTEL_LOG,
+      'F1|SCTP|GTP|UHD|B200|B210|in service|PRACH|RNTI|error|fail|assert|Setup|sync|PWS|SIB8',
+      [/F1 Setup Response|DU_handle_F1_SETUP_RESPONSE|received F1 Setup Response/i, /got sync|B210|Detected Device/i],
+      60000,
+      3000
+    );
+    const duEvidence = `${duStart}\n${duMilestones}`.trim();
+    await showLines(duEvidence);
+    appendEvidence(dir, 'logs/du-quectel.log', duEvidence);
+    const duHasF1Setup = /F1 Setup Response|DU_handle_F1_SETUP_RESPONSE|received F1 Setup Response/i.test(duEvidence);
+    const duHasRadio = /got sync|B210|Detected Device/i.test(duEvidence);
+    if (!duHasF1Setup || !duHasRadio) throw new Error('DU log did not show both F1 setup response and radio sync evidence after waiting for startup milestones');
     gate.du = true;
 
     printStep(13, 14, 'Packet validation: access F1 on tunnel, WireGuard on Quectel, no management F1');
