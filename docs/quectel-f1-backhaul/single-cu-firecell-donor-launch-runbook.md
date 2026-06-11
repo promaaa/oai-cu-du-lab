@@ -41,6 +41,11 @@ The important fix is avoiding same-cell recursion. The Quectel modem must attach
 only through the firecell monolithic donor gNB. The minipc B210 remains the access cell for
 the Nothing Phone and is never used for backhaul.
 
+For phone user-plane validation, configure the commercial UE subscriber outside
+Git, for example in ignored `conf/local/lab.env` as `PHONE_IMSI=<phone-imsi>`.
+The TUI seeds this subscriber with sanitized evidence during caged launch and
+validate flows when `PHONE_IMSI` is present.
+
 ### Launch Sequence
 
 ```bash

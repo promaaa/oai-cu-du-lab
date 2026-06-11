@@ -68,28 +68,19 @@ fi
 priv=\$(sudo cat /etc/wireguard/\${WG_IF}.key)
 
 log 'Writing WireGuard server config...'
-sudo tee '\$WG_FIRECELL_CONF' >/dev/null <<'EOF'
+cat <<CONF | sudo tee \"\$WG_FIRECELL_CONF\" >/dev/null
 [Interface]
-Address = {{WG_CU_IP}}/30
-ListenPort = {{WG_PORT}}
-PrivateKey = {{priv}}
+Address = \${WG_CU_IP}/30
+ListenPort = \${WG_PORT}
+PrivateKey = \${priv}
 # Keep management access working: allow SSH over existing interfaces
 Table = auto
 
 [Peer]
 # serber-minipc WireGuard public key
-PublicKey = {{MINIPC_PUBLIC_KEY}}
-AllowedIPs = {{WG_DU_IP}}/32
-EOF
-
-# Substitute the placeholders using envsubst or sed
-sudo sed -i \
-  "s|{{WG_CU_IP}}|\$WG_CU_IP|g;
-   s|{{WG_PORT}}|\$WG_PORT|g;
-   s|{{priv}}|\$priv|g;
-   s|{{MINIPC_PUBLIC_KEY}}|\$MINIPC_PUBLIC_KEY|g;
-   s|{{WG_DU_IP}}|\$WG_DU_IP|g" \
-  \"\$WG_FIRECELL_CONF\"
+PublicKey = \${MINIPC_PUBLIC_KEY}
+AllowedIPs = \${WG_DU_IP}/32
+CONF
 
 sudo chmod 600 \"\$WG_FIRECELL_CONF\"
 

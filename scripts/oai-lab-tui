@@ -77,8 +77,8 @@ const FIRECELL_DONOR_DU_LOG = '/tmp/oai-du-firecell-donor-local-f1.log';
 const FIRECELL_SEED_SUBSCRIBER = '/home/serber/cu-du-minipc-backhaul/roles/cn/seed-subscriber.sh';
 const CU_QUECTEL_CONF = `${CU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu-minipc-quectel-backhaul.conf`;
 const DU_QUECTEL_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-minipc-quectel-backhaul.conf`;
-const CU_QUECTEL_LOG = '/tmp/cu-minipc-quectel-backhaul.log';
-const DU_QUECTEL_LOG = '/tmp/du-minipc-quectel-backhaul.log';
+const CU_QUECTEL_LOG = process.env.CU_QUECTEL_LOG || '/tmp/cu-minipc-quectel-backhaul.log';
+const DU_QUECTEL_LOG = process.env.DU_QUECTEL_LOG || '/tmp/du-minipc-quectel-backhaul.log';
 const LOCAL_DONOR_F1_CU_IP = '127.0.0.1';
 const LOCAL_DONOR_F1_DU_IP = '127.0.0.2';
 const ACCESS_B210_SERIAL = '8002816';
@@ -471,6 +471,34 @@ async function provisionQuectelSubscriber(imsi) {
   return out;
 }
 
+async function provisionPhoneSubscriberIfConfigured(dir) {
+  const phoneImsi = process.env.PHONE_IMSI || '';
+  const evidencePath = 'system-status/phone-subscriber-seed.log';
+  if (!phoneImsi) {
+    const evidence = 'phone_imsi_present=false\nphone_subscriber_seed=skipped';
+    appendEvidence(dir, evidencePath, evidence);
+    return evidence;
+  }
+  if (!/^[0-9]{14,16}$/.test(phoneImsi)) {
+    throw new Error('PHONE_IMSI is configured but is not a valid IMSI length');
+  }
+  printInfo('Seeding phone subscriber from PHONE_IMSI in split core database...');
+  const cmd = [
+    'set -euo pipefail',
+    `test -f ${FIRECELL_SEED_SUBSCRIBER}`,
+    'tmp=/tmp/oai-tui-seed-subscriber-phone.sh',
+    `cp ${FIRECELL_SEED_SUBSCRIBER} "$tmp"`,
+    'perl -0pi -e "s/docker exec -i mysql/docker exec -i oai-cn5g-minipc-mysql-1/g; s/docker exec mysql/docker exec oai-cn5g-minipc-mysql-1/g" "$tmp"',
+    `IMSI=${shellQuote(phoneImsi)} bash "$tmp" >/tmp/oai-tui-seed-phone.log 2>&1`,
+    'sed -E "s/[0-9]{10,}/<redacted>/g; s/[A-Fa-f0-9]{24,}/<redacted>/g; s/(encPermanentKey|encOpcKey|mysql -u root -p)[^[:space:]]*/<redacted>/Ig" /tmp/oai-tui-seed-phone.log | tail -60',
+  ].join('\n');
+  const out = await sshChecked(FIRECELL, cmd, 30000);
+  const evidence = `phone_imsi_present=true\n${out}`;
+  appendEvidence(dir, evidencePath, evidence);
+  if (!/Done|ueid|servingPlmnid/i.test(out)) throw new Error('Phone subscriber seed did not show expected sanitized DB evidence');
+  return evidence;
+}
+
 async function resetQuectelRegistration(minipcHost) {
   const cmd = [
     'set -euo pipefail',
@@ -628,7 +656,7 @@ async function prepareCagedSplitConfigs(minipcHost) {
   const res = await execLocal(`${envPrefix} bash ${shellQuote(path.join(QUECTEL_SCRIPT_DIR, '05_generate_quectel_f1_configs.sh'))}`, 40000);
   if (!res.ok) throw new Error(`Config generation script failed: ${res.combined}`);
   const firecell = await sshChecked(FIRECELL, `grep -En 'gNB_ID|gNB_DU_ID|gNB_name|tracking_area_code|physCellId|nr_cellid|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name' ${CU_QUECTEL_CONF} | head -80 || true`, 20000);
-  const minipc = await sshChecked(minipcHost, `grep -En 'gNB_ID|gNB_DU_ID|tracking_area_code|physCellId|nr_cellid|sdr_addrs|att_tx|att_rx|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name' ${DU_QUECTEL_CONF} | head -80 || true`, 20000);
+  const minipc = await sshChecked(minipcHost, `grep -En 'gNB_ID|gNB_DU_ID|tracking_area_code|physCellId|nr_cellid|sdr_addrs|att_tx|att_rx|absoluteFrequencySSB|dl_absoluteFrequencyPointA|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name' ${DU_QUECTEL_CONF} | head -80 || true`, 20000);
   return { firecell, minipc };
 }
 
@@ -942,18 +970,7 @@ async function startEthernetRollback() {
     printSuccess('Core start command completed');
     await sleep(5000);
 
-    const phoneImsi = process.env.PHONE_IMSI || '';
-    if (phoneImsi) {
-      printInfo('Seeding phone IMSI from PHONE_IMSI in split core database...');
-      const seedCmd = [
-        'tmp=/tmp/oai-tui-seed-subscriber-phone.sh',
-        `cp ${FIRECELL_SEED_SUBSCRIBER} "$tmp"`,
-        'perl -0pi -e "s/docker exec -i mysql/docker exec -i oai-cn5g-minipc-mysql-1/g; s/docker exec mysql/docker exec oai-cn5g-minipc-mysql-1/g" "$tmp"',
-        `IMSI=${shellQuote(phoneImsi)} bash "$tmp" >/tmp/oai-tui-seed-phone.log 2>&1`,
-        'tail -5 /tmp/oai-tui-seed-phone.log || true'
-      ].join('\n');
-      await sshLoose(FIRECELL, seedCmd, 20000);
-    }
+    await provisionPhoneSubscriberIfConfigured(dir);
     gate.core = true;
 
     printStep(7, 12, 'Prepare DU runtime config from live Ethernet address');
@@ -1495,6 +1512,8 @@ async function launchSingleCuQuectelBackhaul() {
     const seed = await provisionQuectelSubscriber(quectelImsi);
     await showLines(seed);
     appendEvidence(dir, 'system-status/quectel-subscriber-seed.log', seed);
+    const phoneSeed = await provisionPhoneSubscriberIfConfigured(dir);
+    await showLines(phoneSeed);
     gate.subscriber = true;
 
     printStep(4, 14, 'Generate WireGuard CU and access-DU configs');
@@ -1676,6 +1695,8 @@ async function validateSingleCuQuectelBackhaul() {
     const donorVal = await execLocal(`CU_HOST=${shellQuote(FIRECELL)} DU_HOST=${shellQuote(minipc.host)} bash ${shellQuote(path.join(QUECTEL_SCRIPT_DIR, '02_validate_independent_donor.sh'))}`, 40000);
     await showLines(donorVal.combined);
     if (!donorVal.ok) throw new Error(`Independent donor validation failed: ${donorVal.combined}`);
+    const phoneSeed = await provisionPhoneSubscriberIfConfigured(dir);
+    await showLines(phoneSeed);
     gate.donorVal = true;
 
     printStep(5, 7, 'Confirm running CU and minipc access DU split state');

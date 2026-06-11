@@ -84,48 +84,31 @@ priv=\$(sudo cat /etc/wireguard/\${WG_IF}.key)
 
 log 'Writing WireGuard client config...'
 
-# Build the config. PreUp ensures the Quectel path is used for the WireGuard endpoint.
-# The PreUp captures the current wwan0 IP before bringing up WireGuard and adds a
-# specific route so the WireGuard handshake goes over Quectel, not management Ethernet.
-cat <<'CONF' | sudo tee \"\$WG_MINIPC_CONF\" >/dev/null
+# Build the config on the target. PreUp ensures the WireGuard handshake goes
+# over Quectel, not management Ethernet.
+if [ -n \"\$FIRECELL_PUBLIC_KEY\" ]; then
+cat <<CONF | sudo tee \"\$WG_MINIPC_CONF\" >/dev/null
 [Interface]
-Address = {{WG_DU_IP}}/30
-PrivateKey = {{priv}}
-# Prevent WireGuard from starting if wwan0 has no IP (anti-fallback guard)
-# Policy routing ensures F1 traffic uses WireGuard while management stays on Ethernet/WiFi
+PreUp = ip route replace \${FIRECELL_WG_ENDPOINT_IP}/32 via \${QUECTEL_GATEWAY} dev \${QUECTEL_IFACE}
+PostDown = ip route del \${FIRECELL_WG_ENDPOINT_IP}/32 dev \${QUECTEL_IFACE} 2>/dev/null || true
+Address = \${WG_DU_IP}/30
+PrivateKey = \${priv}
 
-{{#if FIRECELL_PUBLIC_KEY}}
 [Peer]
-PublicKey = {{FIRECELL_PUBLIC_KEY}}
-Endpoint = {{FIRECELL_ENDPOINT}}
-AllowedIPs = {{WG_CU_IP}}/32
+PublicKey = \${FIRECELL_PUBLIC_KEY}
+Endpoint = \${FIRECELL_ENDPOINT}
+AllowedIPs = \${WG_CU_IP}/32
 PersistentKeepalive = 25
-# Force WireGuard endpoint route through Quectel
-PostUp = ip route add {{FIRECELL_WG_ENDPOINT_IP}}/32 via {{QUECTEL_GATEWAY}} dev {{QUECTEL_IFACE}} || true
-PostUp = ip rule add from {{WG_DU_IP}} lookup 250 priority 250 || true
-PostUp = ip route add default via {{WG_CU_IP}} dev {{WG_IF}} table 250 || true
-# Cleanup on teardown
-PostDown = ip route del {{FIRECELL_WG_ENDPOINT_IP}}/32 dev {{QUECTEL_IFACE}} 2>/dev/null || true
-PostDown = ip rule del from {{WG_DU_IP}} lookup 250 priority 250 2>/dev/null || true
-{{/if}}
 CONF
-
-# Expand template variables using sed
-sudo sed -i \
-  "s|{{WG_DU_IP}}|\$WG_DU_IP|g;
-   s|{{priv}}|\$priv|g;
-   s|{{FIRECELL_PUBLIC_KEY}}|\$FIRECELL_PUBLIC_KEY|g;
-   s|{{FIRECELL_ENDPOINT}}|\$FIRECELL_ENDPOINT|g;
-   s|{{FIRECELL_WG_ENDPOINT_IP}}|\$FIRECELL_WG_ENDPOINT_IP|g;
-   s|{{WG_CU_IP}}|\$WG_CU_IP|g;
-   s|{{QUECTEL_IFACE}}|\$QUECTEL_IFACE|g;
-   s|{{QUECTEL_GATEWAY}}|\$QUECTEL_GATEWAY|g" \
-  \"\$WG_MINIPC_CONF\"
+else
+cat <<CONF | sudo tee \"\$WG_MINIPC_CONF\" >/dev/null
+[Interface]
+Address = \${WG_DU_IP}/30
+PrivateKey = \${priv}
+CONF
+fi
 
 sudo chmod 600 \"\$WG_MINIPC_CONF\"
-
-# Remove template markers from lines that are pure template text
-sudo sed -i '/{{/d' \"\$WG_MINIPC_CONF\" 2>/dev/null || true
 
 # Start WireGuard only if Quectel interface has an IP (guard against silent fallback)
 QUECTEL_IP=\$(ip -4 -o addr show dev \"\$QUECTEL_IFACE\" 2>/dev/null | awk '{print \$4}' | cut -d/ -f1 | head -1 || true)
@@ -144,6 +127,6 @@ ip -br addr show \"\$WG_IF\" 2>/dev/null || true
 
 log ''
 log '=== CLIENT_PUBLIC_KEY ==='
-sudo wg show \"\$WG_IF\" public-key 2>/dev/null || sudo sh -c 'wg pubkey < /etc/wireguard/\$WG_IF.key'
+sudo wg show \"\$WG_IF\" public-key 2>/dev/null || sudo sh -c \"wg pubkey < /etc/wireguard/\${WG_IF}.key\"
 log '=== END ==='
 "
