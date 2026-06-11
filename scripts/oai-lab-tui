@@ -1386,7 +1386,7 @@ async function launchSingleCuQuectelBackhaul() {
   let minipc = null;
   let quectel = null;
   const apn = process.env.QUECTEL_APN || await prompt('Quectel APN for firecell monolithic donor gNB', 'oai');
-  const configuredQuectelImsi = process.env.QUECTEL_IMSI || await prompt('Quectel IMSI for local core provisioning', '');
+  const configuredQuectelImsi = process.env.QUECTEL_IMSI || '';
   let quectelImsi = configuredQuectelImsi;
 
   try {
@@ -1418,8 +1418,7 @@ async function launchSingleCuQuectelBackhaul() {
       imsiEvidence.push(`modem_at_port=${modemImsi.atPort || 'unknown'}`);
       imsiEvidence.push(`modem_imsi_attempts=${modemImsi.attempts || 1}`);
       imsiEvidence.push(`configured_matches_modem=${configuredMatches}`);
-      if (modemValid && !configuredMatches) {
-        printWarn('QUECTEL_IMSI does not match the live modem; provisioning the live modem IMSI for this run.');
+      if (modemValid) {
         quectelImsi = modemImsi.imsi;
         imsiEvidence.push('effective_imsi_source=live_modem');
       } else {
@@ -1427,9 +1426,13 @@ async function launchSingleCuQuectelBackhaul() {
       }
     } catch (err) {
       imsiEvidence.push('modem_imsi_detected=false');
-      imsiEvidence.push('effective_imsi_source=none');
-      appendEvidence(dir, 'system-status/quectel-imsi-check.txt', imsiEvidence.join('\n'));
-      throw new Error(`Could not read live Quectel IMSI; refusing to provision a possibly stale configured IMSI (${err.message})`);
+      if (/^[0-9]{14,16}$/.test(configuredQuectelImsi || '')) {
+        imsiEvidence.push('effective_imsi_source=configured_fallback');
+      } else {
+        imsiEvidence.push('effective_imsi_source=none');
+        appendEvidence(dir, 'system-status/quectel-imsi-check.txt', imsiEvidence.join('\n'));
+        throw new Error(`Could not read live Quectel IMSI and no valid QUECTEL_IMSI fallback is configured (${err.message})`);
+      }
     }
     appendEvidence(dir, 'system-status/quectel-imsi-check.txt', imsiEvidence.join('\n'));
     gate.hardware = true;
