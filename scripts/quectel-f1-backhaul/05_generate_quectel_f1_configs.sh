@@ -104,15 +104,17 @@ sudo -n perl -0pi -e '
   s/(physCellId\s*=\s*)\d+;/\${1}$ACCESS_PCI;/g;
   s/(nr_cellid\s*=\s*)\d+;/\${1}$ACCESS_NR_CELL_ID;/g;
   s/(sdr_addrs\s*=\s*\")[^\"]+(\")/\${1}serial=$ACCESS_B210_SERIAL\${2}/g;
+  s/(att_tx\s*=\s*)\d+/\${1}$ACCESS_ATT_TX/g;
+  s/(att_rx\s*=\s*)\d+/\${1}$ACCESS_ATT_RX/g;
 ' \"\$CONF\"
 
 if ! grep -q 'local_n_if_name' \"\$CONF\"; then
   printf '\nlocal_n_if_name = \"$WG_IF\";\n' | sudo -n tee -a \"\$CONF\" >/dev/null
 fi
 
-printf '[*] Access DU identity: DU_ID=%s gNB_ID=%s cell=%s PCI=%s TAC=%s B210=%s\n' '$ACCESS_DU_ID' '$ACCESS_GNB_ID' '$ACCESS_NR_CELL_ID' '$ACCESS_PCI' '$ACCESS_TAC' '$ACCESS_B210_SERIAL'
+printf '[*] Access DU identity: DU_ID=%s gNB_ID=%s cell=%s PCI=%s TAC=%s B210=%s att_tx=%s att_rx=%s\n' '$ACCESS_DU_ID' '$ACCESS_GNB_ID' '$ACCESS_NR_CELL_ID' '$ACCESS_PCI' '$ACCESS_TAC' '$ACCESS_B210_SERIAL' '$ACCESS_ATT_TX' '$ACCESS_ATT_RX'
 printf '[*] Generated DU config: %s\n' \"\$CONF\"
-grep -En 'gNB_ID|gNB_DU_ID|tracking_area_code|physCellId|nr_cellid|sdr_addrs|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name' \"\$CONF\" | head -80 || true
+grep -En 'gNB_ID|gNB_DU_ID|tracking_area_code|physCellId|nr_cellid|sdr_addrs|att_tx|att_rx|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name' \"\$CONF\" | head -80 || true
 
 for required in '$ACCESS_DU_ID' '$ACCESS_GNB_ID' '$ACCESS_NR_CELL_ID' '$ACCESS_B210_SERIAL' '$WG_DU_IP' '$WG_CU_IP' '$WG_IF'; do
   if ! grep -Fq \"\$required\" \"\$CONF\"; then

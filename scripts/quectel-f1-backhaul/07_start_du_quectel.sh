@@ -75,10 +75,10 @@ if [ -z \"\$QUECTEL_IP\" ]; then
   warn 'Run 01_check_quectel_connectivity.sh before continuing'
 fi
 
-# Start DU with -E (SCTP reuse) to handle complex routing
+# Start DU with -E (SCTP reuse) and continuous TX for stable TDD RACH/uplink.
 log 'Starting DU with Quectel/WireGuard F1 config...'
 cd \"\$BUILD_DIR\"
-nohup sudo ./nr-softmodem -O \"\$DU_CONF\" --log_config.global_log_level info -E >\"\$DU_LOG\" 2>&1 </dev/null &
+nohup sudo ./nr-softmodem -O \"\$DU_CONF\" --log_config.global_log_level info -E --continuous-tx >\"\$DU_LOG\" 2>&1 </dev/null &
 DU_PID=\$!
 
 log \"DU started with PID \$DU_PID\"

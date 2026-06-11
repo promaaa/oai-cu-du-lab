@@ -628,7 +628,7 @@ async function prepareCagedSplitConfigs(minipcHost) {
   const res = await execLocal(`${envPrefix} bash ${shellQuote(path.join(QUECTEL_SCRIPT_DIR, '05_generate_quectel_f1_configs.sh'))}`, 40000);
   if (!res.ok) throw new Error(`Config generation script failed: ${res.combined}`);
   const firecell = await sshChecked(FIRECELL, `grep -En 'gNB_ID|gNB_DU_ID|gNB_name|tracking_area_code|physCellId|nr_cellid|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name' ${CU_QUECTEL_CONF} | head -80 || true`, 20000);
-  const minipc = await sshChecked(minipcHost, `grep -En 'gNB_ID|gNB_DU_ID|tracking_area_code|physCellId|nr_cellid|sdr_addrs|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name' ${DU_QUECTEL_CONF} | head -80 || true`, 20000);
+  const minipc = await sshChecked(minipcHost, `grep -En 'gNB_ID|gNB_DU_ID|tracking_area_code|physCellId|nr_cellid|sdr_addrs|att_tx|att_rx|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name' ${DU_QUECTEL_CONF} | head -80 || true`, 20000);
   return { firecell, minipc };
 }
 
@@ -713,7 +713,31 @@ async function validateCagedF1u(dir, minipcHost, attempts = 3) {
     if (hasPacketLines(f1uMinipc) || hasPacketLines(f1uFirecell)) return { f1uMinipc, f1uFirecell };
     if (attempt < attempts) printWarn('No F1-U packets yet. Toggle phone airplane mode, confirm APN/DNN "oai", start traffic, then retry.');
   }
-  throw new Error('UE/F1-U gate failed: UDP/2153 was not visible on wg-quectel-f1');
+  const diag = await collectCagedUeDiagnostics(minipcHost);
+  appendEvidence(dir, 'measurements/f1u-diagnostics.txt', diag);
+  await showLines(diag);
+  const hasAccessAttach = /Msg[1234]\s+scheduled|RA\s+RNTI|RA\s+failed|RNTI\s+[0-9a-f]+|RRCSetupComplete|InitialUEMessage|PDU Session Resource|DRB/i.test(diag);
+  if (!hasAccessAttach) {
+    throw new Error('UE/F1-U gate failed: no access-cell RACH/UE attach evidence was observed, so UDP/2153 could not appear on wg-quectel-f1');
+  }
+  throw new Error('UE/F1-U gate failed: access UE activity was observed, but UDP/2153 was not visible on wg-quectel-f1');
+}
+
+async function collectCagedUeDiagnostics(minipcHost) {
+  const du = await sshLoose(minipcHost, `grep -Ei "RACH|Msg[1234]|RA-|RNTI|RRC|Initial|PDU|DRB|UE |overflow|underflow|problem receiving|ERROR_CODE" ${DU_QUECTEL_LOG} 2>/dev/null | tail -160 || true`, 20000);
+  const cu = await sshLoose(FIRECELL, `grep -Ei "UE|RNTI|RRC|Initial|PDU|NAS|DRB|GTP|F1-U|error|fail" ${CU_QUECTEL_LOG} 2>/dev/null | tail -160 || true`, 20000);
+  const amf = await sshLoose(FIRECELL, 'docker logs --tail=160 oai-cn5g-minipc-oai-amf-1 2>&1 | grep -Ei "5GMM|UE|registration|Initial|PDU|reject|fail|error" | tail -120 || true', 20000);
+  const smf = await sshLoose(FIRECELL, 'docker logs --tail=160 oai-cn5g-minipc-oai-smf-1 2>&1 | grep -Ei "PDU|session|DNN|subscription|UPF|context|reject|fail|error" | tail -120 || true', 20000);
+  return sanitizeCapture([
+    '=== access DU UE/RACH diagnostics ===',
+    du.combined || '<no access DU UE/RACH lines>',
+    '=== CU UE/session diagnostics ===',
+    cu.combined || '<no CU UE/session lines>',
+    '=== AMF UE diagnostics ===',
+    amf.combined || '<no AMF UE lines>',
+    '=== SMF/PDU diagnostics ===',
+    smf.combined || '<no SMF/PDU lines>',
+  ].join('\n'));
 }
 
 async function prepareEthernetDuConfig(minipc) {
@@ -1570,7 +1594,7 @@ async function launchSingleCuQuectelBackhaul() {
     const duStart = await sshChecked(minipc.host, [
       `test -f ${DU_QUECTEL_CONF}`,
       stopSoftmodemByConfigCmd(DU_QUECTEL_CONF),
-      startSoftmodemCmd(`${DU_OAI}/cmake_targets/ran_build/build`, DU_QUECTEL_CONF, DU_QUECTEL_LOG, '--log_config.global_log_level info -E'),
+      startSoftmodemCmd(`${DU_OAI}/cmake_targets/ran_build/build`, DU_QUECTEL_CONF, DU_QUECTEL_LOG, '--log_config.global_log_level info -E --continuous-tx'),
       'pgrep -a nr-softmodem || true',
     ].join('\n'), 60000);
     const duMilestones = await waitForRemoteLogMilestones(
