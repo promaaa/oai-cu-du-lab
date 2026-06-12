@@ -41,10 +41,16 @@ The important fix is avoiding same-cell recursion. The Quectel modem must attach
 only through the firecell monolithic donor gNB. The minipc B210 remains the access cell for
 the Nothing Phone and is never used for backhaul.
 
-For phone user-plane validation, configure the commercial UE subscriber outside
-Git, for example in ignored `conf/local/lab.env` as `PHONE_IMSI=<phone-imsi>`.
-The TUI seeds this subscriber with sanitized evidence during caged launch and
-validate flows when `PHONE_IMSI` is present.
+For this fixed lab setup, the TUI treats the subscriber ending in `9451` as the
+Quectel modem and the subscriber ending in `9449` as the Nothing Phone. It
+auto-detects the phone subscriber in the active core DB, or seeds the default
+lab phone subscriber when the row is missing. `PHONE_IMSI` remains an ignored
+local override only; do not commit full subscriber identifiers.
+
+The donor gNB runtime is also generated with higher TX attenuation than the
+access DU (`FIRECELL_DONOR_ATT_TX=18` by default, access `att_tx=12`) so the
+caged phone prefers access PCI `0`/TAC `1` while the Quectel remains gated on
+donor PCI `1`/TAC `2`.
 
 ### Launch Sequence
 
