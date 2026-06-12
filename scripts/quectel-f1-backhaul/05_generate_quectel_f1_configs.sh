@@ -24,6 +24,19 @@ if [ -f "$REPO_BASE/conf/local/lab.env" ]; then
   set -e
 fi
 
+# Fixed caged-lab access cell. Keep these aligned with the verified Ethernet
+# access-radio baseline so stale local overrides cannot weaken the phone cell.
+ACCESS_DU_ID="0xe01"
+ACCESS_GNB_ID="0xe00"
+ACCESS_NR_CELL_ID="12345678"
+ACCESS_PCI="0"
+ACCESS_TAC="1"
+ACCESS_B210_SERIAL="8002816"
+ACCESS_ATT_TX="3"
+ACCESS_ATT_RX="12"
+ACCESS_ARFCN_SSB="641280"
+ACCESS_ARFCN_POINTA="640008"
+
 log "=== Generating OAI F1 configs for monolithic-donor Quectel backhaul ==="
 log "Target: firecell 5GC + firecell CU + monolithic donor gNB + minipc access DU"
 log "Access F1: $WG_DU_IP -> $WG_CU_IP over $WG_IF"

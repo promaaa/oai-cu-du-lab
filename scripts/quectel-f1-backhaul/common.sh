@@ -92,7 +92,9 @@ ACCESS_NR_CELL_ID="${ACCESS_NR_CELL_ID:-12345678}"
 ACCESS_PCI="${ACCESS_PCI:-0}"
 ACCESS_TAC="${ACCESS_TAC:-1}"
 ACCESS_B210_SERIAL="${ACCESS_B210_SERIAL:-8002816}"
-ACCESS_ATT_TX="${ACCESS_ATT_TX:-12}"
+# Match the verified Ethernet access-cell RF profile for the caged phone.
+# The donor gNB is attenuated independently so the Quectel remains on PCI 1/TAC 2.
+ACCESS_ATT_TX="${ACCESS_ATT_TX:-3}"
 ACCESS_ATT_RX="${ACCESS_ATT_RX:-12}"
 ACCESS_ARFCN_SSB="${ACCESS_ARFCN_SSB:-641280}"
 ACCESS_ARFCN_POINTA="${ACCESS_ARFCN_POINTA:-640008}"
@@ -123,10 +125,13 @@ ssh_host() {
   local host="$1"
   shift
   local remote_cmd="$*"
-  if [ "$host" = "localhost" ] || [ "$host" = "$(hostname 2>/dev/null || true)" ]; then
+  if [[ "$host" != *" "* ]] && { [ "$host" = "localhost" ] || [ "$host" = "$(hostname 2>/dev/null || true)" ]; }; then
     bash -lc "$remote_cmd"
   else
-    ssh -o BatchMode=yes -o ConnectTimeout=8 "$host" "$@"
+    local -a ssh_target
+    # shellcheck disable=SC2206
+    ssh_target=($host)
+    ssh -o BatchMode=yes -o ConnectTimeout=8 "${ssh_target[@]}" "$@"
   fi
 }
 

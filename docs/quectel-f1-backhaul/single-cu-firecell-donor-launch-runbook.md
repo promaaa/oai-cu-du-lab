@@ -48,9 +48,11 @@ lab phone subscriber when the row is missing. `PHONE_IMSI` remains an ignored
 local override only; do not commit full subscriber identifiers.
 
 The donor gNB runtime is also generated with higher TX attenuation than the
-access DU (`FIRECELL_DONOR_ATT_TX=18` by default, access `att_tx=12`) so the
+access DU (`FIRECELL_DONOR_ATT_TX=18` by default, access `att_tx=3`) so the
 caged phone prefers access PCI `0`/TAC `1` while the Quectel remains gated on
-donor PCI `1`/TAC `2`.
+donor PCI `1`/TAC `2`. The access attenuation matches the verified
+Ethernet CU/DU rollback baseline; avoid weakening it unless a fresh full PASS
+run proves the new value.
 
 ### Launch Sequence
 
