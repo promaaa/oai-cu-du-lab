@@ -60,6 +60,9 @@ if ! ip link show '$WG_IF' >/dev/null 2>&1; then
 fi
 sudo wg show '$WG_IF' 2>/dev/null || true
 
+log 'Setting CPU governors to performance for radio timing...'
+$performance_governors_cmd
+
 if pgrep -x nr-softmodem >/dev/null; then
   log 'Another nr-softmodem is already running on minipc; access DU start may fail if it owns the B210.'
   pgrep -a nr-softmodem || true

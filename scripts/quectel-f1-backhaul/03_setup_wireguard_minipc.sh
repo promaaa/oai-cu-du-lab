@@ -83,13 +83,29 @@ fi
 priv=\$(sudo cat /etc/wireguard/\${WG_IF}.key)
 
 log 'Writing WireGuard client config...'
+QUECTEL_IP=\$(ip -4 -o addr show dev \"\$QUECTEL_IFACE\" 2>/dev/null | awk '{print \$4}' | cut -d/ -f1 | head -1 || true)
+LIVE_QUECTEL_GATEWAY=\"\$QUECTEL_GATEWAY\"
+if command -v qmicli >/dev/null 2>&1; then
+  qmi=\$(ls /dev/cdc-wdm* 2>/dev/null | head -1 || true)
+  if [ -n \"\$qmi\" ]; then
+    qmi_settings=\$(timeout -k 3s 12s sudo -n qmicli -d \"\$qmi\" --device-open-proxy --wds-get-current-settings 2>/dev/null || true)
+    qmi_ip=\$(printf '%s\n' \"\$qmi_settings\" | awk -F: '/IPv4 address/ { gsub(/^[ \t]+/, \"\", \$2); print \$2; exit }')
+    qmi_gw=\$(printf '%s\n' \"\$qmi_settings\" | awk -F: '/IPv4 gateway address/ { gsub(/^[ \t]+/, \"\", \$2); print \$2; exit }')
+    [ -n \"\$qmi_ip\" ] && QUECTEL_IP=\"\$qmi_ip\"
+    [ -n \"\$qmi_gw\" ] && LIVE_QUECTEL_GATEWAY=\"\$qmi_gw\"
+  fi
+fi
+if [ -z \"\$QUECTEL_IP\" ]; then
+  warn \"Cannot determine live Quectel IP on \$QUECTEL_IFACE; run 01_check_quectel_connectivity.sh first.\"
+  exit 1
+fi
 
 # Build the config on the target. PreUp ensures the WireGuard handshake goes
 # over Quectel, not management Ethernet.
 if [ -n \"\$FIRECELL_PUBLIC_KEY\" ]; then
 cat <<CONF | sudo tee \"\$WG_MINIPC_CONF\" >/dev/null
 [Interface]
-PreUp = ip route replace \${FIRECELL_WG_ENDPOINT_IP}/32 via \${QUECTEL_GATEWAY} dev \${QUECTEL_IFACE}
+PreUp = ip route replace \${FIRECELL_WG_ENDPOINT_IP}/32 via \${LIVE_QUECTEL_GATEWAY} dev \${QUECTEL_IFACE} src \${QUECTEL_IP}
 PostDown = ip route del \${FIRECELL_WG_ENDPOINT_IP}/32 dev \${QUECTEL_IFACE} 2>/dev/null || true
 Address = \${WG_DU_IP}/30
 PrivateKey = \${priv}
@@ -111,7 +127,6 @@ fi
 sudo chmod 600 \"\$WG_MINIPC_CONF\"
 
 # Start WireGuard only if Quectel interface has an IP (guard against silent fallback)
-QUECTEL_IP=\$(ip -4 -o addr show dev \"\$QUECTEL_IFACE\" 2>/dev/null | awk '{print \$4}' | cut -d/ -f1 | head -1 || true)
 if [ -n \"\$QUECTEL_IP\" ]; then
   log \"Quectel has IP \$QUECTEL_IP — starting WireGuard...\"
   sudo wg-quick up \"\$WG_IF\" 2>/dev/null || true

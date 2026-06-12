@@ -119,6 +119,16 @@ info() {
   printf '[=] %s\n' "$*"
 }
 
+performance_governors_cmd='set -euo pipefail
+before="$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2>/dev/null | sort | uniq -c || true)"
+if ls /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor >/dev/null 2>&1; then
+  for gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+    echo performance | sudo -n tee "$gov" >/dev/null || true
+  done
+fi
+after="$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2>/dev/null | sort | uniq -c || true)"
+printf "before:\n%s\nafter:\n%s\n" "$before" "$after"'
+
 # --- SSH helpers ---
 # Uses key-based auth or SSH agent; no password strings.
 ssh_host() {

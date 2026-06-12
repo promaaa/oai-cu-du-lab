@@ -95,7 +95,7 @@ const ACCESS_GNB_ID = '0xe00';
 const ACCESS_NR_CELL_ID = '12345678';
 const LAB_PHONE_IMSI_SUFFIX = process.env.LAB_PHONE_IMSI_SUFFIX || '9449';
 const LAB_QUECTEL_IMSI_SUFFIX = process.env.LAB_QUECTEL_IMSI_SUFFIX || '9451';
-const FIRECELL_DONOR_ATT_TX = process.env.FIRECELL_DONOR_ATT_TX || '18';
+const FIRECELL_DONOR_ATT_TX = process.env.FIRECELL_DONOR_ATT_TX || '24';
 
 const MONO_CN = '/home/serber/monolithic/oai-cn5g';
 const MONO_OAI = '/home/serber/monolithic/openairinterface5g';
@@ -250,7 +250,7 @@ function runDir(slug) {
 }
 
 function appendEvidence(dir, name, content) {
-  writeFileSync(path.join(dir, name), content + '\n');
+  writeFileSync(path.join(dir, name), sanitizeCapture(content) + '\n');
 }
 
 function startSoftmodemCmd(workdir, conf, log, extra = '') {
@@ -319,6 +319,24 @@ function hasPacketLines(text) {
 
 function sanitizeCapture(text) {
   return stripAnsi(text).replace(/([A-Fa-f0-9]{12,}|imsi-[0-9]+|[0-9]{14,})/g, '<redacted>');
+}
+
+async function enforcePerformanceGovernors(host, label) {
+  const cmd = [
+    'set -euo pipefail',
+    'before="$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2>/dev/null | sort | uniq -c || true)"',
+    'if ls /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor >/dev/null 2>&1; then',
+    '  for gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance | sudo -n tee "$gov" >/dev/null || true; done',
+    'fi',
+    'after="$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2>/dev/null | sort | uniq -c || true)"',
+    'printf "before:\\n%s\\nafter:\\n%s\\n" "$before" "$after"',
+  ].join('\n');
+  const out = await sshLoose(host, cmd, 15000);
+  if (out.combined) await showLines(`${label} CPU governors\n${out.combined}`);
+  if (!/performance/i.test(out.combined || '')) {
+    printWarn(`${label}: CPU governor evidence did not show performance; attach reliability may be degraded`);
+  }
+  return out.combined || '';
 }
 
 async function capturePacketGate(host, iface, filter, seconds = 20, lines = 20) {
@@ -994,6 +1012,11 @@ async function startEthernetRollback() {
     minipc = await discoverMinipcTarget();
     printSuccess(`serber-minipc via ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
     appendEvidence(dir, 'system-status/minipc-discovery.txt', minipc.raw);
+    const governors = await Promise.all([
+      enforcePerformanceGovernors(FIRECELL, 'serber-firecell'),
+      enforcePerformanceGovernors(minipc.host, 'serber-minipc'),
+    ]);
+    appendEvidence(dir, 'system-status/cpu-governors.txt', governors.join('\n\n'));
     gate.hosts = true;
 
     printStep(2, 12, 'Stop previous OAI softmodems for this demo');
@@ -1503,6 +1526,11 @@ async function launchSingleCuQuectelBackhaul() {
     printSuccess(`serber-minipc via ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
     appendEvidence(dir, 'system-status/minipc-discovery.txt', minipc.raw);
     await checkSsh(FIRECELL, 'serber-firecell');
+    const governors = await Promise.all([
+      enforcePerformanceGovernors(FIRECELL, 'serber-firecell'),
+      enforcePerformanceGovernors(minipc.host, 'serber-minipc'),
+    ]);
+    appendEvidence(dir, 'system-status/cpu-governors.txt', governors.join('\n\n'));
     const hw = await sshChecked(minipc.host, [
       'hostname',
       'ip -br link',
@@ -1722,6 +1750,11 @@ async function validateSingleCuQuectelBackhaul() {
     minipc = await discoverMinipcTarget();
     printSuccess(`serber-minipc via ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
     appendEvidence(dir, 'system-status/minipc-discovery.txt', minipc.raw);
+    const governors = await Promise.all([
+      enforcePerformanceGovernors(FIRECELL, 'serber-firecell'),
+      enforcePerformanceGovernors(minipc.host, 'serber-minipc'),
+    ]);
+    appendEvidence(dir, 'system-status/cpu-governors.txt', governors.join('\n\n'));
     quectel = await discoverQuectel(minipc.host, apn);
     await showLines(quectel.raw);
     appendEvidence(dir, 'system-status/quectel-qmi.txt', quectel.raw);
