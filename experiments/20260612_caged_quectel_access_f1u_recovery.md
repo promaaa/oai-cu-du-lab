@@ -2,7 +2,7 @@
 
 Date: 2026-06-12
 
-Result: **No full PASS claimed without operator-visible internet or throughput confirmation.** The run recovered the previously missing access-cell user-plane evidence: the Nothing Phone moved to the minipc access DU, and bidirectional F1-U `UDP/2153` was observed on `wg-quectel-f1`.
+Result: **PASS.** The run recovered the previously missing access-cell user-plane evidence: the Nothing Phone moved to the minipc access DU, bidirectional F1-U `UDP/2153` was observed on `wg-quectel-f1`, and the operator confirmed Fast.com internet throughput on the Nothing Phone.
 
 ## Changes Applied
 
@@ -30,13 +30,16 @@ Result: **No full PASS claimed without operator-visible internet or throughput c
   - access DU showed low BLER and sustained SRB activity;
   - minipc and firecell captures both showed bidirectional F1-U `UDP/2153` over `wg-quectel-f1`;
   - representative F1-U packet sizes included uplink and downlink packets larger than 1200 bytes.
+- Operator phone observation:
+  - Nothing Phone internet worked through the access DU path;
+  - Fast.com measured about `5.5 Mb/s`.
 - Isolation:
   - short Ethernet/Wi-Fi management captures on minipc and firecell showed no F1-C SCTP or F1-U `UDP/2153`;
   - WireGuard outer UDP was visible on the Quectel data interface.
 
-## Remaining Gate
+## Throughput Follow-Up
 
-Record one explicit operator observation of Nothing Phone internet or a throughput result before marking the whole scenario full PASS.
+The `5.5 Mb/s` Fast.com result is below the prior Ethernet split baseline of about `19-23 Mb/s`. The next optimization pass should preserve the working packet gates while investigating split scheduler/MCS behavior, Quectel donor quality, WireGuard overhead, and access RF feedback.
 
 ## Rollback
 
