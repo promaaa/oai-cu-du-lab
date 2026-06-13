@@ -794,22 +794,67 @@ async function validateCagedPacketPlacement(dir, minipcHost, quectel) {
   return { wgF1c, outer, mgmtCaptures };
 }
 
+async function validateCagedAccessSourceIdentity(dir, minipcHost) {
+  const [firecellProc, minipcProc, duConfig, donorConfig] = await Promise.all([
+    sshChecked(FIRECELL, `ps -eo pid=,comm=,args= | awk '$2 == "nr-softmodem" { print }' || true`, 10000),
+    sshChecked(minipcHost, `ps -eo pid=,comm=,args= | awk '$2 == "nr-softmodem" { print }' || true`, 10000),
+    sshChecked(minipcHost, `grep -En 'gNB_DU_ID|tracking_area_code|physCellId|nr_cellid|sdr_addrs|att_tx|att_rx|absoluteFrequencySSB|dl_absoluteFrequencyPointA|local_n_address|remote_n_address|local_n_if_name' ${DU_QUECTEL_CONF} | head -80 || true`, 10000),
+    sshChecked(FIRECELL, `grep -En 'gNB_ID|gNB_name|tracking_area_code|physCellId|nr_cellid|sdr_addrs|att_tx|att_rx|absoluteFrequencySSB|dl_absoluteFrequencyPointA' ${FIRECELL_DONOR_GNB_RUNTIME_CONF} 2>/dev/null | head -80 || true`, 10000),
+  ]);
+  const evidence = sanitizeCapture([
+    '=== firecell nr-softmodem processes ===',
+    firecellProc,
+    '=== minipc nr-softmodem processes ===',
+    minipcProc,
+    '=== minipc access DU config identity ===',
+    duConfig,
+    '=== firecell donor gNB config identity ===',
+    donorConfig,
+  ].join('\n'));
+  appendEvidence(dir, 'system-status/source-identity.txt', evidence);
+  const firecellHasCu = firecellProc.includes(CU_QUECTEL_CONF);
+  const firecellHasDonor = firecellProc.includes(FIRECELL_DONOR_GNB_RUNTIME_CONF) || firecellProc.includes(FIRECELL_DONOR_PROD_CONF);
+  const minipcHasAccessDu = minipcProc.includes(DU_QUECTEL_CONF);
+  const accessIdentityOk =
+    /physCellId\s*=\s*0\b/i.test(duConfig) &&
+    /tracking_area_code\s*=\s*1\b/i.test(duConfig) &&
+    new RegExp(`nr_cellid\\s*=\\s*${ACCESS_NR_CELL_ID}\\b`, 'i').test(duConfig) &&
+    duConfig.includes(ACCESS_B210_SERIAL) &&
+    duConfig.includes(WG_DU_IP) &&
+    duConfig.includes(WG_CU_IP);
+  const donorIdentityOk =
+    /physCellId\s*=\s*1\b/i.test(donorConfig) &&
+    /tracking_area_code\s*=\s*2\b/i.test(donorConfig);
+  if (!firecellHasCu || !firecellHasDonor || !minipcHasAccessDu || !accessIdentityOk || !donorIdentityOk) {
+    throw new Error('Source identity gate failed: running processes/configs do not prove firecell CU + firecell donor + minipc access DU PCI=0/TAC=1 over wg-quectel-f1.');
+  }
+  return evidence;
+}
+
 async function validateCagedF1u(dir, minipcHost, attempts = 3) {
   let f1uMinipc = '';
   let f1uFirecell = '';
   const f1uEvidence = [];
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const marker = `OAI_TUI_PHONE_SOURCE_PROOF_${Date.now()}_${attempt}`;
+    await writeSourceProofMarkers(minipcHost, marker);
     console.log(`\n    Start phone traffic from the caged Nothing Phone now. Attempt ${attempt}/${attempts}.`);
-    console.log('    The TUI will wait for UDP/2153 on the WireGuard tunnel.');
+    console.log('    The TUI will wait for UDP/2153 on the WireGuard tunnel and collect fresh post-marker CU/DU evidence.');
     await prompt('Press Enter once phone traffic is running');
     [f1uMinipc, f1uFirecell] = await Promise.all([
       capturePacketGate(minipcHost, WG_IF, 'udp port 2153', 90, 40),
       capturePacketGate(FIRECELL, WG_IF, 'udp port 2153', 90, 40),
     ]);
-    f1uEvidence.push(`=== attempt ${attempt} minipc wg UDP/2153 ===\n${f1uMinipc || '<no packets>'}\n\n=== attempt ${attempt} firecell wg UDP/2153 ===\n${f1uFirecell || '<no packets>'}`);
+    const sourceDiag = await collectCagedSourceProofDiagnostics(minipcHost, marker);
+    f1uEvidence.push(`=== attempt ${attempt} marker ===\n${marker}\n\n=== attempt ${attempt} minipc wg UDP/2153 ===\n${f1uMinipc || '<no packets>'}\n\n=== attempt ${attempt} firecell wg UDP/2153 ===\n${f1uFirecell || '<no packets>'}\n\n${sourceDiag}`);
     appendEvidence(dir, 'measurements/f1u-validation.txt', f1uEvidence.join('\n\n'));
     await showLines(f1uMinipc || f1uFirecell || '<no F1-U packets>');
-    if (hasPacketLines(f1uMinipc) || hasPacketLines(f1uFirecell)) return { f1uMinipc, f1uFirecell };
+    if (hasPacketLines(f1uMinipc)) {
+      return { f1uMinipc, f1uFirecell, sourceDiag };
+    }
+    if (hasPacketLines(f1uFirecell)) {
+      throw new Error('Phone-source gate failed: F1-U was visible only from the firecell side. The TUI did not capture phone traffic on serber-minipc wg-quectel-f1, so do not attribute the throughput to the minipc access DU.');
+    }
     if (attempt < attempts) printWarn('No F1-U packets yet. Toggle phone airplane mode, confirm APN/DNN "oai", start traffic, then retry.');
   }
   const diag = await collectCagedUeDiagnostics(minipcHost);
@@ -820,6 +865,47 @@ async function validateCagedF1u(dir, minipcHost, attempts = 3) {
     throw new Error('UE/F1-U gate failed: no access-cell RACH/UE attach evidence was observed, so UDP/2153 could not appear on wg-quectel-f1');
   }
   throw new Error('UE/F1-U gate failed: access UE activity was observed, but UDP/2153 was not visible on wg-quectel-f1');
+}
+
+async function writeSourceProofMarkers(minipcHost, marker) {
+  const quotedMarker = shellQuote(`=== ${marker} ===`);
+  await Promise.all([
+    sshLoose(minipcHost, `printf '\\n%s\\n' ${quotedMarker} | sudo -n tee -a ${DU_QUECTEL_LOG} >/dev/null 2>&1 || true`, 10000),
+    sshLoose(FIRECELL, `printf '\\n%s\\n' ${quotedMarker} | sudo -n tee -a ${CU_QUECTEL_LOG} ${FIRECELL_DONOR_GNB_LOG} >/dev/null 2>&1 || true`, 10000),
+  ]);
+}
+
+async function collectLogAfterMarker(host, file, marker, grepPattern) {
+  const cmd = [
+    `awk -v marker=${shellQuote(marker)} 'index($0, marker) { seen=1; next } seen { print }' ${file} 2>/dev/null`,
+    `| grep -Ei ${shellQuote(grepPattern)} | tail -140 || true`,
+  ].join(' ');
+  return sshLoose(host, cmd, 20000);
+}
+
+async function collectCagedSourceProofDiagnostics(minipcHost, marker) {
+  const [du, cu, donor, wg] = await Promise.all([
+    collectLogAfterMarker(minipcHost, DU_QUECTEL_LOG, marker, 'RACH|Msg[1234]|RA-|RNTI|RRC|Initial|PDU|DRB|UE |F1|GTPU|2153|MCS|BLER|SNR|overflow|underflow|problem receiving|ERROR_CODE'),
+    collectLogAfterMarker(FIRECELL, CU_QUECTEL_LOG, marker, 'UE|RNTI|RRC|Initial|PDU|NAS|DRB|GTPU|F1|2153|error|fail'),
+    collectLogAfterMarker(FIRECELL, FIRECELL_DONOR_GNB_LOG, marker, 'UE|RNTI|RRC|Initial|PDU|DRB|GTPU|PRACH|RACH|Cell ID|physCellId|error|fail'),
+    Promise.all([
+      sshLoose(minipcHost, `ip -s link show ${WG_IF} 2>/dev/null || true; sudo -n wg show ${WG_IF} transfer 2>/dev/null || true`, 10000),
+      sshLoose(FIRECELL, `ip -s link show ${WG_IF} 2>/dev/null || true; sudo -n wg show ${WG_IF} transfer 2>/dev/null || true`, 10000),
+    ]),
+  ]);
+  return sanitizeCapture([
+    '=== phone-source proof marker ===',
+    marker,
+    '=== fresh minipc access DU after marker ===',
+    du.combined || '<no fresh minipc access DU lines>',
+    '=== fresh firecell CU after marker ===',
+    cu.combined || '<no fresh firecell CU lines>',
+    '=== fresh firecell donor gNB after marker ===',
+    donor.combined || '<no fresh donor lines>',
+    '=== WireGuard counters after marker ===',
+    `--- minipc ${WG_IF} ---\n${wg[0].combined || '<no minipc wg counters>'}`,
+    `--- firecell ${WG_IF} ---\n${wg[1].combined || '<no firecell wg counters>'}`,
+  ].join('\n'));
 }
 
 async function collectCagedUeDiagnostics(minipcHost) {
@@ -1714,6 +1800,8 @@ async function launchSingleCuQuectelBackhaul() {
     gate.du = true;
 
     printStep(13, 14, 'Packet validation: access F1 on tunnel, WireGuard on Quectel, no management F1');
+    const sourceIdentity = await validateCagedAccessSourceIdentity(dir, minipc.host);
+    await showLines(sourceIdentity);
     await validateCagedPacketPlacement(dir, minipc.host, quectel);
     gate.packet = true;
 
@@ -1786,6 +1874,8 @@ async function validateSingleCuQuectelBackhaul() {
     gate.donorVal = true;
 
     printStep(5, 7, 'Confirm running CU and minipc access DU split state');
+    const sourceIdentity = await validateCagedAccessSourceIdentity(dir, minipc.host);
+    await showLines(sourceIdentity);
     const cu = await sshChecked(FIRECELL, `grep -Ei "F1AP_CU_SCTP_REQ|CU_handle_F1_SETUP_REQUEST|GTPU.*2153|SCTP|error|fail" ${CU_QUECTEL_LOG} 2>/dev/null | tail -80 || true`, 15000);
     const du = await sshChecked(minipc.host, `grep -Ei "DU_handle_F1_SETUP_RESPONSE|received F1 Setup Response|got sync|B210|SCTP|error|fail" ${DU_QUECTEL_LOG} 2>/dev/null | tail -80 || true`, 15000);
     await showLines(cu);
