@@ -303,7 +303,8 @@ function parseQmiSettings(text) {
   const gateway = text.match(/IPv4 gateway address:\s*([0-9.]+)/i)?.[1] || '';
   const mask = text.match(/IPv4 subnet mask:\s*([0-9.]+)/i)?.[1] || '';
   const mtu = text.match(/MTU:\s*([0-9]+)/i)?.[1] || '';
-  return { ip, gateway, prefix: maskIpv4ToPrefix(mask), mtu };
+  const stableConnected = /pdu_stable_connected=1/i.test(text);
+  return { ip, gateway, prefix: maskIpv4ToPrefix(mask), mtu, stableConnected };
 }
 
 function parseRouteDevSrc(text) {
@@ -401,35 +402,47 @@ async function discoverQuectel(minipcHost, apn) {
     'if [ -e "/sys/class/net/$iface/qmi/raw_ip" ]; then printf Y | sudo -n tee "/sys/class/net/$iface/qmi/raw_ip" >/dev/null 2>&1 || true; fi',
     'sudo -n ip link set "$iface" up || true',
     'if [ -n "$qmi" ]; then',
-    '  timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --wds-get-packet-service-status 2>/dev/null || true',
-    `  start_out="$(timeout -k 5s 25s sudo -n qmicli -d "$qmi" --device-open-proxy --wds-start-network=${shellQuote(`apn=${apn},ip-type=4`)} --client-no-release-cid 2>/dev/null || true)"`,
-    '  printf "%s\\n" "$start_out"',
-    '  cid="$(printf "%s\\n" "$start_out" | awk -F: \'/CID:/ { gsub(/[^0-9]/, "", $2); print $2; exit }\')"',
     '  settings_out=""',
-    '  for _try in 1 2 3 4 5 6 7 8; do',
-    '    sleep 1',
+    '  pdu_ok=0',
+    '  for start_try in 1 2 3; do',
+    '    echo "--- QMI PDU attempt $start_try ---"',
     '    timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --wds-get-packet-service-status 2>/dev/null || true',
-    '    if [ -n "$cid" ]; then',
-    '      settings_out="$(timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --client-cid="$cid" --wds-get-current-settings 2>/dev/null || true)"',
-    '    fi',
-    '    if ! printf "%s\\n" "$settings_out" | grep -q "IPv4 address"; then',
-    '      settings_out="$(timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --wds-get-current-settings 2>/dev/null || true)"',
-    '    fi',
-    '    printf "%s\\n" "$settings_out"',
-    '    printf "%s\\n" "$settings_out" | grep -q "IPv4 address" && break',
+    `    start_out="$(timeout -k 5s 25s sudo -n qmicli -d "$qmi" --device-open-proxy --wds-start-network=${shellQuote(`apn=${apn},ip-type=4`)} --client-no-release-cid 2>/dev/null || true)"`,
+    '    printf "%s\\n" "$start_out"',
+    '    cid="$(printf "%s\\n" "$start_out" | awk -F: \'/CID:/ { gsub(/[^0-9]/, "", $2); print $2; exit }\')"',
+    '    handle="$(printf "%s\\n" "$start_out" | awk -F: \'/Packet data handle/ { gsub(/[^0-9]/, "", $2); print $2; exit }\')"',
+    '    for _try in 1 2 3 4 5 6 7 8; do',
+    '      sleep 1',
+    '      status_out="$(timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --wds-get-packet-service-status 2>/dev/null || true)"',
+    '      printf "%s\\n" "$status_out"',
+    '      if [ -n "$cid" ]; then',
+    '        settings_out="$(timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --client-cid="$cid" --client-no-release-cid --wds-get-current-settings 2>/dev/null || true)"',
+    '      fi',
+    '      if ! printf "%s\\n" "$settings_out" | grep -q "IPv4 address"; then',
+    '        settings_out="$(timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --wds-get-current-settings 2>/dev/null || true)"',
+    '      fi',
+    '      printf "%s\\n" "$settings_out"',
+    '      if printf "%s\\n" "$status_out" | grep -q "connected" && printf "%s\\n" "$settings_out" | grep -q "IPv4 address"; then pdu_ok=1; break; fi',
+    '    done',
+    '    [ "$pdu_ok" = "1" ] && break',
+    '    if [ -n "$handle" ]; then timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --client-cid="$cid" --wds-stop-network="$handle" 2>/dev/null || true; fi',
+    '    sleep 2',
     '  done',
-    '  qmi_ip="$(printf "%s\\n" "$settings_out" | awk -F: \'/IPv4 address/ { gsub(/^[ \\t]+/, "", $2); print $2; exit }\')"',
-    '  qmi_gw="$(printf "%s\\n" "$settings_out" | awk -F: \'/IPv4 gateway address/ { gsub(/^[ \\t]+/, "", $2); print $2; exit }\')"',
-    '  qmi_mask="$(printf "%s\\n" "$settings_out" | awk -F: \'/IPv4 subnet mask/ { gsub(/^[ \\t]+/, "", $2); print $2; exit }\')"',
-    '  mask_to_prefix() { case "$1" in 255.255.255.252) echo 30;; 255.255.255.248) echo 29;; 255.255.255.240) echo 28;; 255.255.255.0) echo 24;; *) echo 30;; esac; }',
-    '  if [ -n "$qmi_ip" ]; then',
-    '    qmi_prefix="$(mask_to_prefix "$qmi_mask")"',
-    '    if [ -z "$qmi_gw" ] && [ "$qmi_ip" = "10.0.0.2" ]; then qmi_gw="10.0.0.1"; fi',
-    '    if [ -z "$qmi_gw" ] && [ "$qmi_ip" = "10.0.0.3" ]; then qmi_gw="10.0.0.4"; fi',
-    '    sudo -n ip addr flush dev "$iface" || true',
-    '    sudo -n ip addr add "$qmi_ip/$qmi_prefix" dev "$iface" || true',
-    '    sudo -n ip link set "$iface" up || true',
-    '    if [ -n "$qmi_gw" ]; then sudo -n ip route replace "$qmi_gw" dev "$iface" src "$qmi_ip" || true; fi',
+    '  echo "pdu_stable_connected=$pdu_ok"',
+    '  if [ "$pdu_ok" = "1" ]; then',
+    '    qmi_ip="$(printf "%s\\n" "$settings_out" | awk -F: \'/IPv4 address/ { gsub(/^[ \\t]+/, "", $2); print $2; exit }\')"',
+    '    qmi_gw="$(printf "%s\\n" "$settings_out" | awk -F: \'/IPv4 gateway address/ { gsub(/^[ \\t]+/, "", $2); print $2; exit }\')"',
+    '    qmi_mask="$(printf "%s\\n" "$settings_out" | awk -F: \'/IPv4 subnet mask/ { gsub(/^[ \\t]+/, "", $2); print $2; exit }\')"',
+    '    mask_to_prefix() { case "$1" in 255.255.255.252) echo 30;; 255.255.255.248) echo 29;; 255.255.255.240) echo 28;; 255.255.255.0) echo 24;; *) echo 30;; esac; }',
+    '    if [ -n "$qmi_ip" ]; then',
+    '      qmi_prefix="$(mask_to_prefix "$qmi_mask")"',
+    '      if [ -z "$qmi_gw" ] && [ "$qmi_ip" = "10.0.0.2" ]; then qmi_gw="10.0.0.1"; fi',
+    '      if [ -z "$qmi_gw" ] && [ "$qmi_ip" = "10.0.0.3" ]; then qmi_gw="10.0.0.4"; fi',
+    '      sudo -n ip addr flush dev "$iface" || true',
+    '      sudo -n ip addr add "$qmi_ip/$qmi_prefix" dev "$iface" || true',
+    '      sudo -n ip link set "$iface" up || true',
+    '      if [ -n "$qmi_gw" ]; then sudo -n ip route replace "$qmi_gw" dev "$iface" src "$qmi_ip" || true; fi',
+    '    fi',
     '  fi',
     'fi',
     'if ! ip -4 -o addr show dev "$iface" 2>/dev/null | grep -q " inet "; then',
@@ -669,19 +682,40 @@ async function ensurePduRoutes(minipcHost, quectel) {
     throw new Error('Quectel QMI settings did not include a live interface, IPv4 address, and gateway');
   }
   const minipcCmd = [
+    'set -euo pipefail',
     `sudo -n ip addr flush dev ${iface}`,
     `sudo -n ip addr add ${settings.ip}/${settings.prefix} dev ${iface}`,
     `sudo -n ip link set ${iface} up`,
     `sudo -n ip route replace ${settings.gateway} dev ${iface} src ${settings.ip}`,
     `sudo -n ip route replace ${FIRECELL_WG_ENDPOINT_IP}/32 via ${settings.gateway} dev ${iface} src ${settings.ip}`,
+    `echo "--- route to WireGuard endpoint ---"`,
     `ip route get ${FIRECELL_WG_ENDPOINT_IP}`,
+    `echo "--- ping WireGuard endpoint over Quectel ---"`,
+    'ok=0',
+    'for _try in 1 2 3 4 5 6 7 8 9 10 11 12; do',
+    `  if ping -I ${iface} -c 1 -W 2 ${FIRECELL_WG_ENDPOINT_IP}; then ok=1; break; fi`,
+    '  sleep 2',
+    'done',
+    'if [ "$ok" != "1" ]; then',
+    `  echo "pdu_endpoint_ping_failed=${FIRECELL_WG_ENDPOINT_IP}"`,
+    `  ip -4 -br addr show dev ${iface} 2>/dev/null || true`,
+    `  ip route show dev ${iface} 2>/dev/null || true`,
+    '  exit 42',
+    'fi',
   ].join('\n');
-  const minipcOut = await sshChecked(minipcHost, minipcCmd, 20000);
+  const minipcRes = await sshLoose(minipcHost, minipcCmd, 45000);
+  const minipcOut = minipcRes.combined || '';
   const firecellCmd = [
     `sudo -n ip route replace ${settings.ip}/32 via ${OAI_UPF_IP} dev ${OAI_CN5G_BRIDGE_IF}`,
     `ip route get ${settings.ip}`,
   ].join('\n');
   const firecellOut = await sshChecked(FIRECELL, firecellCmd, 20000);
+  if (!minipcRes.ok) {
+    const err = new Error(`Quectel PDU endpoint reachability failed: ${FIRECELL_WG_ENDPOINT_IP} was not reachable over ${iface}`);
+    err.evidence = `${minipcOut}\n\n${firecellOut}`;
+    err.evidenceFile = 'system-status/quectel-routes.txt';
+    throw err;
+  }
   if (!minipcOut.includes(`dev ${iface}`)) {
     throw new Error('Route to WireGuard endpoint does not go over Quectel interface');
   }
@@ -1762,8 +1796,8 @@ async function launchSingleCuQuectelBackhaul() {
     quectel = await discoverQuectel(minipc.host, apn);
     await showLines(quectel.raw);
     appendEvidence(dir, 'system-status/quectel-qmi.txt', quectel.raw);
-    if (!quectel.iface || !quectel.settings.ip || !quectel.settings.gateway) {
-      throw new Error('Quectel PDU IP/gateway were not discovered from live QMI settings');
+    if (!quectel.iface || !quectel.settings.ip || !quectel.settings.gateway || !quectel.settings.stableConnected) {
+      throw new Error('Quectel PDU did not reach a stable connected state with live QMI IP/gateway settings');
     }
     printSuccess(`Quectel PDU: ${quectel.iface} ${quectel.settings.ip}/${quectel.settings.prefix} via ${quectel.settings.gateway}`);
     gate.quectel = true;
@@ -1875,7 +1909,9 @@ async function validateSingleCuQuectelBackhaul() {
     quectel = await discoverQuectel(minipc.host, apn);
     await showLines(quectel.raw);
     appendEvidence(dir, 'system-status/quectel-qmi.txt', quectel.raw);
-    if (!quectel.settings.ip || !quectel.settings.gateway) throw new Error('Live Quectel PDU did not expose IPv4 address and gateway');
+    if (!quectel.settings.ip || !quectel.settings.gateway || !quectel.settings.stableConnected) {
+      throw new Error('Live Quectel PDU did not stay connected with IPv4 address and gateway');
+    }
     printSuccess(`Quectel PDU: ${quectel.iface} ${quectel.settings.ip}/${quectel.settings.prefix} via ${quectel.settings.gateway}`);
     gate.quectel = true;
 
