@@ -401,13 +401,28 @@ async function discoverQuectel(minipcHost, apn) {
     'sudo -n ip link set "$iface" down 2>/dev/null || true',
     'if [ -e "/sys/class/net/$iface/qmi/raw_ip" ]; then printf Y | sudo -n tee "/sys/class/net/$iface/qmi/raw_ip" >/dev/null 2>&1 || true; fi',
     'sudo -n ip link set "$iface" up || true',
+    'at_port=""',
+    'send_at() { [ -n "$at_port" ] || return 0; printf "%s\\r" "$1" | timeout 8 sudo -n socat -T 5 - "$at_port",raw,echo=0,b115200 2>/dev/null || true; }',
+    'for port in /dev/ttyUSB4 /dev/ttyUSB3 /dev/ttyUSB2 /dev/ttyUSB1 /dev/ttyUSB0; do',
+    '  [ -e "$port" ] || continue',
+    '  if printf "AT\\r" | timeout 4 sudo -n socat -T 2 - "$port",raw,echo=0,b115200 2>/dev/null | grep -q OK; then at_port="$port"; break; fi',
+    'done',
+    'if [ -n "$at_port" ]; then',
+    '  echo "at_port=$at_port"',
+    '  send_at "AT+CGACT=0,1" >/dev/null || true',
+    '  send_at "AT+CGACT=0,2" >/dev/null || true',
+    '  send_at "AT+CGACT=0,3" >/dev/null || true',
+    '  send_at "AT+CGDCONT=1,\\"IP\\",\\"oai\\"" >/dev/null || true',
+    '  send_at "AT+CGACT?" || true',
+    '  sleep 5',
+    'fi',
     'if [ -n "$qmi" ]; then',
     '  settings_out=""',
     '  pdu_ok=0',
-    '  for start_try in 1 2 3; do',
+    '  for start_try in 1; do',
     '    echo "--- QMI PDU attempt $start_try ---"',
     '    timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --wds-get-packet-service-status 2>/dev/null || true',
-    `    start_out="$(timeout -k 5s 25s sudo -n qmicli -d "$qmi" --device-open-proxy --wds-start-network=${shellQuote(`apn=${apn},ip-type=4`)} --client-no-release-cid 2>/dev/null || true)"`,
+    `    start_out="$(timeout -k 5s 25s sudo -n qmicli -d "$qmi" --device-open-proxy --wds-start-network=${shellQuote(`apn=${apn},ip-type=4`)} --client-no-release-cid 2>&1 || true)"`,
     '    printf "%s\\n" "$start_out"',
     '    cid="$(printf "%s\\n" "$start_out" | awk -F: \'/CID:/ { gsub(/[^0-9]/, "", $2); print $2; exit }\')"',
     '    handle="$(printf "%s\\n" "$start_out" | awk -F: \'/Packet data handle/ { gsub(/[^0-9]/, "", $2); print $2; exit }\')"',
@@ -444,6 +459,15 @@ async function discoverQuectel(minipcHost, apn) {
     '      if [ -n "$qmi_gw" ]; then sudo -n ip route replace "$qmi_gw" dev "$iface" src "$qmi_ip" || true; fi',
     '    fi',
     '  fi',
+    'fi',
+    'if [ "${pdu_ok:-0}" != "1" ] && [ -n "$at_port" ]; then',
+    '  echo "--- AT PDU failure diagnostics ---"',
+    '  send_at "AT+CEER" || true',
+    '  send_at "AT+CGACT?" || true',
+    '  send_at "AT+CGPADDR" || true',
+    '  send_at "AT+CGACT=0,1" >/dev/null || true',
+    '  send_at "AT+CGACT=0,2" >/dev/null || true',
+    '  send_at "AT+CGACT=0,3" >/dev/null || true',
     'fi',
     'if ! ip -4 -o addr show dev "$iface" 2>/dev/null | grep -q " inet "; then',
     '  if command -v udhcpc >/dev/null 2>&1; then timeout -k 3s 12s sudo -n udhcpc -q -n -i "$iface" 2>/dev/null || true; fi',
@@ -722,7 +746,8 @@ async function ensurePduRoutes(minipcHost, quectel) {
   return { minipcOut, firecellOut };
 }
 
-async function ensureWireGuard(minipcHost, quectel = null) {
+async function ensureWireGuard(minipcHost, quectel = null, options = {}) {
+  const restart = options.restart !== false;
   if (quectel?.iface && quectel?.settings?.ip && quectel?.settings?.gateway) {
     const preUpCmd = `PreUp = ip route replace ${FIRECELL_WG_ENDPOINT_IP}/32 via ${quectel.settings.gateway} dev ${quectel.iface} src ${quectel.settings.ip}`;
     const postDownCmd = `PostDown = ip route del ${FIRECELL_WG_ENDPOINT_IP}/32 dev ${quectel.iface} 2>/dev/null || true`;
@@ -746,16 +771,23 @@ async function ensureWireGuard(minipcHost, quectel = null) {
       `sudo -n grep -E '^(PostUp|PreDown) = ' /etc/wireguard/${WG_IF}.conf`,
     ].join('\n'), 15000);
   }
-  const firecellStart = await sshLoose(FIRECELL, [
-    `sudo -n systemctl restart wg-quick@${WG_IF}`,
-    'sleep 2',
-    `sudo -n wg show ${WG_IF}`,
-  ].join('\n'), 30000);
-  const minipcStart = await sshLoose(minipcHost, [
-    `sudo -n systemctl restart wg-quick@${WG_IF}`,
-    'sleep 2',
-    `sudo -n wg show ${WG_IF}`,
-  ].join('\n'), 30000);
+  let firecellStart = { ok: true, combined: '' };
+  let minipcStart = { ok: true, combined: '' };
+  if (restart) {
+    firecellStart = await sshLoose(FIRECELL, [
+      `sudo -n systemctl restart wg-quick@${WG_IF}`,
+      'sleep 2',
+      `sudo -n wg show ${WG_IF}`,
+    ].join('\n'), 30000);
+    minipcStart = await sshLoose(minipcHost, [
+      `sudo -n systemctl restart wg-quick@${WG_IF}`,
+      'sleep 2',
+      `sudo -n wg show ${WG_IF}`,
+    ].join('\n'), 30000);
+  } else {
+    firecellStart = await sshLoose(FIRECELL, `sudo -n wg show ${WG_IF}`, 10000);
+    minipcStart = await sshLoose(minipcHost, `sudo -n wg show ${WG_IF}`, 10000);
+  }
   const [minipcRun, firecellRun] = await Promise.all([
     sshLoose(minipcHost, [
     `sudo -n wg show ${WG_IF}`,
@@ -767,8 +799,8 @@ async function ensureWireGuard(minipcHost, quectel = null) {
     ].join('\n'), 30000),
   ]);
   const evidence = [
-    '=== firecell restart/show ===', firecellStart.combined,
-    '=== minipc restart/show ===', minipcStart.combined,
+    restart ? '=== firecell restart/show ===' : '=== firecell live/show ===', firecellStart.combined,
+    restart ? '=== minipc restart/show ===' : '=== minipc live/show ===', minipcStart.combined,
     '=== minipc wg ping ===', minipcRun.combined,
     '=== firecell wg ping ===', firecellRun.combined,
   ].join('\n');
@@ -864,7 +896,29 @@ async function validateCagedAccessSourceIdentity(dir, minipcHost) {
     sshChecked(minipcHost, `grep -En 'gNB_DU_ID|tracking_area_code|physCellId|nr_cellid|sdr_addrs|att_tx|att_rx|absoluteFrequencySSB|dl_absoluteFrequencyPointA|local_n_address|remote_n_address|local_n_if_name' ${DU_QUECTEL_CONF} | head -80 || true`, 10000),
     sshChecked(FIRECELL, `grep -En 'gNB_ID|gNB_name|tracking_area_code|physCellId|nr_cellid|sdr_addrs|att_tx|att_rx|absoluteFrequencySSB|dl_absoluteFrequencyPointA' ${FIRECELL_DONOR_GNB_RUNTIME_CONF} 2>/dev/null | head -80 || true`, 10000),
   ]);
+  const firecellHasCu = firecellProc.includes(CU_QUECTEL_CONF);
+  const firecellHasDonor = firecellProc.includes(FIRECELL_DONOR_GNB_RUNTIME_CONF) || firecellProc.includes(FIRECELL_DONOR_PROD_CONF);
+  const minipcHasAccessDu = minipcProc.includes(DU_QUECTEL_CONF);
+  const accessIdentityOk =
+    /physCellId\s*=\s*0\b/i.test(duConfig) &&
+    /tracking_area_code\s*=\s*1\b/i.test(duConfig) &&
+    new RegExp(`nr_cellid\\s*=\\s*${ACCESS_NR_CELL_ID}L?\\b`, 'i').test(duConfig) &&
+    duConfig.includes(ACCESS_B210_SERIAL) &&
+    duConfig.includes(WG_DU_IP) &&
+    duConfig.includes(WG_CU_IP);
+  const donorIdentityOk =
+    /physCellId\s*=\s*1\b/i.test(donorConfig) &&
+    /tracking_area_code\s*=\s*2\b/i.test(donorConfig);
+  const checks = {
+    firecellHasCu,
+    firecellHasDonor,
+    minipcHasAccessDu,
+    accessIdentityOk,
+    donorIdentityOk,
+  };
   const evidence = sanitizeCapture([
+    '=== source identity checks ===',
+    JSON.stringify(checks, null, 2),
     '=== firecell nr-softmodem processes ===',
     firecellProc,
     '=== minipc nr-softmodem processes ===',
@@ -875,21 +929,9 @@ async function validateCagedAccessSourceIdentity(dir, minipcHost) {
     donorConfig,
   ].join('\n'));
   appendEvidence(dir, 'system-status/source-identity.txt', evidence);
-  const firecellHasCu = firecellProc.includes(CU_QUECTEL_CONF);
-  const firecellHasDonor = firecellProc.includes(FIRECELL_DONOR_GNB_RUNTIME_CONF) || firecellProc.includes(FIRECELL_DONOR_PROD_CONF);
-  const minipcHasAccessDu = minipcProc.includes(DU_QUECTEL_CONF);
-  const accessIdentityOk =
-    /physCellId\s*=\s*0\b/i.test(duConfig) &&
-    /tracking_area_code\s*=\s*1\b/i.test(duConfig) &&
-    new RegExp(`nr_cellid\\s*=\\s*${ACCESS_NR_CELL_ID}\\b`, 'i').test(duConfig) &&
-    duConfig.includes(ACCESS_B210_SERIAL) &&
-    duConfig.includes(WG_DU_IP) &&
-    duConfig.includes(WG_CU_IP);
-  const donorIdentityOk =
-    /physCellId\s*=\s*1\b/i.test(donorConfig) &&
-    /tracking_area_code\s*=\s*2\b/i.test(donorConfig);
   if (!firecellHasCu || !firecellHasDonor || !minipcHasAccessDu || !accessIdentityOk || !donorIdentityOk) {
-    throw new Error('Source identity gate failed: running processes/configs do not prove firecell CU + firecell donor + minipc access DU PCI=0/TAC=1 over wg-quectel-f1.');
+    const failed = Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name).join(', ');
+    throw new Error(`Source identity gate failed: ${failed || 'unknown check'} did not prove firecell CU + firecell donor + minipc access DU PCI=0/TAC=1 over wg-quectel-f1.`);
   }
   return evidence;
 }
@@ -1040,6 +1082,51 @@ function restartSplitCoreCmd() {
     `(docker compose -f ${CU_CN_COMPOSE} down || docker-compose -f ${CU_CN_COMPOSE} down || true)`,
     `(docker compose -f ${CU_CN_COMPOSE} up -d || docker-compose -f ${CU_CN_COMPOSE} up -d)`,
   ].join('\n');
+}
+
+async function waitForSplitCoreReady() {
+  const cmd = [
+    'set -euo pipefail',
+    `cd ${CU_CN_DIR}`,
+    `ip -4 addr show dev ${OAI_CN5G_BRIDGE_IF} | grep -q '192.168.71.140/26' || sudo -n ip addr add 192.168.71.140/26 dev ${OAI_CN5G_BRIDGE_IF}`,
+    'required="mysql oai-nrf oai-udr oai-udm oai-ausf oai-amf oai-smf oai-upf oai-ext-dn ims"',
+    'for i in $(seq 1 60); do',
+    '  ready=1',
+    '  statuses="$(docker ps --format \'{{.Names}} {{.Status}}\' | grep "^oai-cn5g-minipc-" || true)"',
+    '  for service in $required; do',
+    '    line="$(printf "%s\\n" "$statuses" | grep "^oai-cn5g-minipc-${service}-1 " || true)"',
+    '    if [ -z "$line" ]; then ready=0; break; fi',
+    '    case "$line" in',
+    '      *unhealthy*) ready=0; break ;;',
+    '      *"(healthy)"*) : ;;',
+    '      *"(health:"*) ready=0; break ;;',
+    '      *"Up "*) : ;;',
+    '      *) ready=0; break ;;',
+    '    esac',
+    '  done',
+    '  if [ "$ready" = 1 ]; then break; fi',
+    '  sleep 2',
+    'done',
+    'echo "--- core bridge ---"',
+    `ip -4 addr show dev ${OAI_CN5G_BRIDGE_IF}`,
+    'echo "--- split core containers ---"',
+    'docker ps --format "{{.Names}} {{.Status}}" | grep "^oai-cn5g-minipc-" || true',
+    'echo "--- recent AMF readiness lines ---"',
+    'docker logs oai-cn5g-minipc-oai-amf-1 --tail 80 2>&1 | grep -Ei "NF registration|NRF|HTTP|NGSetup|listening|error|fail|unhealthy" | tail -40 || true',
+    'missing=""',
+    'bad=""',
+    'statuses="$(docker ps --format \'{{.Names}} {{.Status}}\' | grep "^oai-cn5g-minipc-" || true)"',
+    'for service in $required; do',
+    '  line="$(printf "%s\\n" "$statuses" | grep "^oai-cn5g-minipc-${service}-1 " || true)"',
+    '  if [ -z "$line" ]; then missing="$missing $service"; continue; fi',
+    '  case "$line" in *unhealthy*) bad="$bad $service" ;; *"(healthy)"*) : ;; *"(health:"*) bad="$bad $service" ;; *"Up "*) : ;; *) bad="$bad $service" ;; esac',
+    'done',
+    'test -z "$missing" || { echo "missing containers:$missing" >&2; exit 12; }',
+    'test -z "$bad" || { echo "not ready containers:$bad" >&2; exit 13; }',
+    `ip -4 addr show dev ${OAI_CN5G_BRIDGE_IF} | grep -q '192.168.71.129'`,
+    `ip -4 addr show dev ${OAI_CN5G_BRIDGE_IF} | grep -q '192.168.71.140'`,
+  ].join('\n');
+  return sshChecked(FIRECELL, cmd, 150000);
 }
 
 async function showLines(text, indent = '    ') {
@@ -1724,13 +1811,9 @@ async function launchSingleCuQuectelBackhaul() {
 
     printStep(2, 14, 'Stop stale softmodems and start firecell 5GC');
     await hardStopSplit(minipc.host);
-    const core = await sshChecked(FIRECELL, [
-      restartSplitCoreCmd(),
-      'sleep 5',
-      `ip -4 addr show dev ${OAI_CN5G_BRIDGE_IF} | grep -q '192.168.71.140/26' || sudo -n ip addr add 192.168.71.140/26 dev ${OAI_CN5G_BRIDGE_IF}`,
-      `ip -4 addr show dev ${OAI_CN5G_BRIDGE_IF}`,
-      'docker ps --format "{{.Names}} {{.Status}}" | grep oai-cn5g-minipc || true',
-    ].join('\n'), 120000);
+    const coreStart = await sshChecked(FIRECELL, restartSplitCoreCmd(), 120000);
+    appendEvidence(dir, 'logs/core-compose-start.log', coreStart);
+    const core = await waitForSplitCoreReady();
     await showLines(core);
     appendEvidence(dir, 'logs/core-start.log', core);
     if (!/192\.168\.71\.129/i.test(core) || !/192\.168\.71\.140/i.test(core) || !/healthy|Up/i.test(core)) {
@@ -1923,7 +2006,7 @@ async function validateSingleCuQuectelBackhaul() {
     gate.routes = true;
 
     printStep(3, 7, 'Refresh WireGuard tunnel');
-    const wg = await ensureWireGuard(minipc.host, quectel);
+    const wg = await ensureWireGuard(minipc.host, quectel, { restart: false });
     await showLines(wg.minipc);
     await showLines(wg.firecell);
     appendEvidence(dir, 'system-status/wireguard.txt', `${wg.minipc}\n\n${wg.firecell}`);
