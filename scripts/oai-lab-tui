@@ -44,15 +44,48 @@ try {
   // ignore if file does not exist or cannot be read
 }
 
-const FIRECELL = process.env.CU_HOST || 'serber@10.76.170.38';
-const MINIPC = process.env.NRUE_HOST || 'serber@10.76.170.100';
-const MINIPC_DYNAMIC_CANDIDATES = [
+const DEFAULT_FIRECELL_HOST = 'serber@10.76.170.38';
+const DEFAULT_MINIPC_HOST = 'serber@10.76.170.100';
+const DEFAULT_PI_HOST = 'serber-pi';
+const DEFAULT_PI_IP = '10.76.170.18';
+const DEFAULT_LAB_CONFIGS = {
+  minipc: {
+    label: 'serber-minipc + serber-firecell',
+    firecellHost: DEFAULT_FIRECELL_HOST,
+    duHost: DEFAULT_MINIPC_HOST,
+    duLabel: 'serber-minipc',
+    duConfName: 'gnb-minipc.conf',
+    duRuntimeConf: '/tmp/oai-tui-gnb-minipc-ethernet-runtime.conf',
+  },
+  pi: {
+    label: 'serber-pi + serber-firecell',
+    firecellHost: DEFAULT_FIRECELL_HOST,
+    duHost: DEFAULT_PI_HOST,
+    duLabel: 'serber-pi',
+    duConfName: 'gnb-pi.conf',
+    duRuntimeConf: '/tmp/oai-tui-gnb-pi-ethernet-runtime.conf',
+  },
+};
+const BASE_DU_DISCOVERY_CANDIDATES = [
   '-o HostKeyAlias=10.76.170.109 serber@serber-minipc.kaust.edu.sa',
   'serber-minipc',
   'serber@serber-minipc',
   'serber@10.85.168.144',
+  DEFAULT_MINIPC_HOST,
+  DEFAULT_PI_HOST,
+  `serber@${DEFAULT_PI_IP}`,
 ];
-const PI = 'serber-pi';
+let activeLabConfig = {
+  label: 'current environment/default',
+  firecellHost: process.env.CU_HOST || DEFAULT_FIRECELL_HOST,
+  duHost: process.env.DU_HOST || process.env.NRUE_HOST || DEFAULT_MINIPC_HOST,
+  duLabel: process.env.DU_LABEL || 'serber-minipc',
+  duConfName: process.env.DU_CONF_NAME || 'gnb-minipc.conf',
+  duRuntimeConf: process.env.DU_ETHERNET_RUNTIME_CONF || '/tmp/oai-tui-gnb-minipc-ethernet-runtime.conf',
+};
+let FIRECELL = activeLabConfig.firecellHost;
+let MINIPC = activeLabConfig.duHost;
+let PI = process.env.PI_HOST || DEFAULT_PI_HOST;
 const OAI_PC = 'oai-pc';
 const OAI_PC_IP = '10.76.170.90';
 
@@ -61,8 +94,8 @@ const CU_CN_COMPOSE = 'docker-compose-minipc.yaml';
 const CU_OAI = '/home/serber/cu-du-minipc-backhaul/source/openairinterface5g';
 const DU_OAI = '/home/serber/cu-du/source/openairinterface5g';
 const CU_CONF = `${CU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu-minipc.conf`;
-const DU_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-minipc.conf`;
-const DU_ETHERNET_RUNTIME_CONF = '/tmp/oai-tui-gnb-minipc-ethernet-runtime.conf';
+let DU_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${activeLabConfig.duConfName}`;
+let DU_ETHERNET_RUNTIME_CONF = activeLabConfig.duRuntimeConf;
 const CU_SIB8 = `${CU_OAI}/sib8.conf`;
 const DU_SIB8 = `${DU_OAI}/sib8.conf`;
 const CU_LOG = '/tmp/oai-cu-ethernet.log';
@@ -99,7 +132,7 @@ const FIRECELL_DONOR_ATT_TX = process.env.FIRECELL_DONOR_ATT_TX || '24';
 
 const MONO_CN = '/home/serber/monolithic/oai-cn5g';
 const MONO_OAI = '/home/serber/monolithic/openairinterface5g';
-const MONO_HOST = FIRECELL;
+let MONO_HOST = FIRECELL;
 const MONO_CONF = `${MONO_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.usrpb210.conf`;
 const MONO_SIB8 = `${MONO_OAI}/sib8.conf`;
 const MONO_LOG = '/tmp/oai-mono-gnb.log';
@@ -169,6 +202,49 @@ function quoteForSsh(cmd) {
 
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
+function uniqueValues(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function sshTargetFromAddress(address) {
+  const value = String(address || '').trim();
+  if (!value) return '';
+  if (value.includes('@') || value.startsWith('-o ')) return value;
+  return `serber@${value}`;
+}
+
+function firecellAddress() {
+  return FIRECELL.split('@').pop().trim();
+}
+
+function formatLabConfig(config = activeLabConfig) {
+  return [
+    `Core/CU serber-firecell: ${config.firecellHost}`,
+    `DU/radio ${config.duLabel}: ${config.duHost}`,
+    `DU startup config: ${config.duConfName}`,
+  ].join('\n    ');
+}
+
+function applyLabConfig(config) {
+  activeLabConfig = { ...activeLabConfig, ...config };
+  FIRECELL = activeLabConfig.firecellHost;
+  MINIPC = activeLabConfig.duHost;
+  if (activeLabConfig.duLabel === 'serber-pi') PI = activeLabConfig.duHost;
+  MONO_HOST = FIRECELL;
+  DU_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${activeLabConfig.duConfName}`;
+  DU_ETHERNET_RUNTIME_CONF = activeLabConfig.duRuntimeConf;
+  process.env.CU_HOST = FIRECELL;
+  process.env.DU_HOST = MINIPC;
+}
+
+function duDiscoveryCandidates() {
+  return uniqueValues([
+    activeLabConfig.duHost,
+    activeLabConfig.duLabel,
+    ...BASE_DU_DISCOVERY_CANDIDATES,
+  ]);
 }
 
 function execLocal(cmd, timeout = 60000) {
@@ -355,29 +431,29 @@ async function discoverMinipcTarget() {
     'ip -4 -o addr show scope global',
   ].join('\n');
 
-  for (const candidate of MINIPC_DYNAMIC_CANDIDATES) {
+  for (const candidate of duDiscoveryCandidates()) {
     const out = await sshLoose(candidate, discoveryCmd, 12000);
-    if (!out.ok || !/hostname=.*minipc|serber-minipc/i.test(out.combined)) continue;
+    if (!out.ok || !/hostname=.*(?:minipc|pi)/i.test(out.combined)) continue;
     const route = out.combined.match(/route_to_firecell=(.*)/)?.[1] || '';
     const { dev, src } = parseRouteDevSrc(route);
     return {
       host: candidate,
       discoveredVia: candidate,
-      hostname: out.combined.match(/hostname=(.*)/)?.[1]?.trim() || 'serber-minipc',
+      hostname: out.combined.match(/hostname=(.*)/)?.[1]?.trim() || activeLabConfig.duLabel,
       mgmtIface: dev,
       mgmtIp: src,
       raw: out.combined,
     };
   }
 
-  const manual = await prompt('serber-minipc SSH target was not auto-discovered; enter SSH target');
-  if (!manual) throw new Error('serber-minipc SSH target is required for the caged Quectel scenario');
+  const manual = await prompt(`${activeLabConfig.duLabel} SSH target was not auto-discovered; enter SSH target`);
+  if (!manual) throw new Error(`${activeLabConfig.duLabel} SSH target is required for this scenario`);
   const out = await sshChecked(manual, discoveryCmd, 12000);
   const route = out.match(/route_to_firecell=(.*)/)?.[1] || '';
   const { dev, src } = parseRouteDevSrc(route);
   return {
     host: manual,
-    hostname: out.match(/hostname=(.*)/)?.[1]?.trim() || 'serber-minipc',
+    hostname: out.match(/hostname=(.*)/)?.[1]?.trim() || activeLabConfig.duLabel,
     mgmtIface: dev,
     mgmtIp: src,
     raw: out,
@@ -1147,7 +1223,7 @@ async function checkSsh(host, label) {
 async function hardStopSplit(minipcHost = MINIPC) {
   printInfo('Stopping known CU/donor softmodems on serber-firecell by config path...');
   await sshLoose(FIRECELL, stopSoftmodemsByConfigsCmd([CU_CONF, CU_QUECTEL_CONF, FIRECELL_DONOR_DU_CONF, FIRECELL_DONOR_GNB_RUNTIME_CONF, FIRECELL_DONOR_PROD_CONF, MONO_CONF]), 15000);
-  printInfo('Stopping known DU softmodems on serber-minipc by config path...');
+  printInfo(`Stopping known DU softmodems on ${activeLabConfig.duLabel} by config path...`);
   await sshLoose(minipcHost, stopSoftmodemsByConfigsCmd([DU_CONF, DU_ETHERNET_RUNTIME_CONF, DU_QUECTEL_CONF]), 15000);
   printSuccess('Known softmodem processes stopped');
 }
@@ -1243,14 +1319,14 @@ async function startEthernetRollback() {
   let minipc = null;
 
   try {
-    printStep(1, 12, 'Connect to lab hosts and discover live minipc');
+    printStep(1, 12, `Connect to lab hosts and discover live ${activeLabConfig.duLabel}`);
     if (!await checkSsh(FIRECELL, 'serber-firecell')) throw new Error('serber-firecell SSH failed');
     minipc = await discoverMinipcTarget();
-    printSuccess(`serber-minipc via ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
+    printSuccess(`${activeLabConfig.duLabel} via ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
     appendEvidence(dir, 'system-status/minipc-discovery.txt', minipc.raw);
     const governors = await Promise.all([
       enforcePerformanceGovernors(FIRECELL, 'serber-firecell'),
-      enforcePerformanceGovernors(minipc.host, 'serber-minipc'),
+      enforcePerformanceGovernors(minipc.host, activeLabConfig.duLabel),
     ]);
     appendEvidence(dir, 'system-status/cpu-governors.txt', governors.join('\n\n'));
     gate.hosts = true;
@@ -1300,7 +1376,7 @@ async function startEthernetRollback() {
     if (!cuProc.includes('nr-softmodem')) throw new Error('CU process did not remain running');
     gate.cu = true;
 
-    printStep(9, 12, 'Start DU on serber-minipc');
+    printStep(9, 12, `Start DU on ${activeLabConfig.duLabel}`);
     const duStart = await sshChecked(minipc.host, [
       stopSoftmodemByConfigCmd(DU_CONF),
       stopSoftmodemByConfigCmd(DU_ETHERNET_RUNTIME_CONF),
@@ -1359,10 +1435,10 @@ async function startMonolithic() {
   const gate = {};
   let minipc = null;
   try {
-    printStep(1, 8, 'Connect to firecell and discover live minipc');
+    printStep(1, 8, `Connect to firecell and discover live ${activeLabConfig.duLabel}`);
     if (!await checkSsh(MONO_HOST, 'serber-firecell')) throw new Error('serber-firecell SSH failed');
     minipc = await discoverMinipcTarget();
-    printSuccess(`serber-minipc via ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
+    printSuccess(`${activeLabConfig.duLabel} via ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
     appendEvidence(dir, 'system-status/minipc-discovery.txt', minipc.raw);
     gate.hosts = true;
 
@@ -1431,7 +1507,7 @@ async function statusView() {
   const minipc = await discoverMinipcTarget();
   const checks = [
     ['serber-firecell host', FIRECELL, 'hostname; ip -br addr | sed -n "1,12p"; pgrep -a nr-softmodem || true; docker ps --format "{{.Names}}: {{.Status}}" | head -15'],
-    [`serber-minipc host (${minipc.host})`, minipc.host, 'hostname; ip -br addr | sed -n "1,12p"; pgrep -a nr-softmodem || true; if pgrep -x nr-softmodem >/dev/null; then echo "USRP check: skipped because nr-softmodem is running and may own the B210"; else uhd_find_devices 2>&1 | tail -20 || true; fi'],
+    [`${activeLabConfig.duLabel} host (${minipc.host})`, minipc.host, 'hostname; ip -br addr | sed -n "1,12p"; pgrep -a nr-softmodem || true; if pgrep -x nr-softmodem >/dev/null; then echo "USRP check: skipped because nr-softmodem is running and may own the B210"; else uhd_find_devices 2>&1 | tail -20 || true; fi'],
   ];
   for (const [label, host, cmd] of checks) {
     console.log(`\n  ${BOLD}${label}${RESET}`);
@@ -1521,7 +1597,7 @@ async function updateAllTuiSib8Configs(body) {
       ],
     },
     {
-      label: 'live minipc split/caged DU',
+      label: `live ${activeLabConfig.duLabel} split/caged DU`,
       host: minipc.host,
       paths: [
         DU_SIB8,
@@ -1738,13 +1814,19 @@ async function stopAllConfigs(minipcHost = null) {
   // Step 7: Confirm management access
   printStep(currentStep, totalSteps, 'Confirming management access');
   await checkSsh(FIRECELL, 'serber-firecell');
-  await checkSsh(target, 'serber-minipc');
+  await checkSsh(target, activeLabConfig.duLabel);
   await prompt('Press Enter to continue');
 }
 
 async function launchSingleCuQuectelBackhaul() {
   console.clear();
   printHeader('Launch Caged Quectel F1 Backhaul, Monolithic Donor');
+  if (activeLabConfig.duLabel !== 'serber-minipc') {
+    printError('Caged Quectel F1 backhaul is validated only for serber-minipc with the Quectel modem.');
+    printWarn('Use the configuration screen to select serber-minipc + serber-firecell before launching this workflow.');
+    await prompt('Press Enter to continue');
+    return;
+  }
   const dir = runDir('caged_quectel_f1_backhaul_start');
   printInfo(`Evidence directory: ${dir}`);
   printInfo('This scenario uses one 5GC and one CU on firecell, a monolithic firecell donor gNB for the Quectel modem, and a caged minipc access DU over WireGuard. PASS is packet-gated.');
@@ -1972,6 +2054,12 @@ async function launchSingleCuQuectelBackhaul() {
 async function validateSingleCuQuectelBackhaul() {
   console.clear();
   printHeader('Validate Caged Quectel F1 Backhaul, Monolithic Donor');
+  if (activeLabConfig.duLabel !== 'serber-minipc') {
+    printError('Caged Quectel F1 backhaul validation is available only for serber-minipc with the Quectel modem.');
+    printWarn('Use the configuration screen to select serber-minipc + serber-firecell before validating this workflow.');
+    await prompt('Press Enter to continue');
+    return;
+  }
   const dir = runDir('caged_quectel_f1_backhaul_validate');
   printInfo(`Evidence directory: ${dir}`);
   const gate = {};
@@ -2100,6 +2188,44 @@ async function getRunningConfig() {
   }
 }
 
+async function configureLabBeforeMenu() {
+  console.clear();
+  printHeader('Lab Configuration');
+  console.log('\n  Current config:');
+  console.log(`    ${formatLabConfig()}`);
+  const running = await getRunningConfig();
+  console.log(`\n  Detected running OAI config on firecell: ${running}`);
+
+  if (await confirm('Use current config?', true)) return;
+
+  const selection = await choose('Choose lab config:', [
+    { name: 'Default serber-minipc + serber-firecell', value: 'minipc' },
+    { name: 'Default serber-pi + serber-firecell', value: 'pi' },
+    { name: 'Enter new serber-firecell and serber-pi IP addresses', value: 'custom-pi' },
+  ]);
+
+  if (selection === 'minipc') {
+    applyLabConfig(DEFAULT_LAB_CONFIGS.minipc);
+  } else if (selection === 'pi') {
+    applyLabConfig(DEFAULT_LAB_CONFIGS.pi);
+  } else {
+    const firecellIp = await prompt('serber-firecell IP address', firecellAddress() || '10.76.170.38');
+    const piIp = await prompt('serber-pi IP address', DEFAULT_PI_IP);
+    applyLabConfig({
+      label: 'custom serber-pi + serber-firecell',
+      firecellHost: sshTargetFromAddress(firecellIp),
+      duHost: sshTargetFromAddress(piIp),
+      duLabel: 'serber-pi',
+      duConfName: 'gnb-pi.conf',
+      duRuntimeConf: '/tmp/oai-tui-gnb-pi-ethernet-runtime.conf',
+    });
+  }
+
+  console.log('\n  Selected config:');
+  console.log(`    ${formatLabConfig()}`);
+  await prompt('Press Enter to continue');
+}
+
 async function mainMenu() {
   while (true) {
     console.clear();
@@ -2107,8 +2233,8 @@ async function mainMenu() {
     console.log('\n  Demo targets:');
     console.log(`    Core/CU: ${FIRECELL}`);
     console.log(`    Monolithic reference: ${FIRECELL}`);
-    console.log('    DU/USRP: discovered live for Ethernet and caged Quectel');
-    console.log('\n  Ethernet and caged Quectel discover the live minipc management path each run.\n');
+    console.log(`    DU/USRP: ${activeLabConfig.duLabel} (${MINIPC}), discovered live for Ethernet`);
+    console.log('\n  Ethernet discovers the selected DU path each run. Quectel launch/validation is guarded to serber-minipc.\n');
     const running = await getRunningConfig();
     let statusStr = running;
     if (running === 'none') {
@@ -2120,7 +2246,7 @@ async function mainMenu() {
     }
     console.log(`  currently running config: ${statusStr}\n`);
     const action = await choose('What would you like to do?', [
-      { name: 'Launch Ethernet CU/DU split: firecell CU + live minipc DU', value: 'start-split' },
+      { name: `Launch Ethernet CU/DU split: firecell CU + live ${activeLabConfig.duLabel} DU`, value: 'start-split' },
       { name: 'Launch monolithic firecell core + gNB', value: 'start-mono' },
       { name: 'Launch caged Quectel F1 backhaul, monolithic donor', value: 'start-caged-quectel' },
       { name: 'Validate caged Quectel F1 backhaul, monolithic donor', value: 'validate-caged-quectel' },
@@ -2149,7 +2275,7 @@ async function cli() {
     printHeader('OAI Lab TUI Verification');
     await checkSsh(FIRECELL, 'serber-firecell');
     const minipc = await discoverMinipcTarget();
-    printSuccess(`serber-minipc: ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
+    printSuccess(`${activeLabConfig.duLabel}: ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
     process.exit(0);
   }
   if (arg === '--start-ethernet') {
@@ -2172,6 +2298,7 @@ async function cli() {
     await stopAllConfigs();
     process.exit(0);
   }
+  await configureLabBeforeMenu();
   await mainMenu();
   rl.close();
 }

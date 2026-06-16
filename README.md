@@ -46,11 +46,17 @@ Run `./scripts/oai-lab-tui` to launch and inspect the deployed lab modes:
 - guided phone throughput entry and timestamped local run records;
 - read-only discovery for Raspberry Pi DU, `oai-pc` DU, and nrUE internet-through-radio workflows until they are validated.
 
-The TUI is hard-coded for the current professor-demo lab targets:
+The TUI first shows the active lab config and asks whether to use it. Operators
+can keep the current environment/default config, choose the known
+`serber-firecell` + `serber-minipc` or `serber-firecell` + `serber-pi` layouts,
+or enter custom firecell/Pi IP addresses.
+
+Default professor-demo lab targets:
 
 ```text
 serber-firecell = serber@10.76.170.38
 serber-minipc   = serber@10.76.170.100
+serber-pi       = serber-pi
 ```
 
 Monolithic reference startup is pinned to `serber-firecell` to match the

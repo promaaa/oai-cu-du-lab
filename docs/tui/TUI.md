@@ -10,14 +10,19 @@ The console is a dependency-free Node prompt TUI modeled after the working
 `5g-tui` monolithic launcher. It uses boxed headers, numbered menus, and
 step-by-step status output instead of the previous curses scroll screen.
 
-The monolithic action is intentionally hard-coded for the professor-demo lab.
-The Ethernet CU/DU and Quectel actions discover the live `serber-minipc`
-management path at runtime:
+Before the main menu, the TUI shows the active lab configuration and any
+detected running OAI config on `serber-firecell`. The operator can keep the
+current environment/default config or choose one of the known layouts:
 
 ```text
-serber-firecell = serber@10.76.170.38
-serber-minipc   = discovered live
+serber-firecell + serber-minipc = serber@10.76.170.38 + serber@10.76.170.100
+serber-firecell + serber-pi     = serber@10.76.170.38 + serber-pi
 ```
+
+The same screen can also build a custom `serber-firecell` + `serber-pi`
+configuration from operator-supplied IP addresses. Ethernet CU/DU actions then
+discover the selected DU management path at runtime. Quectel actions remain
+guarded to the validated `serber-minipc` modem workflow.
 
 ## Quick Check
 
@@ -32,7 +37,7 @@ operation. That includes:
 
 - firecell monolithic OAI;
 - firecell split/caged CU OAI;
-- live minipc split/caged DU OAI;
+- live selected-DU split/caged DU OAI;
 - compatibility copies under the related scenario roots and `conf/`
   directories.
 
@@ -72,11 +77,11 @@ operator menu until they have current validation evidence.
 
 ## Ethernet CU/DU Rollback Baseline
 
-The Ethernet startup action discovers the live `serber-minipc` SSH target,
-management source IP, and Ethernet interface before launching the rollback
-baseline. It builds `/tmp/oai-tui-gnb-minipc-ethernet-runtime.conf` from the
-checked-in DU config on the minipc and patches only the runtime copy with the
-live `local_n_address`.
+The Ethernet startup action discovers the selected DU SSH target, management
+source IP, and Ethernet interface before launching the rollback baseline. It
+builds a temporary `/tmp/oai-tui-gnb-*-ethernet-runtime.conf` from the selected
+checked-in DU config and patches only the runtime copy with the live
+`local_n_address`.
 
 The TUI gates the Ethernet run in this order:
 
@@ -117,7 +122,7 @@ The monolithic firecell action is also gated:
 ./scripts/oai-lab-tui --start-mono
 ```
 
-Before startup, the TUI discovers the live minipc, stops split CU/DU
+Before startup, the TUI discovers the selected DU, stops split CU/DU
 softmodems, removes the temporary `oai-pc` F1 isolation rule, and stops the
 split-core containers so the monolithic `oai-*` core is the only active core.
 
@@ -128,7 +133,7 @@ The monolithic scenario prints **PASS** only after these gates pass:
 - Monolithic gNB process remains running.
 - AMF/gNB NG setup is visible.
 - SIB8/PWS and radio sync are visible in the monolithic gNB log.
-- No live minipc DU, split-core containers, Ethernet split F1, or
+- No live selected-DU process, split-core containers, Ethernet split F1, or
   `wg-quectel-f1` F1 traffic remains visible.
 
 The Raspberry Pi DU, `oai-pc` DU, and nrUE internet-through-radio workflows are
