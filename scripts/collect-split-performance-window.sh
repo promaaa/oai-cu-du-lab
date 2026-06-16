@@ -28,14 +28,23 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAMP="$(date -u +%Y%m%d_%H%M%S)"
 OUT_DIR="$REPO_ROOT/experiments/${STAMP}_split_performance_window"
 
-FIRECELL="serber@10.76.170.38"
-MINIPC="serber@10.76.170.100"
-FIRECELL_IP="10.76.170.38"
+if [[ -f "$REPO_ROOT/conf/local/lab.env" ]]; then
+  # Sourcing lab.env which contains CU_HOST, DU_HOST, etc.
+  # Ignore unbound variable checks for variables set in lab.env
+  set +u
+  source "$REPO_ROOT/conf/local/lab.env"
+  set -u
+fi
 
-CU_OAI="/home/serber/cu-du-minipc-backhaul/source/openairinterface5g"
-DU_OAI="/home/serber/cu-du/source/openairinterface5g"
-CU_LOG="/tmp/oai-cu-ethernet.log"
-DU_LOG="/tmp/oai-du-ethernet.log"
+FIRECELL="${CU_HOST:-serber@10.76.170.38}"
+MINIPC="${DU_HOST:-serber-pi}"
+FIRECELL_IP="${CU_HOST##*@}"
+FIRECELL_IP="${FIRECELL_IP:-10.76.170.38}"
+
+CU_OAI="${CU_OAI_DIR:-/home/serber/cu-du-minipc-backhaul/source/openairinterface5g}"
+DU_OAI="${DU_OAI_DIR:-/home/serber/cu-du/source/openairinterface5g}"
+CU_LOG="${CU_LOG:-/tmp/oai-cu-ethernet.log}"
+DU_LOG="${DU_LOG:-/tmp/oai-du-ethernet.log}"
 
 mkdir -p "$OUT_DIR"/{logs,measurements,system-status}
 
@@ -84,7 +93,7 @@ EOF
 link_counters_cmd() {
   cat <<'EOF'
 set +e
-for iface in enp2s0 enp4s0 wlp3s0 oai-cn5g test-gre wwan0; do
+for iface in eth0 enp6s0 enp2s0 enp4s0 wlp3s0 oai-cn5g test-gre wwan0; do
   if ip link show "$iface" >/dev/null 2>&1; then
     echo "--- ip -s link show $iface ---"
     ip -s link show "$iface"
