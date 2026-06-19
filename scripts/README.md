@@ -12,6 +12,7 @@ Useful non-interactive checks:
 
 ```bash
 ./scripts/oai-lab-tui --verify
+./scripts/oai-lab-tui --experimental-b210
 ```
 
 Read-only split performance evidence window:
@@ -42,6 +43,10 @@ monolithic demo workflow. Ethernet rollback startup runs Core/CU on
 `serber-firecell`, DU/radio on the selected DU, stops the firecell monolithic
 core first, and temporarily blocks the stale `oai-pc` F1 peer (`10.76.170.90`).
 Quectel launch/validation remains guarded to the validated minipc modem path.
+The experimental B210 action is a temporary fail-closed probe: it suppresses
+Quectel/WireGuard, records B210 and packet evidence, and does not mark the
+single-B210 RF-backhaul/access topology as working until the OAI dual-role
+architecture is proven.
 
 Keep it free of passwords, subscriber values, generated configs, raw logs, and
 private keys. Runtime evidence stays in ignored `experiments/20*/` directories.

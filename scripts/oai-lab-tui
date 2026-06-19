@@ -117,6 +117,8 @@ const CU_QUECTEL_CONF = `${CU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu-m
 const DU_QUECTEL_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-minipc-quectel-backhaul.conf`;
 const CU_QUECTEL_LOG = process.env.CU_QUECTEL_LOG || '/tmp/oai-cu-quectel.log';
 const DU_QUECTEL_LOG = process.env.DU_QUECTEL_LOG || '/tmp/oai-du-quectel.log';
+const EXPERIMENTAL_B210_LOG = process.env.EXPERIMENTAL_B210_LOG || '/tmp/oai-experimental-b210-rf-backhaul.log';
+const EXPERIMENTAL_B210_RUNTIME_CONF = process.env.EXPERIMENTAL_B210_RUNTIME_CONF || '/tmp/oai-tui-experimental-b210-rf-backhaul-runtime.conf';
 const LOCAL_DONOR_F1_CU_IP = '127.0.0.1';
 const LOCAL_DONOR_F1_DU_IP = '127.0.0.2';
 const ACCESS_B210_SERIAL = '8002816';
@@ -454,6 +456,54 @@ async function discoverMinipcTarget() {
   return {
     host: manual,
     hostname: out.match(/hostname=(.*)/)?.[1]?.trim() || activeLabConfig.duLabel,
+    mgmtIface: dev,
+    mgmtIp: src,
+    raw: out,
+  };
+}
+
+async function discoverSerberMinipcOnly() {
+  const discoveryCmd = [
+    'set -e',
+    'echo "hostname=$(hostname)"',
+    `echo "route_to_firecell=$(ip route get ${FIRECELL.split('@').pop()} 2>/dev/null || true)"`,
+    'echo "--- ip -4 -o addr ---"',
+    'ip -4 -o addr show scope global',
+  ].join('\n');
+  const candidates = uniqueValues([
+    DEFAULT_MINIPC_HOST,
+    '-o HostKeyAlias=10.76.170.109 serber@serber-minipc.kaust.edu.sa',
+    'serber-minipc',
+    'serber@serber-minipc',
+    'serber@10.85.168.144',
+  ]);
+
+  for (const candidate of candidates) {
+    const out = await sshLoose(candidate, discoveryCmd, 12000);
+    if (!out.ok || !/hostname=.*minipc/i.test(out.combined)) continue;
+    const route = out.combined.match(/route_to_firecell=(.*)/)?.[1] || '';
+    const { dev, src } = parseRouteDevSrc(route);
+    return {
+      host: candidate,
+      discoveredVia: candidate,
+      hostname: out.combined.match(/hostname=(.*)/)?.[1]?.trim() || 'serber-minipc',
+      mgmtIface: dev,
+      mgmtIp: src,
+      raw: out.combined,
+    };
+  }
+
+  const manual = await prompt('serber-minipc SSH target was not auto-discovered; enter SSH target');
+  if (!manual) throw new Error('serber-minipc SSH target is required for the experimental single-B210 mode');
+  const out = await sshChecked(manual, discoveryCmd, 12000);
+  if (!/hostname=.*minipc/i.test(out)) {
+    throw new Error(`Refusing experimental single-B210 mode: ${manual} did not identify as serber-minipc`);
+  }
+  const route = out.match(/route_to_firecell=(.*)/)?.[1] || '';
+  const { dev, src } = parseRouteDevSrc(route);
+  return {
+    host: manual,
+    hostname: out.match(/hostname=(.*)/)?.[1]?.trim() || 'serber-minipc',
     mgmtIface: dev,
     mgmtIp: src,
     raw: out,
@@ -1224,7 +1274,7 @@ async function hardStopSplit(minipcHost = MINIPC) {
   printInfo('Stopping known CU/donor softmodems on serber-firecell by config path...');
   await sshLoose(FIRECELL, stopSoftmodemsByConfigsCmd([CU_CONF, CU_QUECTEL_CONF, FIRECELL_DONOR_DU_CONF, FIRECELL_DONOR_GNB_RUNTIME_CONF, FIRECELL_DONOR_PROD_CONF, MONO_CONF]), 15000);
   printInfo(`Stopping known DU softmodems on ${activeLabConfig.duLabel} by config path...`);
-  await sshLoose(minipcHost, stopSoftmodemsByConfigsCmd([DU_CONF, DU_ETHERNET_RUNTIME_CONF, DU_QUECTEL_CONF]), 15000);
+  await sshLoose(minipcHost, stopSoftmodemsByConfigsCmd([DU_CONF, DU_ETHERNET_RUNTIME_CONF, DU_QUECTEL_CONF, EXPERIMENTAL_B210_RUNTIME_CONF]), 15000);
   printSuccess('Known softmodem processes stopped');
 }
 
@@ -1529,6 +1579,7 @@ async function logsView() {
     ['CU caged Quectel', FIRECELL, CU_QUECTEL_LOG],
     ['Firecell monolithic donor gNB', FIRECELL, FIRECELL_DONOR_GNB_LOG],
     [`Minipc access DU Quectel (${minipc.host})`, minipc.host, DU_QUECTEL_LOG],
+    [`Experimental single-B210 (${minipc.host})`, minipc.host, EXPERIMENTAL_B210_LOG],
     ['Monolithic gNB', MONO_HOST, MONO_LOG],
   ];
   for (const [label, host, file] of logs) {
@@ -2165,6 +2216,213 @@ async function quectelShowcase() {
   await prompt('Press Enter to continue');
 }
 
+async function suppressQuectelForB210Experiment(minipcHost) {
+  const cmd = [
+    'set -euo pipefail',
+    `sudo -n systemctl stop wg-quick@${WG_IF} 2>/dev/null || true`,
+    `sudo -n ip link set ${WG_IF} down 2>/dev/null || true`,
+    `sudo -n ip route del ${FIRECELL_WG_ENDPOINT_IP}/32 2>/dev/null || true`,
+    `sudo -n ip route del ${WG_CU_IP}/32 2>/dev/null || true`,
+    `sudo -n ip route del ${WG_DU_IP}/32 2>/dev/null || true`,
+    `sudo -n ip rule del from ${WG_DU_IP} lookup 250 priority 250 2>/dev/null || true`,
+    `sudo -n ip rule del from all to ${WG_DU_IP} lookup 9999 2>/dev/null || true`,
+    `sudo -n ip rule del from ${WG_DU_IP} lookup 9999 2>/dev/null || true`,
+    'for dev in wwan0 usb0 rmnet_data0; do',
+    '  if ip link show "$dev" >/dev/null 2>&1; then',
+    '    sudo -n ip route flush dev "$dev" 2>/dev/null || true',
+    '    sudo -n ip link set "$dev" down 2>/dev/null || true',
+    '  fi',
+    'done',
+    'echo "--- Quectel interfaces after suppression ---"',
+    'ip -br addr show wwan0 usb0 rmnet_data0 2>/dev/null || true',
+    'echo "--- WireGuard state after suppression ---"',
+    `ip -br addr show ${WG_IF} 2>/dev/null || true`,
+    `sudo -n wg show ${WG_IF} 2>/dev/null || true`,
+    'echo "--- residual routes/rules ---"',
+    `ip route show | grep -E '${WG_IF}|wwan0|usb0|rmnet|${FIRECELL_WG_ENDPOINT_IP}|${WG_CU_IP}|${WG_DU_IP}' || true`,
+    `ip rule show | grep -E '${WG_DU_IP}|250|9999' || true`,
+    'echo "--- Quectel control devices still physically present, not used ---"',
+    'ls -l /dev/cdc-wdm* /dev/ttyUSB* 2>/dev/null || true',
+  ].join('\n');
+  const [minipc, firecell] = await Promise.all([
+    sshLoose(minipcHost, cmd, 25000),
+    sshLoose(FIRECELL, [
+      `sudo -n systemctl stop wg-quick@${WG_IF} 2>/dev/null || true`,
+      `sudo -n ip link set ${WG_IF} down 2>/dev/null || true`,
+      `sudo -n ip route del ${WG_DU_IP}/32 2>/dev/null || true`,
+      `ip -br addr show ${WG_IF} 2>/dev/null || true`,
+      `sudo -n wg show ${WG_IF} 2>/dev/null || true`,
+      `ip route show | grep -E '${WG_IF}|${WG_DU_IP}' || true`,
+    ].join('\n'), 20000),
+  ]);
+  return sanitizeCapture([
+    '=== minipc Quectel/WireGuard suppression ===',
+    minipc.combined || '<no minipc output>',
+    '=== firecell WireGuard suppression ===',
+    firecell.combined || '<no firecell output>',
+  ].join('\n'));
+}
+
+async function probeB210ExperimentHardware(minipcHost) {
+  const cmd = [
+    'set -euo pipefail',
+    'hostname',
+    'date -Is',
+    `cd ${DU_OAI} && git rev-parse HEAD 2>/dev/null || true`,
+    'pgrep -a nr-softmodem || true',
+    'if pgrep -x nr-softmodem >/dev/null; then',
+    '  echo "uhd_probe_skipped=nr-softmodem owns the radio"',
+    'else',
+    `  (uhd_find_devices --args serial=${ACCESS_B210_SERIAL} 2>&1 || sudo -n uhd_find_devices --args serial=${ACCESS_B210_SERIAL} 2>&1 || true)`,
+    `  (uhd_usrp_probe --args serial=${ACCESS_B210_SERIAL} 2>&1 || sudo -n uhd_usrp_probe --args serial=${ACCESS_B210_SERIAL} 2>&1 || true) | sed -n '1,260p'`,
+    'fi',
+    'echo "--- local candidate configs ---"',
+    `find ${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF -maxdepth 1 -type f \\( -name '*b210*' -o -name '*du*' -o -name '*nrue*' -o -name '*sa*' \\) 2>/dev/null | sort | head -80`,
+    'echo "--- access DU config RF/F1 lines ---"',
+    `grep -En 'gNB_ID|gNB_DU_ID|tracking_area_code|physCellId|nr_cellid|sdr_addrs|tx_num_channels|rx_num_channels|nb_tx|nb_rx|num_cc|att_tx|att_rx|local_n_address|remote_n_address|local_n_if_name' ${DU_CONF} 2>/dev/null | head -100 || true`,
+  ].join('\n');
+  const out = await sshLoose(minipcHost, cmd, 45000);
+  return sanitizeCapture(out.combined || '');
+}
+
+function analyzeB210ExperimentReadiness(probeText) {
+  const text = stripAnsi(probeText);
+  const detected = /B210|B200|type:\s*b200|serial:\s*8002816/i.test(text) || /uhd_probe_skipped=nr-softmodem owns the radio/i.test(text);
+  const twoTx = /TX Frontend 0|TX Channel: 0|Num TX channels:\s*2|2 tx/i.test(text) && /TX Frontend 1|TX Channel: 1|Num TX channels:\s*2|2 tx/i.test(text);
+  const twoRx = /RX Frontend 0|RX Channel: 0|Num RX channels:\s*2|2 rx/i.test(text) && /RX Frontend 1|RX Channel: 1|Num RX channels:\s*2|2 rx/i.test(text);
+  const oaiCommitPinned = text.includes('102965a669b9444857c27843ec8ce62780bf9d37');
+  return {
+    b210DetectedOrOwned: detected,
+    twoTxChainsVisible: twoTx,
+    twoRxChainsVisible: twoRx,
+    oaiCommitPinned,
+    hardBlocker: 'A USRP B210 provides two TX and two RX RF chains on one UHD device. That is enough for 2x2 MIMO, but it is not evidence that OAI can run an independent RF backhaul cell and an access DU cell at the same time on the same B210.',
+  };
+}
+
+async function validateB210NoQuectelPacketPlacement(dir, minipcHost, minipcMgmtIface, minipcMgmtIp) {
+  const firecellRoute = minipcMgmtIp ? await sshLoose(FIRECELL, `ip route get ${minipcMgmtIp}`, 10000) : { combined: '' };
+  const firecellEth = parseRouteDevSrc(firecellRoute.combined || '').dev || 'enp6s0';
+  const [minipcWg, firecellWg, minipcQuectel, minipcMgmt, firecellMgmt] = await Promise.all([
+    capturePacketGate(minipcHost, WG_IF, 'sctp or udp port 2153', 8, 5),
+    capturePacketGate(FIRECELL, WG_IF, 'sctp or udp port 2153', 8, 5),
+    capturePacketGate(minipcHost, 'wwan0', `udp port ${WG_PORT} or sctp or udp port 2153`, 8, 5),
+    minipcMgmtIface ? capturePacketGate(minipcHost, minipcMgmtIface, `host ${firecellAddress()} and (sctp or udp port 2153)`, 8, 5) : Promise.resolve(''),
+    minipcMgmtIp ? capturePacketGate(FIRECELL, firecellEth, `host ${minipcMgmtIp} and (sctp or udp port 2153)`, 8, 5) : Promise.resolve(''),
+  ]);
+  const evidence = [
+    `=== minipc ${WG_IF} no-F1 capture ===`, minipcWg || '<no packets>',
+    `=== firecell ${WG_IF} no-F1 capture ===`, firecellWg || '<no packets>',
+    '=== minipc wwan0 no-Quectel-backhaul capture ===', minipcQuectel || '<no packets>',
+    `=== minipc ${minipcMgmtIface || '<unknown>'} management capture ===`, minipcMgmt || '<no packets>',
+    `=== firecell ${firecellEth} management capture ===`, firecellMgmt || '<no packets>',
+  ].join('\n');
+  appendEvidence(dir, 'measurements/experimental-no-quectel-packet-check.txt', evidence);
+  return {
+    evidence,
+    noWireGuardF1: !hasPacketLines(minipcWg) && !hasPacketLines(firecellWg),
+    noQuectelTraffic: !hasPacketLines(minipcQuectel),
+  };
+}
+
+async function experimentalB210Mode() {
+  console.clear();
+  printHeader('Experimental Mode: Single B210 RF Backhaul');
+  if (activeLabConfig.duLabel !== 'serber-minipc') {
+    printWarn('Experimental single-B210 mode is scoped to serber-minipc; switching this action to the default minipc lab config.');
+    applyLabConfig(DEFAULT_LAB_CONFIGS.minipc);
+  }
+
+  const dir = runDir('experimental_single_b210_rf_backhaul');
+  printInfo(`Evidence directory: ${dir}`);
+  printWarn('This is not a rollback baseline. It suppresses Quectel/WireGuard and proves only the gates it can measure.');
+  const gate = {};
+  let minipc = null;
+
+  try {
+    printStep(1, 7, 'Discover live minipc and preserve rollback context');
+    minipc = await discoverSerberMinipcOnly();
+    printSuccess(`serber-minipc via ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
+    appendEvidence(dir, 'system-status/minipc-discovery.txt', minipc.raw);
+    const rollback = [
+      'rollback_target=Ethernet CU/DU with SIB8',
+      `cu_host=${FIRECELL}`,
+      `du_host=${minipc.host}`,
+      `ethernet_du_config=${DU_CONF}`,
+      `ethernet_du_runtime=${DU_ETHERNET_RUNTIME_CONF}`,
+      `rollback_command=./scripts/oai-lab-tui --rollback-caged-quectel or Stop the current config, then Launch Ethernet CU/DU split`,
+    ].join('\n');
+    appendEvidence(dir, 'system-status/rollback-context.txt', rollback);
+    gate.discovery = true;
+
+    printStep(2, 7, 'Stop stale softmodems and suppress Quectel/WireGuard paths');
+    await hardStopSplit(minipc.host);
+    const suppression = await suppressQuectelForB210Experiment(minipc.host);
+    await showLines(suppression);
+    appendEvidence(dir, 'system-status/quectel-suppression.txt', suppression);
+    gate.quectelSuppressed = true;
+
+    printStep(3, 7, 'Record OAI commit and B210 RF-channel capability');
+    const probe = await probeB210ExperimentHardware(minipc.host);
+    await showLines(probe);
+    appendEvidence(dir, 'system-status/b210-probe.txt', probe);
+    const readiness = analyzeB210ExperimentReadiness(probe);
+    appendEvidence(dir, 'system-status/architecture-readiness.json', JSON.stringify(readiness, null, 2));
+    if (!readiness.b210DetectedOrOwned) throw new Error('B210 serial 8002816 was not detected and no running softmodem explained ownership');
+    gate.b210 = true;
+    if (!readiness.oaiCommitPinned) {
+      printWarn('Could not confirm the DU OAI tree is at the pinned rollback commit from this probe.');
+    }
+
+    printStep(4, 7, 'Write temporary experimental runtime marker only');
+    const marker = [
+      '# Experimental single-B210 RF-backhaul/access marker',
+      '# Generated under /tmp by the TUI; not a production OAI config.',
+      '# Goal: prove whether one B210 can replace Quectel for backhaul while also serving the phone.',
+      `# Source rollback DU config: ${DU_CONF}`,
+      `# B210 serial: ${ACCESS_B210_SERIAL}`,
+      '# Status: launch blocked until an OAI-supported dual-role RF config is proven.',
+      '',
+    ].join('\n');
+    const markerOut = await sshChecked(minipc.host, `cat > ${EXPERIMENTAL_B210_RUNTIME_CONF} <<'EOF'\n${marker}EOF\nls -l ${EXPERIMENTAL_B210_RUNTIME_CONF}\ncat ${EXPERIMENTAL_B210_RUNTIME_CONF}`, 10000);
+    appendEvidence(dir, 'system-status/experimental-runtime-marker.txt', markerOut);
+    gate.runtimeMarker = true;
+
+    printStep(5, 7, 'Packet gate: confirm no Quectel/WireGuard F1 path is active');
+    const packet = await validateB210NoQuectelPacketPlacement(dir, minipc.host, minipc.mgmtIface, minipc.mgmtIp);
+    await showLines(packet.evidence);
+    if (!packet.noWireGuardF1 || !packet.noQuectelTraffic) {
+      throw new Error('Quectel suppression gate failed: WireGuard or wwan0 still showed F1/backhaul packets');
+    }
+    gate.packetNoQuectel = true;
+
+    printStep(6, 7, 'Architecture gate for requested RF backhaul plus access split');
+    const architectureNote = [
+      'requested_topology=single B210 on serber-minipc, Quectel suppressed, one RF pair for backhaul and one RF pair for Nothing Phone access',
+      'observed_hardware=B210 is one UHD device with two TX/RX chains, suitable for 2x2 MIMO evidence but not by itself proof of two independent simultaneous OAI roles',
+      'gate_result=blocked_pending_OAI_dual_role_config',
+      `hard_blocker=${readiness.hardBlocker}`,
+      'next_action=create a feature-separated OAI patch/config experiment that can instantiate and validate the backhaul endpoint and access DU without sharing incompatible UHD ownership',
+    ].join('\n');
+    appendEvidence(dir, 'measurements/architecture-gate.txt', architectureNote);
+    await showLines(architectureNote);
+    gate.architectureProven = false;
+
+    printStep(7, 7, 'Leave lab in safe stopped state');
+    await hardStopSplit(minipc.host);
+    await checkSsh(FIRECELL, 'serber-firecell management');
+    await checkSsh(minipc.host, 'serber-minipc management');
+    appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
+    printWarn('No PASS claimed. Experimental mode is installed, Quectel was suppressed for the probe, and the requested single-B210 dual-role launch remains blocked until the OAI RF architecture is proven.');
+  } catch (err) {
+    appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
+    printError(err.message);
+    printWarn('No PASS claimed. Use Stop the current config or Ethernet CU/DU rollback before continuing demos.');
+  }
+
+  await prompt('Press Enter to continue');
+}
+
 async function getRunningConfig() {
   try {
     const proc = await sshLoose(FIRECELL, 'pgrep -a nr-softmodem || true', 3000);
@@ -2175,6 +2433,9 @@ async function getRunningConfig() {
     }
     if (out.includes('gnb-cu-minipc.conf')) {
       return 'Ethernet CU/DU split';
+    }
+    if (out.includes(EXPERIMENTAL_B210_RUNTIME_CONF)) {
+      return 'experimental single-B210 RF backhaul';
     }
     if (out.includes('gnb.sa.band78.fr1.106PRB.usrpb210.conf')) {
       return 'monolithic firecell core + gNB';
@@ -2250,6 +2511,7 @@ async function mainMenu() {
       { name: 'Launch monolithic firecell core + gNB', value: 'start-mono' },
       { name: 'Launch caged Quectel F1 backhaul, monolithic donor', value: 'start-caged-quectel' },
       { name: 'Validate caged Quectel F1 backhaul, monolithic donor', value: 'validate-caged-quectel' },
+      { name: 'Experimental mode: suppress Quectel and probe single-B210 RF backhaul', value: 'experimental-b210' },
       { name: 'Change PWS/SIB8 warning text for all TUI configs', value: 'pws' },
       { name: 'View live host/process/core status', value: 'status' },
       { name: 'View recent OAI logs and milestones', value: 'logs' },
@@ -2264,6 +2526,7 @@ async function mainMenu() {
     if (action === 'logs') await logsView();
     if (action === 'start-caged-quectel') await launchSingleCuQuectelBackhaul();
     if (action === 'validate-caged-quectel') await validateSingleCuQuectelBackhaul();
+    if (action === 'experimental-b210') await experimentalB210Mode();
     if (action === 'stop-all') await stopAllConfigs();
   }
 }
@@ -2292,6 +2555,10 @@ async function cli() {
   }
   if (arg === '--validate-caged-quectel') {
     await validateSingleCuQuectelBackhaul();
+    process.exit(0);
+  }
+  if (arg === '--experimental-b210') {
+    await experimentalB210Mode();
     process.exit(0);
   }
   if (arg === '--rollback-caged-quectel') {

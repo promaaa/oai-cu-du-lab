@@ -51,6 +51,7 @@ The caged Quectel monolithic-donor actions also support direct launch and retry:
 ./scripts/oai-lab-tui --start-caged-quectel
 ./scripts/oai-lab-tui --validate-caged-quectel
 ./scripts/oai-lab-tui --rollback-caged-quectel
+./scripts/oai-lab-tui --experimental-b210
 ```
 
 ## Supported Starts
@@ -61,12 +62,14 @@ The caged Quectel monolithic-donor actions also support direct launch and retry:
 - Caged Quectel F1 Backhaul, Monolithic Donor, using
   `docs/quectel-f1-backhaul/single-cu-firecell-donor-launch-runbook.md` as a
   gated launch sequence.
+- Experimental single-B210 RF backhaul/access probing on `serber-minipc`.
 
 The main menu intentionally shows only the operator-ready workflows:
 
 - launch Ethernet CU/DU split;
 - launch monolithic firecell core + gNB;
 - launch or validate caged Quectel F1 backhaul with monolithic donor;
+- run the temporary single-B210 experimental mode;
 - change PWS/SIB8 warning text everywhere;
 - view live status/logs;
 - stop the current config.
@@ -192,6 +195,32 @@ use `Validate caged Quectel F1 backhaul, monolithic donor` or
 `./scripts/oai-lab-tui --validate-caged-quectel`. That action refreshes the
 live Quectel PDU routes and WireGuard tunnel, runs the independent donor check,
 rechecks packet placement, then reruns the F1-U gate without restarting the donor, CU, or DU.
+
+## Experimental Single-B210 RF Backhaul
+
+The temporary experimental mode is intentionally fail-closed:
+
+```bash
+./scripts/oai-lab-tui --experimental-b210
+```
+
+It is scoped to `serber-minipc` and does not modify the validated Quectel
+configuration files. The mode stops known TUI-managed softmodems, stops
+`wg-quectel-f1`, flushes Quectel data-interface routes, brings the common
+Quectel data interfaces down, and records a sanitized evidence bundle under
+`experiments/20*/`.
+
+The mode then probes the B210 serial `8002816`, records the DU OAI commit when
+available, writes only a `/tmp` runtime marker, and checks that no F1 traffic is
+visible on `wg-quectel-f1` or `wwan0`.
+
+This mode does not claim that the requested topology is working just because
+the B210 exposes two TX and two RX chains. A B210 can support 2x2 MIMO, but the
+requested design needs proof that OAI can safely run the RF-backhaul endpoint
+and the access DU as independent simultaneous roles on the same UHD device. The
+TUI records that architecture gate explicitly and leaves Ethernet CU/DU as the
+rollback target until a feature-separated OAI patch/config experiment proves
+the dual-role path.
 
 ## Evidence
 

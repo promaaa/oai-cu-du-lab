@@ -43,6 +43,7 @@ Run `./scripts/oai-lab-tui` to launch and inspect the deployed lab modes:
 - Ethernet CU/DU rollback with Core/CU on the CU host and DU/USRP on the DU host;
 - PWS/SIB8 message apply for monolithic and Ethernet split modes;
 - caged Quectel F1 backhaul with a monolithic firecell donor gNB for the modem;
+- temporary experimental single-B210 RF-backhaul probing with Quectel suppressed;
 - guided phone throughput entry and timestamped local run records;
 - read-only discovery for Raspberry Pi DU, `oai-pc` DU, and nrUE internet-through-radio workflows until they are validated.
 
@@ -68,6 +69,11 @@ F1 peer at `10.76.170.90`. `Stop Ethernet CU/DU` removes that temporary rule.
 It uses SSH and local commands only; it does not store passwords.
 
 See `docs/tui/TUI.md`, `docs/tui/TUI_DEMO_GUIDE.md`, and `docs/tui/TUI_DISCOVERED_COMMANDS.md` for details.
+
+The experimental single-B210 mode is not a baseline. It suppresses
+Quectel/WireGuard paths, probes the `serber-minipc` B210, records sanitized
+evidence, and fails closed until an OAI-supported dual-role RF backhaul/access
+configuration is proven. Ethernet CU/DU remains the rollback baseline.
 
 ## Security Warning
 
