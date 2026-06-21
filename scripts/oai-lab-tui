@@ -82,9 +82,9 @@ let activeLabConfig = {
   duLabel: process.env.DU_LABEL || 'serber-minipc',
   duConfName: process.env.DU_CONF_NAME || 'gnb-minipc.conf',
   duRuntimeConf: process.env.DU_ETHERNET_RUNTIME_CONF || '/tmp/oai-tui-gnb-minipc-ethernet-runtime.conf',
-  clampMss: false,
+  clampMss: true,
   forceMcs: false,
-  jumboFrames: true,
+  jumboFrames: false,
 };
 let FIRECELL = activeLabConfig.firecellHost;
 let MINIPC = activeLabConfig.duHost;
@@ -423,6 +423,8 @@ async function enforcePerformanceGovernors(host, label) {
 
 // Apply jumbo frames (MTU 9000) on the F1 Ethernet interface of both nodes.
 // This eliminates GTP-U fragmentation without needing TCP MSS clamping.
+// Requires the physical switch/cable between nodes to support frames ≥9000 B.
+// Verify first with: ping -s 8972 -M do -c 3 <peer_ip>
 async function applyJumboFrames(minipcHost, minipcIface, firecellHost, firecellIface) {
   if (!activeLabConfig.jumboFrames) {
     printInfo('Jumbo frames disabled by configuration — skipping MTU change.');
@@ -431,7 +433,28 @@ async function applyJumboFrames(minipcHost, minipcIface, firecellHost, firecellI
   if (!minipcIface) throw new Error('applyJumboFrames: minipc interface name is required');
   if (!firecellIface) throw new Error('applyJumboFrames: firecell interface name is required');
 
-  printInfo(`Raising MTU to 9000 on ${minipcHost} ${minipcIface} and ${firecellHost} ${firecellIface}...`);
+  // Path test: verify the physical link can carry 9000-byte frames end-to-end
+  // before touching the host MTU. A silent MTU mismatch with the switch would
+  // cause all GTP-U frames larger than the switch's limit to be silently dropped.
+  printInfo('Testing path MTU (ping -s 8972 -M do) before raising host MTU...');
+  const firecellIp = firecellHost.split('@').pop();
+  const pingCmd = `ping -s 8972 -M do -c 3 -W 2 ${firecellIp} 2>&1 | tail -4`;
+  const pingOut = await sshLoose(minipcHost, pingCmd, 15000);
+  await showLines(pingOut.combined || '');
+  if (/message too long|mtu=/i.test(pingOut.combined || '') || !/3 received|3 packets transmitted, 3 received/i.test(pingOut.combined || '')) {
+    printWarn(
+      'Path MTU test FAILED — the switch or cable between nodes does not support frames ≥9000 B.\n' +
+      '  Jumbo frames cannot be used. Falling back to TCP MSS clamping.\n' +
+      '  To enable jumbo frames: configure the switch ports for jumbo frames,\n' +
+      '  then connect directly or verify with: ping -s 8972 -M do -c 3 ' + firecellIp
+    );
+    activeLabConfig.jumboFrames = false;
+    activeLabConfig.clampMss = true;
+    printInfo('TCP MSS clamping auto-enabled as fallback.');
+    return null; // caller checks return value to skip evidence write
+  }
+
+  printInfo(`Path supports jumbo frames. Raising MTU to 9000 on ${minipcHost} ${minipcIface} and ${firecellHost} ${firecellIface}...`);
 
   const setMtuCmd = iface => [
     'set -euo pipefail',
