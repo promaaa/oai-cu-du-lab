@@ -45,7 +45,7 @@ try {
 }
 
 const DEFAULT_FIRECELL_HOST = 'serber@10.76.170.38';
-const DEFAULT_MINIPC_HOST = 'serber@10.76.170.100';
+const DEFAULT_MINIPC_HOST = 'serber-minipc';
 const DEFAULT_PI_HOST = 'serber-pi';
 const DEFAULT_PI_IP = '10.76.170.18';
 const DEFAULT_LAB_CONFIGS = {
@@ -82,6 +82,8 @@ let activeLabConfig = {
   duLabel: process.env.DU_LABEL || 'serber-minipc',
   duConfName: process.env.DU_CONF_NAME || 'gnb-minipc.conf',
   duRuntimeConf: process.env.DU_ETHERNET_RUNTIME_CONF || '/tmp/oai-tui-gnb-minipc-ethernet-runtime.conf',
+  clampMss: true,
+  forceMcs: false,
 };
 let FIRECELL = activeLabConfig.firecellHost;
 let MINIPC = activeLabConfig.duHost;
@@ -1158,14 +1160,41 @@ async function collectCagedUeDiagnostics(minipcHost) {
 
 async function prepareEthernetDuConfig(minipc) {
   if (!minipc?.mgmtIp) throw new Error('Live minipc management IP is required for Ethernet DU runtime config');
+  let perlRule = `s/local_n_address\\s*=\\s*"[^"]+"/local_n_address = "${minipc.mgmtIp}"/; s/remote_n_address\\s*=\\s*"[^"]+"/remote_n_address = "${FIRECELL.split('@').pop()}"/;`;
+  if (activeLabConfig.forceMcs) {
+    perlRule += ` s/(MACRLCs\\s*=\\s*\\(\\s*\\{\\s*num_cc\\s*=\\s*1;)/\$1\\n    dl_min_mcs = 10;\\n    dl_max_mcs = 28;\\n    ul_min_mcs = 10;\\n    ul_max_mcs = 28;/;`;
+  }
   const cmd = [
     'set -euo pipefail',
     `test -f ${DU_CONF}`,
     `cp ${DU_CONF} ${DU_ETHERNET_RUNTIME_CONF}`,
-    `perl -0pi -e ${shellQuote(`s/local_n_address\\s*=\\s*"[^"]+"/local_n_address = "${minipc.mgmtIp}"/; s/remote_n_address\\s*=\\s*"[^"]+"/remote_n_address = "${FIRECELL.split('@').pop()}"/;`)} ${DU_ETHERNET_RUNTIME_CONF}`,
-    `grep -En 'local_n_address|remote_n_address|sdr_addrs' ${DU_ETHERNET_RUNTIME_CONF}`,
+    `perl -0pi -e ${shellQuote(perlRule)} ${DU_ETHERNET_RUNTIME_CONF}`,
+    `grep -En 'local_n_address|remote_n_address|sdr_addrs|mcs' ${DU_ETHERNET_RUNTIME_CONF}`,
   ].join('\n');
   return await sshChecked(minipc.host, cmd, 15000);
+}
+
+async function applyUpfMssClamping() {
+  if (!activeLabConfig.clampMss) {
+    printInfo('TCP MSS Clamping is disabled by configuration.');
+    return;
+  }
+  printInfo('Applying TCP MSS clamping inside the UPF container...');
+  const upfContainer = 'oai-cn5g-minipc-oai-upf-1';
+  const checkRuleOut = `sudo -n docker exec ${upfContainer} iptables -t mangle -C FORWARD -o tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360 2>/dev/null`;
+  const addRuleOut = `sudo -n docker exec ${upfContainer} iptables -t mangle -A FORWARD -o tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360`;
+  const checkRuleIn = `sudo -n docker exec ${upfContainer} iptables -t mangle -C FORWARD -i tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360 2>/dev/null`;
+  const addRuleIn = `sudo -n docker exec ${upfContainer} iptables -t mangle -A FORWARD -i tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360`;
+
+  const cmd = [
+    `${checkRuleOut} || ${addRuleOut}`,
+    `${checkRuleIn} || ${addRuleIn}`,
+    `sudo -n docker exec ${upfContainer} iptables -t mangle -L FORWARD -v -n`,
+  ].join('\n');
+
+  const out = await sshChecked(FIRECELL, cmd, 15000);
+  await showLines(out);
+  printSuccess('TCP MSS clamping rules applied successfully inside UPF container.');
 }
 
 async function validateEthernetPacketPlacement(dir, minipc) {
@@ -1410,6 +1439,9 @@ async function startEthernetRollback() {
 
     await provisionLabPhoneSubscriber(dir);
     gate.core = true;
+
+    // Apply TCP MSS Clamping inside UPF container
+    await applyUpfMssClamping();
 
     printStep(7, 12, 'Prepare DU runtime config from live Ethernet address');
     const duRuntime = await prepareEthernetDuConfig(minipc);
@@ -1851,6 +1883,22 @@ async function stopAllConfigs(minipcHost = null) {
     await sshLoose(FIRECELL, `sudo -n ip route del ${settingsIp}/32 via ${OAI_UPF_IP} dev ${OAI_CN5G_BRIDGE_IF} 2>/dev/null || true`, 15000);
   }
   printSuccess('WireGuard stopped and Quectel routes cleaned');
+
+  // Clean up UPF TCP MSS Clamping rules if container is running
+  try {
+    const upfContainer = 'oai-cn5g-minipc-oai-upf-1';
+    const isRunning = await sshLoose(FIRECELL, `sudo -n docker ps -q --filter name=${upfContainer}`, 10000);
+    if (isRunning.combined.trim()) {
+      printInfo('Cleaning up TCP MSS clamping rules inside UPF container...');
+      const cleanCmd = [
+        `sudo -n docker exec ${upfContainer} iptables -t mangle -D FORWARD -o tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360 2>/dev/null || true`,
+        `sudo -n docker exec ${upfContainer} iptables -t mangle -D FORWARD -i tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360 2>/dev/null || true`,
+      ].join('\n');
+      await sshLoose(FIRECELL, cleanCmd, 15000);
+    }
+  } catch (err) {
+    // Ignore cleanup errors
+  }
 
   let currentStep = 5;
   if (fullStop) {
@@ -2511,7 +2559,8 @@ async function mainMenu() {
       { name: 'Launch monolithic firecell core + gNB', value: 'start-mono' },
       { name: 'Launch caged Quectel F1 backhaul, monolithic donor', value: 'start-caged-quectel' },
       { name: 'Validate caged Quectel F1 backhaul, monolithic donor', value: 'validate-caged-quectel' },
-      { name: 'Experimental mode: suppress Quectel and probe single-B210 RF backhaul', value: 'experimental-b210' },
+      { name: `Toggle TCP MSS Clamping (currently: ${activeLabConfig.clampMss ? 'Enabled' : 'Disabled'})`, value: 'toggle-mss' },
+      { name: `Toggle Forced Scheduler Tuning (currently: ${activeLabConfig.forceMcs ? 'Enabled' : 'Disabled'})`, value: 'toggle-mcs' },
       { name: 'Change PWS/SIB8 warning text for all TUI configs', value: 'pws' },
       { name: 'View live host/process/core status', value: 'status' },
       { name: 'View recent OAI logs and milestones', value: 'logs' },
@@ -2519,6 +2568,14 @@ async function mainMenu() {
       { name: 'Exit', value: 'exit' },
     ]);
     if (action === 'exit') break;
+    if (action === 'toggle-mss') {
+      activeLabConfig.clampMss = !activeLabConfig.clampMss;
+      continue;
+    }
+    if (action === 'toggle-mcs') {
+      activeLabConfig.forceMcs = !activeLabConfig.forceMcs;
+      continue;
+    }
     if (action === 'start-split') await startEthernetRollback();
     if (action === 'start-mono') await startMonolithic();
     if (action === 'pws') await applyPws();
@@ -2526,12 +2583,17 @@ async function mainMenu() {
     if (action === 'logs') await logsView();
     if (action === 'start-caged-quectel') await launchSingleCuQuectelBackhaul();
     if (action === 'validate-caged-quectel') await validateSingleCuQuectelBackhaul();
-    if (action === 'experimental-b210') await experimentalB210Mode();
     if (action === 'stop-all') await stopAllConfigs();
   }
 }
 
 async function cli() {
+  if (process.argv.includes('--no-clamp-mss')) {
+    activeLabConfig.clampMss = false;
+  }
+  if (process.argv.includes('--force-mcs')) {
+    activeLabConfig.forceMcs = true;
+  }
   const arg = process.argv[2];
   if (arg === '--verify') {
     console.clear();
@@ -2555,10 +2617,6 @@ async function cli() {
   }
   if (arg === '--validate-caged-quectel') {
     await validateSingleCuQuectelBackhaul();
-    process.exit(0);
-  }
-  if (arg === '--experimental-b210') {
-    await experimentalB210Mode();
     process.exit(0);
   }
   if (arg === '--rollback-caged-quectel') {

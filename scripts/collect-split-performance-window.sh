@@ -112,7 +112,7 @@ set +e
 if [[ -r "$file" ]]; then
   echo "--- filtered log: $file ---"
   echo "--- filtered from line: $start_line ---"
-  awk -v start="$start_line" 'NR >= start { print }' "$file" | grep -Ei 'F1|SCTP|GTP|UE|registration|PWS|SIB8|MCS|MCSDBG|CQI|CSI|PUCCH|HARQ|BLER|round|RSRP|SNR|throughput|error|assert|timeout|drop|retrans' | tail -1000 || true
+  awk -v start="$start_line" 'NR >= start { print }' "$file" | grep -Ei 'F1|SCTP|GTP|UE|registration|PWS|SIB8|MCS|MCSDBG|CQI|CSI|PUCCH|HARQ|BLER|round|RSRP|SNR|throughput|error|assert|timeout|drop|retrans|LCID' | tail -5000 || true
 else
   echo "log not readable: $file"
 fi
@@ -178,36 +178,84 @@ ssh_capture "$MINIPC" "minipc post-window state" "$(host_state_cmd "$DU_OAI")" "
 ssh_capture "$FIRECELL" "CU filtered OAI log" "$(filtered_log_cmd "$CU_LOG" "$CU_LOG_START")" "$OUT_DIR/logs/cu-filtered.log"
 ssh_capture "$MINIPC" "DU filtered OAI log" "$(filtered_log_cmd "$DU_LOG" "$DU_LOG_START")" "$OUT_DIR/logs/du-filtered.log"
 
-python3 - "$OUT_DIR/logs/du-filtered.log" >"$OUT_DIR/measurements/du-scheduler-summary.txt" <<'PY'
+ssh "${ssh_opts[@]}" "$MINIPC" "python3 - $DU_LOG_START $DU_LOG" >"$OUT_DIR/measurements/du-scheduler-summary.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
 
-path = Path(sys.argv[1])
-dlsch = []
-lcid4 = []
-for line in path.read_text(errors="replace").splitlines():
-    m = re.search(r"dlsch_rounds (\d+)/(\d+)/(\d+)/(\d+).*BLER ([0-9.]+) MCS \(1\) (\d+)", line)
-    if m:
-        dlsch.append(tuple(int(m.group(i)) for i in (1, 2, 3, 4)) + (float(m.group(5)), int(m.group(6))))
-    m = re.search(r"LCID 4: TX\s+(\d+) RX\s+(\d+) bytes", line)
-    if m:
-        lcid4.append((int(m.group(1)), int(m.group(2))))
+start_line = int(sys.argv[1])
+log_file = sys.argv[2]
 
-print("# DU scheduler summary from filtered measurement-window log")
-print(f"dlsch_samples={len(dlsch)}")
-if dlsch:
-    print(f"dlsch_round0_delta={dlsch[-1][0] - dlsch[0][0]}")
-    print(f"dlsch_round1_delta={dlsch[-1][1] - dlsch[0][1]}")
-    print(f"dl_mcs_min={min(sample[5] for sample in dlsch)}")
-    print(f"dl_mcs_max={max(sample[5] for sample in dlsch)}")
-print(f"lcid4_samples={len(lcid4)}")
-if lcid4:
-    tx_delta = lcid4[-1][0] - lcid4[0][0]
-    rx_delta = lcid4[-1][1] - lcid4[0][1]
-    print(f"lcid4_tx_delta_bytes={tx_delta}")
-    print(f"lcid4_rx_delta_bytes={rx_delta}")
-    print(f"dl_drb_activity={'active' if tx_delta >= 1_000_000 else 'low_or_idle'}")
+dlsch = {}  # rnti -> list of samples
+lcid4 = {}  # rnti -> list of samples
+lcid5 = {}  # rnti -> list of samples
+
+with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+    for idx, line in enumerate(f, 1):
+        if idx < start_line:
+            continue
+        # Parse DLSCH
+        m = re.search(r"UE ([0-9a-fA-F]+).*dlsch_rounds (\d+)/(\d+)/(\d+)/(\d+).*BLER ([0-9.]+) MCS \(1\) (\d+)", line)
+        if m:
+            rnti = m.group(1)
+            rounds = tuple(int(m.group(i)) for i in (2, 3, 4, 5))
+            bler = float(m.group(6))
+            mcs = int(m.group(7))
+            if rnti not in dlsch:
+                dlsch[rnti] = []
+            dlsch[rnti].append((rounds, bler, mcs))
+        # Parse LCID
+        m = re.search(r"UE ([0-9a-fA-F]+): LCID 4: TX\s+(\d+) RX\s+(\d+) bytes", line)
+        if m:
+            rnti = m.group(1)
+            if rnti not in lcid4:
+                lcid4[rnti] = []
+            lcid4[rnti].append((int(m.group(2)), int(m.group(3))))
+        m = re.search(r"UE ([0-9a-fA-F]+): LCID 5: TX\s+(\d+) RX\s+(\d+) bytes", line)
+        if m:
+            rnti = m.group(1)
+            if rnti not in lcid5:
+                lcid5[rnti] = []
+            lcid5[rnti].append((int(m.group(2)), int(m.group(3))))
+
+print("# DU scheduler summary from remote log parser")
+all_rntis = set(dlsch.keys()) | set(lcid4.keys()) | set(lcid5.keys())
+print(f"active_rntis={','.join(all_rntis)}")
+for rnti in sorted(all_rntis):
+    print(f"\n[UE {rnti}]")
+    samples = dlsch.get(rnti, [])
+    print(f"dlsch_samples={len(samples)}")
+    if samples:
+        r0 = samples[-1][0][0] - samples[0][0][0]
+        r1 = samples[-1][0][1] - samples[0][0][1]
+        mcs_min = min(s[2] for s in samples)
+        mcs_max = max(s[2] for s in samples)
+        avg_bler = sum(s[1] for s in samples) / len(samples)
+        print(f"dlsch_round0_delta={r0}")
+        print(f"dlsch_round1_delta={r1}")
+        print(f"dl_mcs_min={mcs_min}")
+        print(f"dl_mcs_max={mcs_max}")
+        print(f"dl_bler_avg={avg_bler:.4f}")
+    
+    l4 = lcid4.get(rnti, [])
+    print(f"lcid4_samples={len(l4)}")
+    tx4_delta = 0
+    if l4:
+        tx4_delta = l4[-1][0] - l4[0][0]
+        rx4_delta = l4[-1][1] - l4[0][1]
+        print(f"lcid4_tx_delta_bytes={tx4_delta}")
+        print(f"lcid4_rx_delta_bytes={rx4_delta}")
+        
+    l5 = lcid5.get(rnti, [])
+    print(f"lcid5_samples={len(l5)}")
+    tx5_delta = 0
+    if l5:
+        tx5_delta = l5[-1][0] - l5[0][0]
+        rx5_delta = l5[-1][1] - l5[0][1]
+        print(f"lcid5_tx_delta_bytes={tx5_delta}")
+        print(f"lcid5_rx_delta_bytes={rx5_delta}")
+    
+    active = (tx4_delta >= 1_000_000) or (tx5_delta >= 1_000_000)
+    print(f"dl_drb_activity={'active' if active else 'low_or_idle'}")
 PY
 
 ssh_capture "$FIRECELL" "split core filtered logs" "set +e

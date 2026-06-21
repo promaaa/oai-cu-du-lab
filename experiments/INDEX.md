@@ -12,3 +12,4 @@ Use `TEMPLATE.md` for every future experiment. Store only sanitized reports and 
 
 - `20260602_split_mcs_scheduler_investigation_report.md`: Ethernet rollback route cleanup, runtime core PDU-session fix for the PWS-only symptom, and active-UE MCS-0 scheduler evidence.
 - `20260618_single_b210_rf_backhaul_attempt.md`: failed-closed attempt of the experimental single-B210 mode blocked at `serber-minipc` discovery; no live minipc reachability, no Quectel/WireGuard changes were applied.
+- `20260621_ethernet_mcs_unlock_report.md`: four-test permutation (baseline / MSS-clamp / forced-MCS / combined) of the Ethernet CU/DU split MCS unlock investigation. DL throughput progressed from 12.07 Mbps (untuned) to 17.18 Mbps (MSS + forced MCS). MCS ceiling rose from 7 to 10; BLER improved to 0.23 with combined tuning. Jumbo-frame MTU and CPU governor tuning identified as next actions.
