@@ -82,8 +82,9 @@ let activeLabConfig = {
   duLabel: process.env.DU_LABEL || 'serber-minipc',
   duConfName: process.env.DU_CONF_NAME || 'gnb-minipc.conf',
   duRuntimeConf: process.env.DU_ETHERNET_RUNTIME_CONF || '/tmp/oai-tui-gnb-minipc-ethernet-runtime.conf',
-  clampMss: true,
+  clampMss: false,
   forceMcs: false,
+  jumboFrames: true,
 };
 let FIRECELL = activeLabConfig.firecellHost;
 let MINIPC = activeLabConfig.duHost;
@@ -418,6 +419,56 @@ async function enforcePerformanceGovernors(host, label) {
     printWarn(`${label}: CPU governor evidence did not show performance; attach reliability may be degraded`);
   }
   return out.combined || '';
+}
+
+// Apply jumbo frames (MTU 9000) on the F1 Ethernet interface of both nodes.
+// This eliminates GTP-U fragmentation without needing TCP MSS clamping.
+async function applyJumboFrames(minipcHost, minipcIface, firecellHost, firecellIface) {
+  if (!activeLabConfig.jumboFrames) {
+    printInfo('Jumbo frames disabled by configuration — skipping MTU change.');
+    return;
+  }
+  if (!minipcIface) throw new Error('applyJumboFrames: minipc interface name is required');
+  if (!firecellIface) throw new Error('applyJumboFrames: firecell interface name is required');
+
+  printInfo(`Raising MTU to 9000 on ${minipcHost} ${minipcIface} and ${firecellHost} ${firecellIface}...`);
+
+  const setMtuCmd = iface => [
+    'set -euo pipefail',
+    `pre="$(ip link show ${iface} | grep -o 'mtu [0-9]*' || echo 'mtu unknown')"`,
+    `sudo -n ip link set ${iface} mtu 9000`,
+    `post="$(ip link show ${iface} | grep -o 'mtu [0-9]*')"`,
+    `printf 'iface=%s pre=%s post=%s\\n' ${iface} "$pre" "$post"`,
+    `test "$post" = 'mtu 9000' || { echo "MTU verify failed on ${iface}: $post" >&2; exit 1; }`,
+  ].join('\n');
+
+  const [minipcOut, firecellOut] = await Promise.all([
+    sshChecked(minipcHost, setMtuCmd(minipcIface), 10000),
+    sshChecked(firecellHost, setMtuCmd(firecellIface), 10000),
+  ]);
+  await showLines(`${minipcHost}\n${minipcOut}`);
+  await showLines(`${firecellHost}\n${firecellOut}`);
+  printSuccess(`MTU 9000 applied on both F1 interfaces (${minipcIface}, ${firecellIface})`);
+  return { minipcOut, firecellOut };
+}
+
+// Revert jumbo frames — restore MTU 1500 on both F1 interfaces.
+async function revertJumboFrames(minipcHost, minipcIface, firecellHost, firecellIface) {
+  const revertCmd = iface => [
+    `cur="$(ip link show ${iface} 2>/dev/null | grep -o 'mtu [0-9]*' || echo 'mtu 0')"`,
+    `if [ "$cur" = 'mtu 9000' ]; then sudo -n ip link set ${iface} mtu 1500 && echo "reverted ${iface} to mtu 1500"; else echo "${iface} MTU was $cur — no revert needed"; fi`,
+  ].join('\n');
+  try {
+    const [mo, fo] = await Promise.all([
+      minipcHost ? sshLoose(minipcHost, revertCmd(minipcIface || 'enp4s0'), 10000) : Promise.resolve({ combined: '' }),
+      sshLoose(firecellHost, revertCmd(firecellIface || 'enp6s0'), 10000),
+    ]);
+    if (mo.combined) await showLines(mo.combined);
+    if (fo.combined) await showLines(fo.combined);
+    printSuccess('F1 interface MTU reverted to 1500');
+  } catch (err) {
+    printWarn(`MTU revert warning: ${err.message}`);
+  }
 }
 
 async function capturePacketGate(host, iface, filter, seconds = 20, lines = 20) {
@@ -1179,6 +1230,9 @@ async function applyUpfMssClamping() {
     printInfo('TCP MSS Clamping is disabled by configuration.');
     return;
   }
+  if (activeLabConfig.jumboFrames) {
+    printWarn('Both Jumbo Frames and TCP MSS Clamping are enabled. MSS clamping is redundant when jumbo frames are active and may suppress UL throughput. Consider disabling MSS clamping.');
+  }
   printInfo('Applying TCP MSS clamping inside the UPF container...');
   const upfContainer = 'oai-cn5g-minipc-oai-upf-1';
   const checkRuleOut = `sudo -n docker exec ${upfContainer} iptables -t mangle -C FORWARD -o tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360 2>/dev/null`;
@@ -1440,8 +1494,16 @@ async function startEthernetRollback() {
     await provisionLabPhoneSubscriber(dir);
     gate.core = true;
 
-    // Apply TCP MSS Clamping inside UPF container
+    // Apply TCP MSS Clamping inside UPF container (disabled by default when jumbo frames are on)
     await applyUpfMssClamping();
+
+    // Apply jumbo frames (MTU 9000) on both F1 interfaces to eliminate GTP-U fragmentation
+    const firecellRoute = await sshChecked(FIRECELL, `ip route get ${minipc.mgmtIp}`, 10000);
+    const firecellEthIface = parseRouteDevSrc(firecellRoute).dev || 'enp6s0';
+    const jumboOut = await applyJumboFrames(minipc.host, minipc.mgmtIface, FIRECELL, firecellEthIface);
+    if (jumboOut) appendEvidence(dir, 'system-status/mtu-verification.txt',
+      `minipc ${minipc.mgmtIface}:\n${jumboOut.minipcOut}\n\nfirecell ${firecellEthIface}:\n${jumboOut.firecellOut}`);
+    gate.jumboFrames = activeLabConfig.jumboFrames;
 
     printStep(7, 12, 'Prepare DU runtime config from live Ethernet address');
     const duRuntime = await prepareEthernetDuConfig(minipc);
@@ -1898,6 +1960,22 @@ async function stopAllConfigs(minipcHost = null) {
     }
   } catch (err) {
     // Ignore cleanup errors
+  }
+
+  // Revert jumbo frames — restore MTU 1500 on both F1 interfaces
+  try {
+    let minipcIfaceForRevert = null;
+    let minipcHostForRevert = null;
+    if (minipcHost) {
+      const routeInfo = await sshLoose(minipcHost, `ip route get ${FIRECELL.split('@').pop()} 2>/dev/null || true`, 8000);
+      minipcIfaceForRevert = parseRouteDevSrc(routeInfo.combined || '').dev || 'enp4s0';
+      minipcHostForRevert = minipcHost;
+    }
+    const firecellRouteForRevert = await sshLoose(FIRECELL, `ip route get ${minipcHost ? (await sshLoose(minipcHost, 'hostname -I | awk \'{ print $1 }\'', 5000)).combined.trim() : '10.76.170.83'} 2>/dev/null || true`, 8000);
+    const firecellIfaceForRevert = parseRouteDevSrc(firecellRouteForRevert.combined || '').dev || 'enp6s0';
+    await revertJumboFrames(minipcHostForRevert, minipcIfaceForRevert, FIRECELL, firecellIfaceForRevert);
+  } catch (err) {
+    printWarn(`Jumbo frame revert warning (non-fatal): ${err.message}`);
   }
 
   let currentStep = 5;
@@ -2559,6 +2637,7 @@ async function mainMenu() {
       { name: 'Launch monolithic firecell core + gNB', value: 'start-mono' },
       { name: 'Launch caged Quectel F1 backhaul, monolithic donor', value: 'start-caged-quectel' },
       { name: 'Validate caged Quectel F1 backhaul, monolithic donor', value: 'validate-caged-quectel' },
+      { name: `Toggle Jumbo Frames MTU 9000 (currently: ${activeLabConfig.jumboFrames ? 'Enabled' : 'Disabled'})`, value: 'toggle-jumbo' },
       { name: `Toggle TCP MSS Clamping (currently: ${activeLabConfig.clampMss ? 'Enabled' : 'Disabled'})`, value: 'toggle-mss' },
       { name: `Toggle Forced Scheduler Tuning (currently: ${activeLabConfig.forceMcs ? 'Enabled' : 'Disabled'})`, value: 'toggle-mcs' },
       { name: 'Change PWS/SIB8 warning text for all TUI configs', value: 'pws' },
@@ -2568,6 +2647,10 @@ async function mainMenu() {
       { name: 'Exit', value: 'exit' },
     ]);
     if (action === 'exit') break;
+    if (action === 'toggle-jumbo') {
+      activeLabConfig.jumboFrames = !activeLabConfig.jumboFrames;
+      continue;
+    }
     if (action === 'toggle-mss') {
       activeLabConfig.clampMss = !activeLabConfig.clampMss;
       continue;
@@ -2588,6 +2671,9 @@ async function mainMenu() {
 }
 
 async function cli() {
+  if (process.argv.includes('--no-jumbo-frames')) {
+    activeLabConfig.jumboFrames = false;
+  }
   if (process.argv.includes('--no-clamp-mss')) {
     activeLabConfig.clampMss = false;
   }
