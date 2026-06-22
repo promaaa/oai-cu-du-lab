@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflows - OAI CU/DU Lab</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="header-main">
+        <div>
+          <h1><a href="index.html">OAI CU/DU Split Lab</a></h1>
+          <p class="summary">Available deployment workflows and procedures.</p>
+        </div>
+        <div class="page-title-badge">Workflows</div>
+      </div>
+      <nav>
+        <a href="index.html" class="">Home</a>
+        <a href="architecture.html" class="">Architecture</a>
+        <a href="workflows.html" class="active">Workflows</a>
+        <a href="hardware.html" class="">Hardware</a>
+        <a href="commands.html" class="">Commands</a>
+        <a href="project.html" class="">Project Info</a>
+      </nav>
+    </div>
+  </header>
+  <div class="wrap">
+    <main>
+      <aside class="side">
+        <div class="side-group">
+          <h2 class="side-group-title">Workflows</h2>
+          <ul class="side-links">
+            <li><a href="#reference">Reference</a></li>
+            <li><a href="#cu-du-ethernet">CU/DU Ethernet</a></li>
+            <li><a href="#cu-du-wifi">CU/DU Wi-Fi</a></li>
+            <li><a href="#cu-du-quectel">CU/DU Quectel</a></li>
+            <li><a href="#pws">PWS/SIB8</a></li>
+          </ul>
+        </div>
+        <div class="side-group">
+          <h2 class="side-group-title">Related</h2>
+          <ul class="side-links">
+            <li><a href="architecture.html">Architecture</a></li>
+            <li><a href="hardware.html">Hardware</a></li>
+            <li><a href="commands.html">Commands &amp; Operations</a></li>
+            <li><a href="project.html">Project Info</a></li>
+          </ul>
+        </div>
+      </aside>
+      <article>
+        <section id="reference">
+          <h2>Reference Deployment</h2>
+          <p>A single-host gNB is retained only as a separate performance reference. It is not the architecture of the CU/DU wireless-backhaul workflow.</p>
+          <h3>Components</h3>
+          <ul>
+            <li>5GC (AMF, SMF, UPF, etc.)</li>
+            <li>Monolithic gNB (CU+DU functions combined)</li>
+            <li>USRP B210 access radio</li>
+          </ul>
+          <h3>Use Case</h3>
+          <p>Establish comparison measurements for throughput, latency, and scheduler performance. The Ethernet split remains the rollback baseline.</p>
+        </section>
+
+        <section id="cu-du-ethernet">
+          <h2>CU/DU over Ethernet</h2>
+          <p>Split architecture with F1 interface transported over wired Ethernet. This is the primary and most stable deployment mode.</p>
+          <h3>Components</h3>
+          <ul>
+            <li>5GC on serber-firecell</li>
+            <li>CU on serber-firecell</li>
+            <li>DU on serber-minipc</li>
+            <li>USRP B210 on serber-minipc</li>
+            <li>Ethernet for F1 transport</li>
+          </ul>
+          <h3>Use Case</h3>
+          <p>Reproducible split deployment and rollback target for all experimental backhaul work.</p>
+        </section>
+
+        <section id="cu-du-quectel">
+          <h2>CU/DU over Quectel</h2>
+          <p>The target wireless-backhaul workflow keeps one CU and uses two DUs. It is experimental and must not be reported as working without a fresh evidence-gated run.</p>
+          <h3>Components</h3>
+          <ul>
+            <li>5GC and one shared CU on <code>serber-firecell</code></li>
+            <li>One donor DU providing the independent Quectel serving cell</li>
+            <li>Quectel RM500Q-GL attached to the donor-DU cell</li>
+            <li>One access DU on <code>serber-minipc</code> with USRP B210</li>
+            <li>Access-DU F1-C/F1-U carried through WireGuard over the Quectel PDU session</li>
+          </ul>
+          <h3>PASS gate</h3>
+          <p>Require sanitized proof of both F1 associations, Quectel registration and IP service, F1-C/F1-U on the intended tunnel, phone attach/internet or PWS observation on the access cell, and successful Ethernet rollback.</p>
+        </section>
+
+        <section id="cu-du-wifi">
+          <h2>CU/DU over Wi-Fi</h2>
+          <p>Split architecture with F1 interface transported over Wi-Fi using GRE tunnels. Useful for wireless F1 backhaul experiments.</p>
+          <h3>Components</h3>
+          <ul>
+            <li>5GC and CU on serber-firecell</li>
+            <li>DU on serber-minipc</li>
+            <li>Wi-Fi network with GRE tunnel for F1</li>
+            <li>USRP B210 access radio</li>
+          </ul>
+          <h3>Use Case</h3>
+          <p>Wireless F1 transport testing, useful when Ethernet connectivity is not available between CU and DU locations.</p>
+        </section>
+
+        <section id="pws">
+          <h2>PWS/SIB8 Broadcast</h2>
+          <p>Public Warning System workflow demonstrating ETWS message broadcast capability using SIB8.</p>
+          <h3>Components</h3>
+          <ul>
+            <li>5GC with PWS capability</li>
+            <li>CU for warning coordination</li>
+            <li>DU for radio broadcast</li>
+            <li>USRP B210 for over-the-air transmission</li>
+          </ul>
+          <h3>Use Case</h3>
+          <p>Emergency alert system demonstration, validating broadcast message delivery to connected UEs.</p>
+        </section>
+      </article>
+    </main>
+  </div>
+</body>
+</html>

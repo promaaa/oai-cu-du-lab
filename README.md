@@ -24,6 +24,7 @@ This repository gives future operators and agents a clean starting point for dep
 - `conf/`: sanitized templates and generated-config placeholders.
 - `scripts/`: the launch TUI and vetted reusable helpers.
 - `audit/`: source repository audit, exposure report, and migration map.
+- `wiki/`: static operator wiki published through GitHub Pages.
 
 ## Confirmed Baselines
 
@@ -33,7 +34,7 @@ This repository gives future operators and agents a clean starting point for dep
 
 ## Immediate Next Objective
 
-Establish F1 backhaul through the Quectel module connected to `serber-minipc` using the known-working caged target: one 5GC, one CU, and one monolithic donor gNB on `serber-firecell`; one minipc access DU with B210 serial `8002816`; minipc F1 over WireGuard-over-Quectel.
+Establish F1 backhaul through the Quectel module connected to `serber-minipc` using the target split topology: one 5GC and one shared CU on `serber-firecell`, one donor DU for the Quectel serving cell, and one access DU on `serber-minipc` with B210 serial `8002816`; access-DU F1 runs over WireGuard-over-Quectel.
 
 ## Operator TUI
 
@@ -42,8 +43,7 @@ Run `./scripts/oai-lab-tui` to launch and inspect the deployed lab modes:
 - monolithic Core + gNB using the existing monolithic demo style;
 - Ethernet CU/DU rollback with Core/CU on the CU host and DU/USRP on the DU host;
 - PWS/SIB8 message apply for monolithic and Ethernet split modes;
-- caged Quectel F1 backhaul with a monolithic firecell donor gNB for the modem;
-- temporary experimental single-B210 RF-backhaul probing with Quectel suppressed;
+- experimental caged Quectel tooling that predates the target donor-DU/access-DU topology and must not be treated as proof of it;
 - guided phone throughput entry and timestamped local run records;
 - read-only discovery for Raspberry Pi DU, `oai-pc` DU, and nrUE internet-through-radio workflows until they are validated.
 
@@ -56,7 +56,7 @@ Default professor-demo lab targets:
 
 ```text
 serber-firecell = serber@10.76.170.38
-serber-minipc   = serber@10.76.170.100
+serber-minipc   = serber-minipc
 serber-pi       = serber-pi
 ```
 
@@ -69,11 +69,6 @@ F1 peer at `10.76.170.90`. `Stop Ethernet CU/DU` removes that temporary rule.
 It uses SSH and local commands only; it does not store passwords.
 
 See `docs/tui/TUI.md`, `docs/tui/TUI_DEMO_GUIDE.md`, and `docs/tui/TUI_DISCOVERED_COMMANDS.md` for details.
-
-The experimental single-B210 mode is not a baseline. It suppresses
-Quectel/WireGuard paths, probes the `serber-minipc` B210, records sanitized
-evidence, and fails closed until an OAI-supported dual-role RF backhaul/access
-configuration is proven. Ethernet CU/DU remains the rollback baseline.
 
 ## Security Warning
 

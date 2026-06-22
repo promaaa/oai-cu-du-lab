@@ -5,7 +5,7 @@
 | Host | Role | Notes |
 |---|---|---|
 | `serber-firecell` | Core Network and CU | Current split baseline uses management IP `10.76.170.38`; OAI CN subnet includes `192.168.71.129/132` evidence. |
-| `serber-minipc` | DU, USRP B210 access, Quectel backhaul experiments | Current split baseline uses management IP `10.76.170.100`; Wi-Fi GRE evidence includes `wlp3s0`; Quectel evidence includes `wwan0`. |
+| `serber-minipc` | DU, USRP B210 access, Quectel backhaul experiments | Use the `serber-minipc` SSH alias because its management address can drift; the current split run resolved to `10.76.170.83` on `enp4s0`. Wi-Fi GRE evidence includes `wlp3s0`; Quectel evidence includes `wwan0`. |
 | `serber-pi` | Experimental lightweight DU | Raspberry Pi 5 migration target; 16 GB migration is not validated. |
 | `oai-pc` | Powerful validation PC | Used to rule out hardware limits and for phone-screen validation. Older docs also call an OAI PC `oai`. |
 
@@ -20,7 +20,7 @@
 - Ethernet F1: canonical rollback baseline.
 - Wi-Fi GRE F1: verified wireless-backhaul baseline.
 - Quectel/WireGuard F1: partial packet-path evidence; stable full F1 is not yet validated.
-- Independent Quectel donor: required direction if the modem must not depend on the same access cell it is backhauling.
+- Quectel donor DU: independent cell attached to the shared CU; required so the modem does not depend on the access cell it is backhauling.
 
 ## Identifier Policy
 

@@ -4,25 +4,26 @@
 
 Establish the Quectel 5G F1 backhaul using the lab's single-CU split architecture:
 
-- `serber-firecell`: one OAI 5GC, one OAI CU, and the monolithic firecell donor gNB.
+- `serber-firecell`: one OAI 5GC and one shared OAI CU.
+- donor radio path: one donor DU attached to the shared CU and serving only the Quectel modem.
 - `serber-minipc`: minipc access DU with USRP B210 serial `8002816`.
-- Quectel RM500Q-GL: outside the cage, attached only to the firecell monolithic donor gNB.
+- Quectel RM500Q-GL: outside the cage, attached only to the donor-DU cell.
 - F1 from minipc access DU to CU: `wg-quectel-f1` over the Quectel PDU session.
-- Donor gNB path: no F1; it attaches to the same 5GC and serves only the Quectel modem.
+- F1 from donor DU to CU: independent of the Quectel-carried access-DU F1 path.
 
-The failed single-CU donor-DU path is removed from the Quectel backhaul plan.
-The old oai-pc donor path remains removed. The supported donor is the dedicated
-monolithic firecell donor gNB.
+Older combined-donor launch paths remain historical and are not evidence for
+the target. The new topology must fail closed until both DUs are proven against
+the same CU without creating a circular dependency.
 
 ## Work In Progress
 
 - Security and repository audit: complete.
 - Ethernet rollback baseline: complete.
 - Quectel modem and network inventory: complete, refresh live values per run.
-- Firecell monolithic donor gNB start flow: implemented in the TUI.
-- CU plus minipc access DU WireGuard-F1 configs: implemented.
-- Packet-gated validation: implemented; runtime PASS still requires live
-  tcpdump evidence and caged phone traffic.
+- One-CU/two-DU launch flow: not yet validated; older TUI actions are legacy.
+- CU plus minipc access-DU WireGuard-F1 configs: available but require migration validation with the donor DU.
+- Packet-gated validation: must be extended to prove both F1 associations;
+  runtime PASS still requires live sanitized captures and caged phone traffic.
 
 ## Later Objectives
 
