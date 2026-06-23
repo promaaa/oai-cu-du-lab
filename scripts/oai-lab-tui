@@ -1234,16 +1234,34 @@ async function collectCagedUeDiagnostics(minipcHost) {
 
 async function prepareEthernetDuConfig(minipc) {
   if (!minipc?.mgmtIp) throw new Error('Live minipc management IP is required for Ethernet DU runtime config');
+  // BLER target window defaults match OAI's reference band77 config and are
+  // required for the live B210 radio to climb above the floor of MCS 5.
+  // The OAI defaults (0.05/0.15) are unreachable when the radio runs 22 to 35
+  // percent HARQ round-1 retransmits, so the scheduler pins MCS at the floor.
+  // See experiments/20260622_154000_eth_cu_du_msc_bump_fix.md for evidence.
+  const blerUpper = process.env.DL_BLER_TARGET_UPPER || '0.35';
+  const blerLower = process.env.DL_BLER_TARGET_LOWER || '0.25';
+  const ulBlerUpper = process.env.UL_BLER_TARGET_UPPER || '0.35';
+  const ulBlerLower = process.env.UL_BLER_TARGET_LOWER || '0.15';
+  for (const [name, val] of [['DL_BLER_TARGET_UPPER', blerUpper], ['DL_BLER_TARGET_LOWER', blerLower], ['UL_BLER_TARGET_UPPER', ulBlerUpper], ['UL_BLER_TARGET_LOWER', ulBlerLower]]) {
+    const num = Number(val);
+    if (!Number.isFinite(num) || num < 0 || num > 1) {
+      throw new Error(`${name} must be a number between 0 and 1, got: ${val}`);
+    }
+  }
   let perlRule = `s/local_n_address\\s*=\\s*"[^"]+"/local_n_address = "${minipc.mgmtIp}"/; s/remote_n_address\\s*=\\s*"[^"]+"/remote_n_address = "${FIRECELL.split('@').pop()}"/;`;
   if (activeLabConfig.forceMcs) {
     perlRule += ` s/(MACRLCs\\s*=\\s*\\(\\s*\\{\\s*num_cc\\s*=\\s*1;)/\$1\\n    dl_min_mcs = 10;\\n    dl_max_mcs = 28;\\n    ul_min_mcs = 10;\\n    ul_max_mcs = 28;/;`;
   }
+  // Always inject the BLER target window so the live radio can climb above
+  // MCS 5 under sustained traffic. Independent of the MCS floor (forceMcs).
+  perlRule += ` s/(pucch_TargetSNRx10\\s*=\\s*\\d+;)/\$1\\n    dl_bler_target_upper        = ${blerUpper};\\n    dl_bler_target_lower        = ${blerLower};\\n    ul_bler_target_upper        = ${ulBlerUpper};\\n    ul_bler_target_lower        = ${ulBlerLower};/;`;
   const cmd = [
     'set -euo pipefail',
     `test -f ${DU_CONF}`,
     `cp ${DU_CONF} ${DU_ETHERNET_RUNTIME_CONF}`,
     `perl -0pi -e ${shellQuote(perlRule)} ${DU_ETHERNET_RUNTIME_CONF}`,
-    `grep -En 'local_n_address|remote_n_address|sdr_addrs|mcs' ${DU_ETHERNET_RUNTIME_CONF}`,
+    `grep -En 'local_n_address|remote_n_address|sdr_addrs|mcs|bler_target' ${DU_ETHERNET_RUNTIME_CONF}`,
   ].join('\n');
   return await sshChecked(minipc.host, cmd, 15000);
 }
@@ -1254,7 +1272,7 @@ async function applyUpfMssClamping() {
     return;
   }
   if (activeLabConfig.jumboFrames) {
-    printWarn('Both Jumbo Frames and TCP MSS Clamping are enabled. MSS clamping is redundant when jumbo frames are active and may suppress UL throughput. Consider disabling MSS clamping.');
+    printInfo('Jumbo Frames are active. MSS clamping still helps radio throughput by keeping DL TBs modest in size; UL MSS is set by the UE and is not clamped here.');
   }
   printInfo('Applying TCP MSS clamping inside the UPF container...');
   const upfContainer = 'oai-cn5g-minipc-oai-upf-1';
