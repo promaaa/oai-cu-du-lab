@@ -1333,13 +1333,13 @@ async function collectCagedUeDiagnostics(minipcHost) {
 async function prepareCuRuntimeConfig(minipc) {
   const f1 = selectedF1Addresses(minipc);
   if (!f1.cu || !f1.du) throw new Error('Live F1 CU/DU addresses are required for CU runtime config');
-  const perlRule = `s/local_n_address\\s*=\\s*"[^"]+"/local_n_address = "${f1.cu}"/; s/remote_n_address\\s*=\\s*"[^"]+"/remote_n_address = "${f1.du}"/;`;
+  const perlRule = `s/local_s_address\\s*=\\s*"[^"]+"/local_s_address = "${f1.cu}"/g; s/local_n_address\\s*=\\s*"[^"]+"/local_n_address = "${f1.cu}"/g; s/remote_s_address\\s*=\\s*"[^"]+"/remote_s_address = "${f1.du}"/g; s/remote_n_address\\s*=\\s*"[^"]+"/remote_n_address = "${f1.du}"/g;`;
   const cmd = [
     'set -euo pipefail',
     `test -f ${CU_CONF}`,
     `cp ${CU_CONF} ${CU_RUNTIME_CONF}`,
     `perl -0pi -e ${shellQuote(perlRule)} ${CU_RUNTIME_CONF}`,
-    `grep -En 'local_n_address|remote_n_address|GNB_IPV4_ADDRESS_FOR_NGU|GNB_IPV4_ADDRESS_FOR_N3' ${CU_RUNTIME_CONF} | head -40`,
+    `grep -En 'local_s_address|remote_s_address|local_n_address|remote_n_address|GNB_IPV4_ADDRESS_FOR_NGU|GNB_IPV4_ADDRESS_FOR_N3' ${CU_RUNTIME_CONF} | head -40`,
   ].join('\n');
   return await sshChecked(FIRECELL, cmd, 15000);
 }
