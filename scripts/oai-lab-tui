@@ -48,6 +48,26 @@ const DEFAULT_FIRECELL_HOST = 'serber@10.76.170.38';
 const DEFAULT_MINIPC_HOST = 'serber-minipc';
 const DEFAULT_PI_HOST = 'serber-pi';
 const DEFAULT_PI_IP = '10.76.170.18';
+const BACKHAUL_PROFILES = {
+  ethernet: {
+    label: 'Ethernet F1',
+    slug: 'ethernet',
+    evidenceSlug: 'ethernet_cu_du_rollback_start',
+    expectedIface: 'discovered Ethernet route',
+  },
+  wifiGre: {
+    label: 'Wi-Fi GRE F1',
+    slug: 'wifi_gre',
+    evidenceSlug: 'wifi_gre_cu_du_benchmark_start',
+    expectedIface: process.env.GRE_NAME || 'test-gre',
+  },
+  quectelWg: {
+    label: 'Quectel 5G/WireGuard F1',
+    slug: 'quectel_wg',
+    evidenceSlug: 'quectel_wg_cu_du_benchmark_start',
+    expectedIface: process.env.WG_IF || 'wg-quectel-f1',
+  },
+};
 const DEFAULT_LAB_CONFIGS = {
   minipc: {
     label: 'serber-minipc + serber-firecell',
@@ -56,6 +76,8 @@ const DEFAULT_LAB_CONFIGS = {
     duLabel: 'serber-minipc',
     duConfName: 'gnb-minipc.conf',
     duRuntimeConf: '/tmp/oai-tui-gnb-minipc-ethernet-runtime.conf',
+    cuRuntimeConf: '/tmp/oai-tui-gnb-cu-ethernet-runtime.conf',
+    backhaulProfile: 'ethernet',
   },
   pi: {
     label: 'serber-pi + serber-firecell',
@@ -64,6 +86,30 @@ const DEFAULT_LAB_CONFIGS = {
     duLabel: 'serber-pi',
     duConfName: 'gnb-pi.conf',
     duRuntimeConf: '/tmp/oai-tui-gnb-pi-ethernet-runtime.conf',
+    cuRuntimeConf: '/tmp/oai-tui-gnb-cu-pi-ethernet-runtime.conf',
+    backhaulProfile: 'ethernet',
+  },
+  piWifi: {
+    label: 'serber-pi + serber-firecell, Wi-Fi GRE benchmark',
+    firecellHost: DEFAULT_FIRECELL_HOST,
+    duHost: DEFAULT_PI_HOST,
+    duLabel: 'serber-pi',
+    duConfName: 'gnb-pi.conf',
+    duRuntimeConf: '/tmp/oai-tui-gnb-pi-wifi-gre-runtime.conf',
+    cuRuntimeConf: '/tmp/oai-tui-gnb-cu-pi-wifi-gre-runtime.conf',
+    backhaulProfile: 'wifiGre',
+    jumboFrames: false,
+  },
+  piQuectel: {
+    label: 'serber-pi + serber-firecell, Quectel 5G benchmark',
+    firecellHost: DEFAULT_FIRECELL_HOST,
+    duHost: DEFAULT_PI_HOST,
+    duLabel: 'serber-pi',
+    duConfName: 'gnb-pi.conf',
+    duRuntimeConf: '/tmp/oai-tui-gnb-pi-quectel-wg-runtime.conf',
+    cuRuntimeConf: '/tmp/oai-tui-gnb-cu-pi-quectel-wg-runtime.conf',
+    backhaulProfile: 'quectelWg',
+    jumboFrames: false,
   },
 };
 const BASE_DU_DISCOVERY_CANDIDATES = [
@@ -82,9 +128,11 @@ let activeLabConfig = {
   duLabel: process.env.DU_LABEL || 'serber-minipc',
   duConfName: process.env.DU_CONF_NAME || 'gnb-minipc.conf',
   duRuntimeConf: process.env.DU_ETHERNET_RUNTIME_CONF || '/tmp/oai-tui-gnb-minipc-ethernet-runtime.conf',
+  cuRuntimeConf: process.env.CU_RUNTIME_CONF || '/tmp/oai-tui-gnb-cu-ethernet-runtime.conf',
+  backhaulProfile: process.env.BACKHAUL_PROFILE || 'ethernet',
   clampMss: true,
   forceMcs: false,
-  jumboFrames: false,
+  jumboFrames: true,
 };
 let FIRECELL = activeLabConfig.firecellHost;
 let MINIPC = activeLabConfig.duHost;
@@ -97,6 +145,7 @@ const CU_CN_COMPOSE = 'docker-compose-minipc.yaml';
 const CU_OAI = '/home/serber/cu-du-minipc-backhaul/source/openairinterface5g';
 const DU_OAI = '/home/serber/cu-du/source/openairinterface5g';
 const CU_CONF = `${CU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu-minipc.conf`;
+let CU_RUNTIME_CONF = activeLabConfig.cuRuntimeConf;
 let DU_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${activeLabConfig.duConfName}`;
 let DU_ETHERNET_RUNTIME_CONF = activeLabConfig.duRuntimeConf;
 const CU_SIB8 = `${CU_OAI}/sib8.conf`;
@@ -225,10 +274,12 @@ function firecellAddress() {
 }
 
 function formatLabConfig(config = activeLabConfig) {
+  const profile = BACKHAUL_PROFILES[config.backhaulProfile] || BACKHAUL_PROFILES.ethernet;
   return [
     `Core/CU serber-firecell: ${config.firecellHost}`,
     `DU/radio ${config.duLabel}: ${config.duHost}`,
     `DU startup config: ${config.duConfName}`,
+    `Benchmark backhaul: ${profile.label}`,
   ].join('\n    ');
 }
 
@@ -238,10 +289,40 @@ function applyLabConfig(config) {
   MINIPC = activeLabConfig.duHost;
   if (activeLabConfig.duLabel === 'serber-pi') PI = activeLabConfig.duHost;
   MONO_HOST = FIRECELL;
+  CU_RUNTIME_CONF = activeLabConfig.cuRuntimeConf || '/tmp/oai-tui-gnb-cu-ethernet-runtime.conf';
   DU_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${activeLabConfig.duConfName}`;
   DU_ETHERNET_RUNTIME_CONF = activeLabConfig.duRuntimeConf;
   process.env.CU_HOST = FIRECELL;
   process.env.DU_HOST = MINIPC;
+}
+
+function selectedBackhaulProfile() {
+  return BACKHAUL_PROFILES[activeLabConfig.backhaulProfile] || BACKHAUL_PROFILES.ethernet;
+}
+
+function selectedF1Addresses(minipc) {
+  if (activeLabConfig.backhaulProfile === 'wifiGre') {
+    return {
+      cu: process.env.GRE_CU_INNER_IP || '10.255.0.1',
+      du: process.env.GRE_DU_INNER_IP || '10.255.0.2',
+      expectedIface: process.env.GRE_NAME || 'test-gre',
+      expectedLabel: 'Wi-Fi GRE tunnel',
+    };
+  }
+  if (activeLabConfig.backhaulProfile === 'quectelWg') {
+    return {
+      cu: WG_CU_IP,
+      du: WG_DU_IP,
+      expectedIface: WG_IF,
+      expectedLabel: 'Quectel WireGuard tunnel',
+    };
+  }
+  return {
+    cu: firecellAddress(),
+    du: minipc?.mgmtIp || '',
+    expectedIface: minipc?.mgmtIface || '',
+    expectedLabel: 'Ethernet route',
+  };
 }
 
 function duDiscoveryCandidates() {
@@ -603,6 +684,17 @@ async function discoverQuectel(minipcHost, apn) {
     'sudo -n ip link set "$iface" down 2>/dev/null || true',
     'if [ -e "/sys/class/net/$iface/qmi/raw_ip" ]; then printf Y | sudo -n tee "/sys/class/net/$iface/qmi/raw_ip" >/dev/null 2>&1 || true; fi',
     'sudo -n ip link set "$iface" up || true',
+    'qmi_preflight=""',
+    'if [ -n "$qmi" ]; then',
+    '  echo "--- QMI modem preflight ---"',
+    '  qmi_preflight="$( {',
+    '    timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --dms-get-operating-mode 2>&1 || true',
+    '    timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --uim-get-card-status 2>&1 || true',
+    '    timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --nas-get-serving-system 2>&1 || true',
+    '    timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --nas-get-signal-strength 2>&1 || true',
+    '  } )"',
+    '  printf "%s\\n" "$qmi_preflight"',
+    'fi',
     'at_port=""',
     'send_at() { [ -n "$at_port" ] || return 0; printf "%s\\r" "$1" | timeout 8 sudo -n socat -T 5 - "$at_port",raw,echo=0,b115200 2>/dev/null || true; }',
     'for port in /dev/ttyUSB4 /dev/ttyUSB3 /dev/ttyUSB2 /dev/ttyUSB1 /dev/ttyUSB0; do',
@@ -614,13 +706,18 @@ async function discoverQuectel(minipcHost, apn) {
     '  send_at "AT+CGACT=0,1" >/dev/null || true',
     '  send_at "AT+CGACT=0,2" >/dev/null || true',
     '  send_at "AT+CGACT=0,3" >/dev/null || true',
-    '  send_at "AT+CGDCONT=1,\\"IP\\",\\"oai\\"" >/dev/null || true',
+    `  send_at ${shellQuote(`AT+CGDCONT=1,"IP","${apn}"`)} >/dev/null || true`,
     '  send_at "AT+CGACT?" || true',
     '  sleep 5',
     'fi',
     'if [ -n "$qmi" ]; then',
     '  settings_out=""',
     '  pdu_ok=0',
+    '  if printf "%s\\n" "$qmi_preflight" | grep -Eiq "no-atr-received|not-initialized"; then',
+    '    echo "quectel_sim_ready=0"',
+    '  elif printf "%s\\n" "$qmi_preflight" | grep -Eiq "Registration state: .not-registered|PS: .detached"; then',
+    '    echo "quectel_registered=0"',
+    '  else',
     '  for start_try in 1; do',
     '    echo "--- QMI PDU attempt $start_try ---"',
     '    timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --wds-get-packet-service-status 2>/dev/null || true',
@@ -645,6 +742,7 @@ async function discoverQuectel(minipcHost, apn) {
     '    if [ -n "$handle" ]; then timeout -k 3s 12s sudo -n qmicli -d "$qmi" --device-open-proxy --client-cid="$cid" --wds-stop-network="$handle" 2>/dev/null || true; fi',
     '    sleep 2',
     '  done',
+    '  fi',
     '  echo "pdu_stable_connected=$pdu_ok"',
     '  if [ "$pdu_ok" = "1" ]; then',
     '    qmi_ip="$(printf "%s\\n" "$settings_out" | awk -F: \'/IPv4 address/ { gsub(/^[ \\t]+/, "", $2); print $2; exit }\')"',
@@ -1232,8 +1330,23 @@ async function collectCagedUeDiagnostics(minipcHost) {
   ].join('\n'));
 }
 
+async function prepareCuRuntimeConfig(minipc) {
+  const f1 = selectedF1Addresses(minipc);
+  if (!f1.cu || !f1.du) throw new Error('Live F1 CU/DU addresses are required for CU runtime config');
+  const perlRule = `s/local_n_address\\s*=\\s*"[^"]+"/local_n_address = "${f1.cu}"/; s/remote_n_address\\s*=\\s*"[^"]+"/remote_n_address = "${f1.du}"/;`;
+  const cmd = [
+    'set -euo pipefail',
+    `test -f ${CU_CONF}`,
+    `cp ${CU_CONF} ${CU_RUNTIME_CONF}`,
+    `perl -0pi -e ${shellQuote(perlRule)} ${CU_RUNTIME_CONF}`,
+    `grep -En 'local_n_address|remote_n_address|GNB_IPV4_ADDRESS_FOR_NGU|GNB_IPV4_ADDRESS_FOR_N3' ${CU_RUNTIME_CONF} | head -40`,
+  ].join('\n');
+  return await sshChecked(FIRECELL, cmd, 15000);
+}
+
 async function prepareEthernetDuConfig(minipc) {
-  if (!minipc?.mgmtIp) throw new Error('Live minipc management IP is required for Ethernet DU runtime config');
+  const f1 = selectedF1Addresses(minipc);
+  if (!f1.du || !f1.cu) throw new Error('Live F1 CU/DU addresses are required for DU runtime config');
   // BLER target window defaults match OAI's reference band77 config and are
   // required for the live B210 radio to climb above the floor of MCS 5.
   // The OAI defaults (0.05/0.15) are unreachable when the radio runs 22 to 35
@@ -1249,7 +1362,13 @@ async function prepareEthernetDuConfig(minipc) {
       throw new Error(`${name} must be a number between 0 and 1, got: ${val}`);
     }
   }
-  let perlRule = `s/local_n_address\\s*=\\s*"[^"]+"/local_n_address = "${minipc.mgmtIp}"/; s/remote_n_address\\s*=\\s*"[^"]+"/remote_n_address = "${FIRECELL.split('@').pop()}"/;`;
+  let perlRule = `s/local_n_address\\s*=\\s*"[^"]+"/local_n_address = "${f1.du}"/; s/remote_n_address\\s*=\\s*"[^"]+"/remote_n_address = "${f1.cu}"/;`;
+  perlRule += ' s/^\\s*(?:dl_bler_target_upper|dl_bler_target_lower|ul_bler_target_upper|ul_bler_target_lower|dl_min_mcs|dl_max_mcs|ul_min_mcs|ul_max_mcs)\\s*=\\s*[^;]+;\\n//mg;';
+  if (activeLabConfig.duLabel === 'serber-pi') {
+    // Match the Pi runtime shape that produced F1/SIB8 evidence on 2026-06-15.
+    perlRule += ' s/(gNB_DU_ID\\s*=\\s*)0x[0-9A-Fa-f]+/${1}0xe01/;';
+    perlRule += ' s/(initialDLBWPsearchSpaceZero\\s*=\\s*)\\d+/${1}0/;';
+  }
   if (activeLabConfig.forceMcs) {
     perlRule += ` s/(MACRLCs\\s*=\\s*\\(\\s*\\{\\s*num_cc\\s*=\\s*1;)/\$1\\n    dl_min_mcs = 10;\\n    dl_max_mcs = 28;\\n    ul_min_mcs = 10;\\n    ul_max_mcs = 28;/;`;
   }
@@ -1261,7 +1380,8 @@ async function prepareEthernetDuConfig(minipc) {
     `test -f ${DU_CONF}`,
     `cp ${DU_CONF} ${DU_ETHERNET_RUNTIME_CONF}`,
     `perl -0pi -e ${shellQuote(perlRule)} ${DU_ETHERNET_RUNTIME_CONF}`,
-    `grep -En 'local_n_address|remote_n_address|sdr_addrs|mcs|bler_target' ${DU_ETHERNET_RUNTIME_CONF}`,
+    `awk '/MACRLCs[[:space:]]*=/{in_mac=1} in_mac && /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/{key=$1; sub(/[[:space:]]*=.*/, "", key); count[key]++} in_mac && /^[[:space:]]*\\)[[:space:]]*;/{in_mac=0} END{bad=0; for (key in count) if (count[key] > 1) { print "duplicate MACRLC key " key "=" count[key] > "/dev/stderr"; bad=1 } exit bad}' ${DU_ETHERNET_RUNTIME_CONF}`,
+    `grep -En 'gNB_DU_ID|local_n_address|remote_n_address|sdr_addrs|mcs|bler_target|dl_absoluteFrequencyPointA|carrierBandwidth|initialDLBWP|initialULBWP' ${DU_ETHERNET_RUNTIME_CONF}`,
   ].join('\n');
   return await sshChecked(minipc.host, cmd, 15000);
 }
@@ -1292,38 +1412,145 @@ async function applyUpfMssClamping() {
   printSuccess('TCP MSS clamping rules applied successfully inside UPF container.');
 }
 
+async function ensureUpfRoutingAndNat() {
+  printInfo('Ensuring WAN gateway reachability and UE NAT rules on serber-firecell...');
+  const cmd = [
+    'sudo -n ip route replace default via 10.76.170.126 dev enp6s0 2>/dev/null || true',
+    'sudo -n iptables -t nat -C POSTROUTING -s 10.0.0.0/16 -j MASQUERADE 2>/dev/null || sudo -n iptables -t nat -A POSTROUTING -s 10.0.0.0/16 -j MASQUERADE',
+  ].join('\n');
+  const out = await sshChecked(FIRECELL, cmd, 15000);
+  await showLines(out);
+  printSuccess('WAN gateway route and UE NAT MASQUERADE verified on serber-firecell');
+}
+
+async function configureWifiGreBackhaul(minipc, dir) {
+  const greName = process.env.GRE_NAME || 'test-gre';
+  const cuOuter = process.env.GRE_CU_IP || firecellAddress();
+  let duOuter = activeLabConfig.duLabel === 'serber-pi'
+    ? (process.env.PI_WIFI_IP || process.env.DU_WIFI_IP || '')
+    : (process.env.GRE_DU_WIFI_IP || process.env.DU_WIFI_IP || '');
+  if (!duOuter && input.isTTY) {
+    duOuter = await prompt(`${activeLabConfig.duLabel} Wi-Fi outer IP for GRE`, minipc.mgmtIp || '');
+  }
+  if (!duOuter) throw new Error('Wi-Fi GRE profile requires PI_WIFI_IP for Pi, GRE_DU_WIFI_IP for minipc, DU_WIFI_IP, or an interactive DU Wi-Fi IP entry');
+  const cuInner = process.env.GRE_CU_INNER_IP || '10.255.0.1';
+  const duInner = process.env.GRE_DU_INNER_IP || '10.255.0.2';
+  const prefix = process.env.GRE_PREFIX || '30';
+
+  printInfo(`Preparing Wi-Fi GRE tunnel ${greName}: ${cuOuter} <-> ${duOuter}, inner ${cuInner}/${prefix} <-> ${duInner}/${prefix}`);
+  const outerCheck = await Promise.all([
+    sshChecked(FIRECELL, `ip route get ${duOuter}; ping -c 2 -W 2 ${duOuter}`, 10000),
+    sshChecked(minipc.host, `ip route get ${cuOuter}; ping -c 2 -W 2 ${cuOuter}`, 10000),
+  ]);
+  appendEvidence(dir, 'system-status/wifi-gre-outer-reachability.txt', `=== firecell to DU outer ===\n${outerCheck[0]}\n\n=== ${activeLabConfig.duLabel} to CU outer ===\n${outerCheck[1]}`);
+  const firecellCmd = [
+    'set -euo pipefail',
+    `sudo -n ip tunnel del ${greName} 2>/dev/null || true`,
+    `sudo -n ip tunnel add ${greName} mode gre local ${cuOuter} remote ${duOuter} ttl 255`,
+    `sudo -n ip addr replace ${cuInner}/${prefix} dev ${greName}`,
+    `sudo -n ip link set ${greName} up`,
+    `ip -d link show ${greName}`,
+    `ip -4 addr show dev ${greName}`,
+    `ping -c 2 -W 2 ${duInner}`,
+  ].join('\n');
+  const duCmd = [
+    'set -euo pipefail',
+    `sudo -n ip tunnel del ${greName} 2>/dev/null || true`,
+    `sudo -n ip tunnel add ${greName} mode gre local ${duOuter} remote ${cuOuter} ttl 255`,
+    `sudo -n ip addr replace ${duInner}/${prefix} dev ${greName}`,
+    `sudo -n ip link set ${greName} up`,
+    `ip -d link show ${greName}`,
+    `ip -4 addr show dev ${greName}`,
+    `ping -c 2 -W 2 ${cuInner}`,
+  ].join('\n');
+  const [firecell, du] = await Promise.all([
+    sshChecked(FIRECELL, firecellCmd, 25000),
+    sshChecked(minipc.host, duCmd, 25000),
+  ]);
+  appendEvidence(dir, 'system-status/wifi-gre-transport.txt', `=== firecell ===\n${firecell}\n\n=== ${activeLabConfig.duLabel} ===\n${du}`);
+  await showLines(firecell);
+  await showLines(du);
+  if (!/state UNKNOWN|UP|LOWER_UP/i.test(firecell + du)) throw new Error('Wi-Fi GRE tunnel did not show an up interface state');
+  return { firecell, du, iface: greName, cuInner, duInner, duOuter };
+}
+
+async function configureQuectelWireGuardBackhaul(minipc, dir) {
+  const apn = process.env.QUECTEL_APN || await prompt('Quectel APN for selected DU', 'oai');
+  printInfo(`Preparing Quectel/WireGuard transport on ${activeLabConfig.duLabel}...`);
+  const quectel = await discoverQuectel(minipc.host, apn);
+  await showLines(quectel.raw);
+  appendEvidence(dir, 'system-status/quectel-qmi.txt', quectel.raw);
+  if (/quectel_sim_ready=0|no-atr-received|not-initialized/i.test(quectel.raw)) {
+    throw new Error('Quectel SIM is not readable on the Pi modem (QMI reports no ATR / not initialized)');
+  }
+  if (/quectel_registered=0|Registration state:\s*'not-registered|PS:\s*'detached/i.test(quectel.raw)) {
+    throw new Error('Quectel modem is not registered on a packet network; cannot create the 5G PDU for WireGuard backhaul');
+  }
+  if (!quectel.iface || !quectel.settings.ip || !quectel.settings.gateway || !quectel.settings.stableConnected) {
+    throw new Error('Quectel PDU did not reach a stable connected state with live QMI IP/gateway settings');
+  }
+  const routes = await ensurePduRoutes(minipc.host, quectel);
+  appendEvidence(dir, 'system-status/quectel-routes.txt', `${routes.minipcOut}\n\n${routes.firecellOut}`);
+  await showLines(routes.minipcOut);
+  await showLines(routes.firecellOut);
+  const wg = await ensureWireGuard(minipc.host, quectel);
+  appendEvidence(dir, 'system-status/wireguard.txt', `${wg.minipc}\n\n${wg.firecell}`);
+  await showLines(wg.minipc);
+  await showLines(wg.firecell);
+  return { quectel, wg, iface: WG_IF };
+}
+
+async function prepareSelectedBackhaul(minipc, dir) {
+  if (activeLabConfig.backhaulProfile === 'wifiGre') {
+    return await configureWifiGreBackhaul(minipc, dir);
+  }
+  if (activeLabConfig.backhaulProfile === 'quectelWg') {
+    return await configureQuectelWireGuardBackhaul(minipc, dir);
+  }
+  return null;
+}
+
 async function validateEthernetPacketPlacement(dir, minipc) {
-  if (!minipc?.host || !minipc?.mgmtIface) throw new Error('Live minipc Ethernet interface is required for packet validation');
+  if (!minipc?.host || !minipc?.mgmtIface) throw new Error('Live DU interface is required for packet validation');
+  const f1 = selectedF1Addresses(minipc);
   const firecellRoute = await sshChecked(FIRECELL, `ip route get ${minipc.mgmtIp}`, 10000);
   const firecellEth = parseRouteDevSrc(firecellRoute).dev || 'enp6s0';
-  const minipcNonEthernet = await discoverMgmtInterfaces(minipc.host, [minipc.mgmtIface]);
-  const firecellNonEthernet = await discoverMgmtInterfaces(FIRECELL, [firecellEth]);
+  const expectedDuIface = f1.expectedIface || minipc.mgmtIface;
+  const expectedCuIface = f1.expectedIface || firecellEth;
+  const minipcExcluded = uniqueValues([expectedDuIface, activeLabConfig.backhaulProfile === 'ethernet' ? minipc.mgmtIface : '']);
+  const firecellExcluded = uniqueValues([expectedCuIface, activeLabConfig.backhaulProfile === 'ethernet' ? firecellEth : '']);
+  const minipcNonEthernet = await discoverMgmtInterfaces(minipc.host, minipcExcluded);
+  const firecellNonEthernet = await discoverMgmtInterfaces(FIRECELL, firecellExcluded);
   const extraJobs = [
     ...minipcNonEthernet.map(iface => ({ host: minipc.host, label: 'minipc', iface })),
     ...firecellNonEthernet.map(iface => ({ host: FIRECELL, label: 'firecell', iface })),
-    { host: minipc.host, label: 'minipc', iface: WG_IF },
-    { host: FIRECELL, label: 'firecell', iface: WG_IF },
+    ...(expectedDuIface === WG_IF ? [] : [{ host: minipc.host, label: 'minipc', iface: WG_IF }]),
+    ...(expectedCuIface === WG_IF ? [] : [{ host: FIRECELL, label: 'firecell', iface: WG_IF }]),
   ];
   const [minipcF1, firecellF1, ...extraCaps] = await Promise.all([
-    capturePacketGate(minipc.host, minipc.mgmtIface, `host ${FIRECELL.split('@').pop()} and sctp`, 45, 30),
-    capturePacketGate(FIRECELL, firecellEth, `host ${minipc.mgmtIp} and sctp`, 45, 30),
+    capturePacketGate(minipc.host, expectedDuIface, `host ${f1.cu} and sctp`, 45, 30),
+    capturePacketGate(FIRECELL, expectedCuIface, `host ${f1.du} and sctp`, 45, 30),
     ...extraJobs.map(item => capturePacketGate(item.host, item.iface, 'sctp or udp port 2153', 12, 5)),
   ]);
   const extraCaptures = extraJobs.map((item, idx) => ({ ...item, cap: extraCaps[idx] || '' }));
   appendEvidence(dir, 'measurements/ethernet-packet-validation.txt', [
-    `=== minipc ${minipc.mgmtIface} F1-C ===`, minipcF1,
-    `=== firecell ${firecellEth} F1-C ===`, firecellF1,
-    '=== non-Ethernet no-F1 captures ===',
+    `profile=${selectedBackhaulProfile().label}`,
+    `expected_path=${f1.expectedLabel}`,
+    `du_f1=${f1.du}`,
+    `cu_f1=${f1.cu}`,
+    `=== ${activeLabConfig.duLabel} ${expectedDuIface} F1-C ===`, minipcF1,
+    `=== firecell ${expectedCuIface} F1-C ===`, firecellF1,
+    '=== non-selected-path no-F1 captures ===',
     ...extraCaptures.map(item => `--- ${item.label} ${item.iface} ---\n${item.cap || '<no packets>'}`),
   ].join('\n'));
-  console.log(`\n  ${BOLD}minipc ${minipc.mgmtIface} F1-C${RESET}`);
+  console.log(`\n  ${BOLD}${activeLabConfig.duLabel} ${expectedDuIface} F1-C${RESET}`);
   await showLines(minipcF1 || '<no packets>');
-  console.log(`\n  ${BOLD}firecell ${firecellEth} F1-C${RESET}`);
+  console.log(`\n  ${BOLD}firecell ${expectedCuIface} F1-C${RESET}`);
   await showLines(firecellF1 || '<no packets>');
   const f1cOk = (hasPacketLines(minipcF1) || hasPacketLines(firecellF1)) && /sctp/i.test(minipcF1 + firecellF1);
   const isolatedOk = extraCaptures.every(item => !hasPacketLines(item.cap));
-  if (!f1cOk || !isolatedOk) throw new Error('Ethernet packet gate failed: F1-C was not proven on Ethernet or leaked to a non-Ethernet interface');
-  return { minipcF1, firecellF1, extraCaptures, firecellEth };
+  if (!f1cOk || !isolatedOk) throw new Error(`${selectedBackhaulProfile().label} packet gate failed: F1-C was not proven on the selected path or leaked to another interface`);
+  return { minipcF1, firecellF1, extraCaptures, firecellEth: expectedCuIface };
 }
 
 function restartSplitCoreCmd() {
@@ -1339,6 +1566,8 @@ async function waitForSplitCoreReady() {
     'set -euo pipefail',
     `cd ${CU_CN_DIR}`,
     `ip -4 addr show dev ${OAI_CN5G_BRIDGE_IF} | grep -q '192.168.71.140/26' || sudo -n ip addr add 192.168.71.140/26 dev ${OAI_CN5G_BRIDGE_IF}`,
+    'sudo -n ip route replace default via 10.76.170.126 dev enp6s0 2>/dev/null || true',
+    'sudo -n iptables -t nat -C POSTROUTING -s 10.0.0.0/16 -j MASQUERADE 2>/dev/null || sudo -n iptables -t nat -A POSTROUTING -s 10.0.0.0/16 -j MASQUERADE',
     'required="mysql oai-nrf oai-udr oai-udm oai-ausf oai-amf oai-smf oai-upf oai-ext-dn ims"',
     'for i in $(seq 1 60); do',
     '  ready=1',
@@ -1395,10 +1624,24 @@ async function checkSsh(host, label) {
 }
 
 async function hardStopSplit(minipcHost = MINIPC) {
+  const cuRuntimeConfs = [
+    CU_RUNTIME_CONF,
+    '/tmp/oai-tui-gnb-cu-ethernet-runtime.conf',
+    '/tmp/oai-tui-gnb-cu-pi-ethernet-runtime.conf',
+    '/tmp/oai-tui-gnb-cu-pi-wifi-gre-runtime.conf',
+    '/tmp/oai-tui-gnb-cu-pi-quectel-wg-runtime.conf',
+  ];
+  const duRuntimeConfs = [
+    DU_ETHERNET_RUNTIME_CONF,
+    '/tmp/oai-tui-gnb-minipc-ethernet-runtime.conf',
+    '/tmp/oai-tui-gnb-pi-ethernet-runtime.conf',
+    '/tmp/oai-tui-gnb-pi-wifi-gre-runtime.conf',
+    '/tmp/oai-tui-gnb-pi-quectel-wg-runtime.conf',
+  ];
   printInfo('Stopping known CU/donor softmodems on serber-firecell by config path...');
-  await sshLoose(FIRECELL, stopSoftmodemsByConfigsCmd([CU_CONF, CU_QUECTEL_CONF, FIRECELL_DONOR_DU_CONF, FIRECELL_DONOR_GNB_RUNTIME_CONF, FIRECELL_DONOR_PROD_CONF, MONO_CONF]), 15000);
+  await sshLoose(FIRECELL, stopSoftmodemsByConfigsCmd([CU_CONF, ...cuRuntimeConfs, CU_QUECTEL_CONF, FIRECELL_DONOR_DU_CONF, FIRECELL_DONOR_GNB_RUNTIME_CONF, FIRECELL_DONOR_PROD_CONF, MONO_CONF]), 15000);
   printInfo(`Stopping known DU softmodems on ${activeLabConfig.duLabel} by config path...`);
-  await sshLoose(minipcHost, stopSoftmodemsByConfigsCmd([DU_CONF, DU_ETHERNET_RUNTIME_CONF, DU_QUECTEL_CONF, EXPERIMENTAL_B210_RUNTIME_CONF]), 15000);
+  await sshLoose(minipcHost, stopSoftmodemsByConfigsCmd([DU_CONF, ...duRuntimeConfs, DU_QUECTEL_CONF, EXPERIMENTAL_B210_RUNTIME_CONF]), 15000);
   printSuccess('Known softmodem processes stopped');
 }
 
@@ -1407,7 +1650,7 @@ async function blockOaiPcF1ForMinipcDemo() {
   const rule = `-s ${OAI_PC_IP} -p sctp --dport 38472 -j DROP`;
   const cmd = `sudo -n iptables -C INPUT ${rule} 2>/dev/null || sudo -n iptables -I INPUT 1 ${rule}`;
   const out = await sshLoose(FIRECELL, cmd, 10000);
-  if (out.ok) printSuccess('oai-pc F1 peer isolated for minipc rollback demo');
+  if (out.ok) printSuccess('oai-pc F1 peer isolated for selected CU/DU benchmark');
   else printWarn(`Could not add oai-pc F1 block: ${out.combined || 'unknown error'}`);
 }
 
@@ -1458,6 +1701,85 @@ async function showSplitCoreHealth(dir) {
   }
 }
 
+async function preflightSelectedDuRadio(minipc, dir) {
+  const cmd = [
+    'set -euo pipefail',
+    'echo "--- selected DU config radio lines ---"',
+    `grep -En 'sdr_addrs|clock_source|time_source' ${DU_CONF} 2>/dev/null || true`,
+    'radio_args="$(grep -E "^[[:space:]]*sdr_addrs" ' + DU_CONF + ' 2>/dev/null | head -1 | sed -E \'s/.*"([^"]+)".*/\\1/\' || true)"',
+    'echo "radio_args=$radio_args"',
+    'echo "--- running softmodems on selected DU ---"',
+    'pgrep -a nr-softmodem || true',
+    'echo "--- UHD discovery: all devices ---"',
+    'uhd_find_devices 2>&1 || sudo -n uhd_find_devices 2>&1 || true',
+    'if printf "%s" "$radio_args" | grep -q "serial="; then',
+    '  serial="$(printf "%s" "$radio_args" | sed -nE "s/.*serial=([^, ]+).*/\\1/p")"',
+    '  echo "--- UHD discovery: serial=$serial ---"',
+    '  uhd_find_devices --args "serial=$serial" 2>&1 || sudo -n uhd_find_devices --args "serial=$serial" 2>&1 || true',
+    'fi',
+    'if printf "%s" "$radio_args" | grep -q "addr="; then',
+    '  addr="$(printf "%s" "$radio_args" | sed -nE "s/.*addr=([^, ]+).*/\\1/p")"',
+    '  echo "--- route to radio addr=$addr ---"',
+    '  ip route get "$addr" 2>/dev/null || true',
+    '  echo "--- ping radio addr=$addr ---"',
+    '  ping -c 2 -W 1 "$addr" || true',
+    '  echo "--- UHD discovery: addr=$addr ---"',
+    '  uhd_find_devices --args "addr=$addr" 2>&1 || sudo -n uhd_find_devices --args "addr=$addr" 2>&1 || true',
+    'fi',
+    'echo "--- USB Ettus devices ---"',
+    'lsusb 2>/dev/null | grep -Ei "ettus|usrp|national" || true',
+    'echo "--- selected DU network summary ---"',
+    'ip -br addr',
+  ].join('\n');
+  const out = await sshChecked(minipc.host, cmd, 45000);
+  appendEvidence(dir, 'system-status/du-radio-preflight.txt', out);
+  await showLines(out);
+  const radioVisible = /Device Address:|product:\s*(B210|X310)|type:\s*(b200|x300)/i.test(out);
+  const usbVisible = /Ettus Research|USRP B210|2500:0020/i.test(out);
+  const ownedByRunningDu = /nr-softmodem/i.test(out) && usbVisible;
+  if (!radioVisible && ownedByRunningDu) {
+    printWarn(`${activeLabConfig.duLabel} B210 is present on USB but UHD cannot open it while a softmodem is running; the post-cleanup UHD gate will recheck it.`);
+  }
+  if (!radioVisible && !ownedByRunningDu) {
+    throw new Error(
+      `${activeLabConfig.duLabel} radio preflight failed: no USRP is visible from ${minipc.host}. ` +
+      'Move/connect the B210 serial 8002816 to the selected DU, or choose the minipc profile where the access radio is currently visible.'
+    );
+  }
+  return out;
+}
+
+function selectedDuStartExtraArgs() {
+  const base = ['--log_config.global_log_level info'];
+  if (activeLabConfig.duLabel === 'serber-pi') base.push('-E');
+  return base.join(' ');
+}
+
+async function tuneSelectedDuForB210HighRate(minipc, dir) {
+  if (activeLabConfig.duLabel !== 'serber-pi') return '';
+  printInfo('Applying Raspberry Pi B210 high-rate host tuning for 106 PRB...');
+  const cmd = [
+    'set -euo pipefail',
+    'echo "--- before ---"',
+    'cat /sys/module/usbcore/parameters/usbfs_memory_mb 2>/dev/null || true',
+    'sysctl net.core.rmem_max net.core.wmem_max kernel.sched_rt_runtime_us 2>/dev/null || true',
+    'echo "--- apply ---"',
+    'sudo -n sh -c "echo 1000 > /sys/module/usbcore/parameters/usbfs_memory_mb"',
+    'sudo -n sysctl -w net.core.rmem_max=33554432 net.core.wmem_max=33554432 kernel.sched_rt_runtime_us=-1',
+    'echo "--- after ---"',
+    'cat /sys/module/usbcore/parameters/usbfs_memory_mb 2>/dev/null || true',
+    'sysctl net.core.rmem_max net.core.wmem_max kernel.sched_rt_runtime_us 2>/dev/null || true',
+    'lsusb -t',
+  ].join('\n');
+  const out = await sshChecked(minipc.host, cmd, 15000);
+  appendEvidence(dir, 'system-status/pi-b210-host-tuning.txt', out);
+  await showLines(out);
+  if (!/1000/.test(out) || !/5000M/.test(out)) {
+    throw new Error('Raspberry Pi B210 high-rate tuning did not confirm usbfs_memory_mb=1000 and SuperSpeed USB');
+  }
+  return out;
+}
+
 async function validateMonolithicIsolation(dir, minipc) {
   const firecellEth = parseRouteDevSrc(await sshChecked(FIRECELL, `ip route get ${minipc.mgmtIp}`, 10000)).dev || 'enp6s0';
   const minipcDu = await sshChecked(minipc.host, 'ps -eo pid=,comm=,args= | awk \'$2 == "nr-softmodem" { print }\' || true', 10000);
@@ -1486,14 +1808,16 @@ async function validateMonolithicIsolation(dir, minipc) {
 
 async function startEthernetRollback() {
   console.clear();
-  printHeader('Ethernet CU/DU Rollback Startup');
-  const dir = runDir('ethernet_cu_du_rollback_start');
+  const profile = selectedBackhaulProfile();
+  printHeader(`${profile.label} CU/DU Benchmark Startup`);
+  const dir = runDir(profile.evidenceSlug);
   printInfo(`Evidence directory: ${dir}`);
+  printInfo(`Selected benchmark profile: ${profile.label}`);
   const gate = {};
   let minipc = null;
 
   try {
-    printStep(1, 12, `Connect to lab hosts and discover live ${activeLabConfig.duLabel}`);
+    printStep(1, 14, `Connect to lab hosts and discover live ${activeLabConfig.duLabel}`);
     if (!await checkSsh(FIRECELL, 'serber-firecell')) throw new Error('serber-firecell SSH failed');
     minipc = await discoverMinipcTarget();
     printSuccess(`${activeLabConfig.duLabel} via ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
@@ -1505,27 +1829,37 @@ async function startEthernetRollback() {
     appendEvidence(dir, 'system-status/cpu-governors.txt', governors.join('\n\n'));
     gate.hosts = true;
 
-    printStep(2, 12, 'Stop previous OAI softmodems for this demo');
+    printStep(2, 14, `Preflight ${activeLabConfig.duLabel} radio access before changing lab state`);
+    await preflightSelectedDuRadio(minipc, dir);
+    await tuneSelectedDuForB210HighRate(minipc, dir);
+    gate.radioPreflight = true;
+
+    printStep(3, 14, 'Stop previous OAI softmodems for this demo');
     await hardStopSplit(minipc.host);
     gate.stopped = true;
 
-    printStep(3, 12, 'Stop conflicting monolithic core on serber-firecell');
+    printStep(4, 14, 'Stop conflicting monolithic core on serber-firecell');
     await stopMonolithicCoreForSplit();
     gate.monolithicCoreStopped = true;
 
-    printStep(4, 12, 'Isolate minipc rollback from competing oai-pc DU');
+    printStep(5, 14, 'Isolate selected CU/DU benchmark from competing oai-pc DU');
     await blockOaiPcF1ForMinipcDemo();
     gate.oaiPcIsolated = true;
 
-    printStep(5, 12, 'Detect DU USRP B210');
-    const usrp = await ssh(minipc.host, 'uhd_find_devices 2>&1 || sudo -n uhd_find_devices 2>&1 || lsusb | grep -Ei "ettus|usrp|b210|national"', 25000);
+    printStep(6, 14, 'Confirm DU USRP after cleanup');
+    const usrp = await ssh(minipc.host, 'uhd_find_devices 2>&1 || sudo -n uhd_find_devices 2>&1 || true', 25000);
     await showLines(usrp);
     appendEvidence(dir, 'system-status/du-usrp.txt', usrp);
-    if (!/B210|b200|type|serial/i.test(usrp)) throw new Error('DU USRP B210 was not clearly detected');
+    if (!/Device Address:|B210|b200|type:\s*x300|serial:/i.test(usrp)) throw new Error('DU USRP was not clearly detected by UHD after cleanup');
     printSuccess('DU USRP detected');
     gate.usrp = true;
 
-    printStep(6, 12, 'Start split 5G Core on serber-firecell');
+    printStep(7, 14, `Prepare selected F1 transport: ${profile.label}`);
+    const transportEvidence = await prepareSelectedBackhaul(minipc, dir);
+    if (transportEvidence) gate.transport = true;
+    else gate.transport = 'ethernet_direct';
+
+    printStep(8, 14, 'Start split 5G Core on serber-firecell');
     const core = await ssh(FIRECELL, restartSplitCoreCmd(), 120000);
     if (core) await showLines(core);
     appendEvidence(dir, 'logs/core-start.log', core);
@@ -1537,23 +1871,32 @@ async function startEthernetRollback() {
 
     // Apply TCP MSS Clamping inside UPF container (disabled by default when jumbo frames are on)
     await applyUpfMssClamping();
+    await ensureUpfRoutingAndNat();
 
     // Apply jumbo frames (MTU 9000) on both F1 interfaces to eliminate GTP-U fragmentation
-    const firecellRoute = await sshChecked(FIRECELL, `ip route get ${minipc.mgmtIp}`, 10000);
-    const firecellEthIface = parseRouteDevSrc(firecellRoute).dev || 'enp6s0';
-    const jumboOut = await applyJumboFrames(minipc.host, minipc.mgmtIface, FIRECELL, firecellEthIface);
-    if (jumboOut) appendEvidence(dir, 'system-status/mtu-verification.txt',
-      `minipc ${minipc.mgmtIface}:\n${jumboOut.minipcOut}\n\nfirecell ${firecellEthIface}:\n${jumboOut.firecellOut}`);
-    gate.jumboFrames = activeLabConfig.jumboFrames;
+    if (activeLabConfig.backhaulProfile === 'ethernet') {
+      const firecellRoute = await sshChecked(FIRECELL, `ip route get ${minipc.mgmtIp}`, 10000);
+      const firecellEthIface = parseRouteDevSrc(firecellRoute).dev || 'enp6s0';
+      const jumboOut = await applyJumboFrames(minipc.host, minipc.mgmtIface, FIRECELL, firecellEthIface);
+      if (jumboOut) appendEvidence(dir, 'system-status/mtu-verification.txt',
+        `${activeLabConfig.duLabel} ${minipc.mgmtIface}:\n${jumboOut.minipcOut}\n\nfirecell ${firecellEthIface}:\n${jumboOut.firecellOut}`);
+      gate.jumboFrames = activeLabConfig.jumboFrames;
+    } else {
+      printInfo('Jumbo frames are skipped for non-Ethernet benchmark profiles.');
+      gate.jumboFrames = 'skipped_non_ethernet';
+    }
 
-    printStep(7, 12, 'Prepare DU runtime config from live Ethernet address');
+    printStep(9, 14, 'Prepare CU/DU runtime configs from selected F1 addresses');
+    const cuRuntime = await prepareCuRuntimeConfig(minipc);
+    await showLines(cuRuntime);
+    appendEvidence(dir, 'system-status/cu-runtime-config.txt', cuRuntime);
     const duRuntime = await prepareEthernetDuConfig(minipc);
     await showLines(duRuntime);
     appendEvidence(dir, 'system-status/du-runtime-config.txt', duRuntime);
     gate.duConfig = true;
 
-    printStep(8, 12, 'Start CU on serber-firecell');
-    const cuStart = await sshChecked(FIRECELL, startSoftmodemCmd(`${CU_OAI}/cmake_targets/ran_build/build`, CU_CONF, CU_LOG, '--log_config.global_log_level info'), 20000);
+    printStep(10, 14, 'Start CU on serber-firecell');
+    const cuStart = await sshChecked(FIRECELL, startSoftmodemCmd(`${CU_OAI}/cmake_targets/ran_build/build`, CU_RUNTIME_CONF, CU_LOG, '--log_config.global_log_level info'), 20000);
     if (cuStart) await showLines(cuStart);
     await sleep(5000);
     const cuProc = await ssh(FIRECELL, 'pgrep -a nr-softmodem || true');
@@ -1561,11 +1904,11 @@ async function startEthernetRollback() {
     if (!cuProc.includes('nr-softmodem')) throw new Error('CU process did not remain running');
     gate.cu = true;
 
-    printStep(9, 12, `Start DU on ${activeLabConfig.duLabel}`);
+    printStep(11, 14, `Start DU on ${activeLabConfig.duLabel}`);
     const duStart = await sshChecked(minipc.host, [
       stopSoftmodemByConfigCmd(DU_CONF),
       stopSoftmodemByConfigCmd(DU_ETHERNET_RUNTIME_CONF),
-      startSoftmodemCmd(`${DU_OAI}/cmake_targets/ran_build/build`, DU_ETHERNET_RUNTIME_CONF, DU_LOG, '--log_config.global_log_level info -E'),
+      startSoftmodemCmd(`${DU_OAI}/cmake_targets/ran_build/build`, DU_ETHERNET_RUNTIME_CONF, DU_LOG, selectedDuStartExtraArgs()),
     ].join('\n'), 20000);
     if (duStart) await showLines(duStart);
     await sleep(7000);
@@ -1574,9 +1917,16 @@ async function startEthernetRollback() {
     if (!duProc.includes('nr-softmodem')) throw new Error('DU process did not remain running');
     gate.du = true;
 
-    printStep(10, 12, 'Validate F1/PWS milestones');
-    const cuLog = await sshLoose(FIRECELL, `grep -Ei "F1|connected|PWS|SIB8|UE|error|assert" ${CU_LOG} 2>/dev/null | tail -25 || tail -25 ${CU_LOG} 2>/dev/null || true`);
-    const duLog = await sshLoose(minipc.host, `grep -Ei "F1|connected|PWS|SIB8|MCS|BLER|SNR|UHD|B210|sync|error|assert" ${DU_LOG} 2>/dev/null | tail -60 || tail -60 ${DU_LOG} 2>/dev/null || true`);
+    printStep(12, 14, 'Validate F1/PWS milestones');
+    const cuLog = await sshLoose(FIRECELL, `grep -Ei "F1|connected|PWS|SIB8|UE|error|assert" ${CU_LOG} 2>/dev/null | tail -40 || tail -40 ${CU_LOG} 2>/dev/null || true`);
+    const duPattern = 'F1|connected|PWS|SIB8|MCS|BLER|SNR|UHD|B210|b200|sync|Actual master clock|sample rate|OVERFLOW|UNDERFLOW|error|assert';
+    const duLog = await sshLoose(minipc.host, [
+      `matches="$(grep -Ei ${shellQuote(duPattern)} ${DU_LOG} 2>/dev/null || true)"`,
+      'printf "%s\\n" "$matches" | head -80',
+      'echo "--- tail ---"',
+      'printf "%s\\n" "$matches" | tail -120',
+      `printf "overflow_count=%s\\n" "$(grep -c 'ERROR_CODE_OVERFLOW' ${DU_LOG} 2>/dev/null || echo 0)"`,
+    ].join('\n'));
     console.log(`\n  ${BOLD}CU log${RESET}`);
     await showLines(cuLog.combined);
     console.log(`\n  ${BOLD}DU log${RESET}`);
@@ -1587,20 +1937,25 @@ async function startEthernetRollback() {
     const duOk = /DU_handle_F1_SETUP_RESPONSE|received F1 Setup Response/i.test(duLog.combined);
     const radioOk = /got sync|B210|Found USRP/i.test(duLog.combined);
     if (!cuOk || !duOk || !radioOk) throw new Error('Ethernet CU/DU logs did not show F1 setup and radio sync evidence');
+    const overflowMatch = duLog.combined.match(/overflow_count=(\d+)/i);
+    const overflowCount = overflowMatch ? Number(overflowMatch[1]) : 0;
+    if (overflowCount > 20) {
+      throw new Error(`DU radio logged ${overflowCount} UHD overflows after startup; 106 PRB is not stable on this Pi/B210 run`);
+    }
     gate.f1Logs = true;
 
-    printStep(11, 12, 'Packet validation: F1-C on Ethernet, no F1 on WiFi/Quectel/WireGuard');
+    printStep(13, 14, `Packet validation: F1-C on ${profile.label}, no F1 on other paths`);
     await validateEthernetPacketPlacement(dir, minipc);
     gate.packet = true;
 
-    printStep(12, 12, 'Phone demo prompt and core health');
+    printStep(14, 14, 'Phone demo prompt and core health');
     console.log('\n    Bring the Nothing Phone near the demo area.');
     console.log('    Confirm the phone APN/DNN is "oai".');
     console.log('    Toggle airplane mode, wait for 5G, then observe PWS/SIB8 and run throughput.');
     await showSplitCoreHealth(dir);
     gate.coreHealth = true;
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
-    printSuccess('PASS: Ethernet CU/DU is running with F1-C on Ethernet, DU radio sync, and no F1 on WiFi/Quectel/WireGuard');
+    printSuccess(`PASS: ${profile.label} CU/DU is running with F1-C on the selected path, DU radio sync, and no F1 leakage on other paths`);
   } catch (err) {
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
     printError(err.message);
@@ -2598,8 +2953,8 @@ async function getRunningConfig() {
     if (out.includes('gnb-cu-minipc-quectel-backhaul.conf') || out.includes('oai-tui-firecell-donor-monolithic-runtime.conf') || out.includes('gnb-firecell-donor-single-core-51prb.conf')) {
       return 'caged Quectel F1 backhaul, monolithic donor';
     }
-    if (out.includes('gnb-cu-minipc.conf')) {
-      return 'Ethernet CU/DU split';
+    if (out.includes(CU_RUNTIME_CONF) || out.includes('gnb-cu-minipc.conf')) {
+      return `${selectedBackhaulProfile().label} CU/DU benchmark`;
     }
     if (out.includes(EXPERIMENTAL_B210_RUNTIME_CONF)) {
       return 'experimental single-B210 RF backhaul';
@@ -2628,7 +2983,9 @@ async function configureLabBeforeMenu() {
 
   const selection = await choose('Choose lab config:', [
     { name: 'Default serber-minipc + serber-firecell', value: 'minipc' },
-    { name: 'Default serber-pi + serber-firecell', value: 'pi' },
+    { name: 'Raspberry Pi benchmark: Ethernet F1', value: 'pi' },
+    { name: 'Raspberry Pi benchmark: Wi-Fi GRE F1', value: 'pi-wifi' },
+    { name: 'Raspberry Pi benchmark: Quectel 5G/WireGuard F1', value: 'pi-quectel' },
     { name: 'Enter new serber-firecell and serber-pi IP addresses', value: 'custom-pi' },
   ]);
 
@@ -2636,16 +2993,29 @@ async function configureLabBeforeMenu() {
     applyLabConfig(DEFAULT_LAB_CONFIGS.minipc);
   } else if (selection === 'pi') {
     applyLabConfig(DEFAULT_LAB_CONFIGS.pi);
+  } else if (selection === 'pi-wifi') {
+    applyLabConfig(DEFAULT_LAB_CONFIGS.piWifi);
+  } else if (selection === 'pi-quectel') {
+    applyLabConfig(DEFAULT_LAB_CONFIGS.piQuectel);
   } else {
     const firecellIp = await prompt('serber-firecell IP address', firecellAddress() || '10.76.170.38');
     const piIp = await prompt('serber-pi IP address', DEFAULT_PI_IP);
+    const profile = await choose('Pi benchmark transport:', [
+      { name: 'Ethernet F1', value: 'ethernet' },
+      { name: 'Wi-Fi GRE F1', value: 'wifiGre' },
+      { name: 'Quectel 5G/WireGuard F1', value: 'quectelWg' },
+    ]);
+    const runtimeSuffix = profile === 'wifiGre' ? 'wifi-gre' : profile === 'quectelWg' ? 'quectel-wg' : 'ethernet';
     applyLabConfig({
       label: 'custom serber-pi + serber-firecell',
       firecellHost: sshTargetFromAddress(firecellIp),
       duHost: sshTargetFromAddress(piIp),
       duLabel: 'serber-pi',
       duConfName: 'gnb-pi.conf',
-      duRuntimeConf: '/tmp/oai-tui-gnb-pi-ethernet-runtime.conf',
+      duRuntimeConf: `/tmp/oai-tui-gnb-pi-${runtimeSuffix}-runtime.conf`,
+      cuRuntimeConf: `/tmp/oai-tui-gnb-cu-pi-${runtimeSuffix}-runtime.conf`,
+      backhaulProfile: profile,
+      jumboFrames: profile === 'ethernet',
     });
   }
 
@@ -2661,8 +3031,9 @@ async function mainMenu() {
     console.log('\n  Demo targets:');
     console.log(`    Core/CU: ${FIRECELL}`);
     console.log(`    Monolithic reference: ${FIRECELL}`);
-    console.log(`    DU/USRP: ${activeLabConfig.duLabel} (${MINIPC}), discovered live for Ethernet`);
-    console.log('\n  Ethernet discovers the selected DU path each run. Quectel launch/validation is guarded to serber-minipc.\n');
+    console.log(`    DU/USRP: ${activeLabConfig.duLabel} (${MINIPC}), discovered live for selected benchmark`);
+    console.log(`    Benchmark backhaul: ${selectedBackhaulProfile().label}`);
+    console.log('\n  The selected CU/DU benchmark discovers the DU each run. Legacy caged Quectel launch/validation is guarded to serber-minipc.\n');
     const running = await getRunningConfig();
     let statusStr = running;
     if (running === 'none') {
@@ -2674,7 +3045,7 @@ async function mainMenu() {
     }
     console.log(`  currently running config: ${statusStr}\n`);
     const action = await choose('What would you like to do?', [
-      { name: `Launch Ethernet CU/DU split: firecell CU + live ${activeLabConfig.duLabel} DU`, value: 'start-split' },
+      { name: `Launch selected CU/DU benchmark: ${selectedBackhaulProfile().label} + live ${activeLabConfig.duLabel} DU`, value: 'start-split' },
       { name: 'Launch monolithic firecell core + gNB', value: 'start-mono' },
       { name: 'Launch caged Quectel F1 backhaul, monolithic donor', value: 'start-caged-quectel' },
       { name: 'Validate caged Quectel F1 backhaul, monolithic donor', value: 'validate-caged-quectel' },
@@ -2712,6 +3083,18 @@ async function mainMenu() {
 }
 
 async function cli() {
+  if (process.argv.includes('--pi-ethernet')) {
+    applyLabConfig(DEFAULT_LAB_CONFIGS.pi);
+  }
+  if (process.argv.includes('--pi-wifi-gre')) {
+    applyLabConfig(DEFAULT_LAB_CONFIGS.piWifi);
+  }
+  if (process.argv.includes('--pi-quectel-wg')) {
+    applyLabConfig(DEFAULT_LAB_CONFIGS.piQuectel);
+  }
+  if (process.argv.includes('--minipc-ethernet')) {
+    applyLabConfig(DEFAULT_LAB_CONFIGS.minipc);
+  }
   if (process.argv.includes('--no-jumbo-frames')) {
     activeLabConfig.jumboFrames = false;
   }
@@ -2721,8 +3104,7 @@ async function cli() {
   if (process.argv.includes('--force-mcs')) {
     activeLabConfig.forceMcs = true;
   }
-  const arg = process.argv[2];
-  if (arg === '--verify') {
+  if (process.argv.includes('--verify')) {
     console.clear();
     printHeader('OAI Lab TUI Verification');
     await checkSsh(FIRECELL, 'serber-firecell');
@@ -2730,23 +3112,36 @@ async function cli() {
     printSuccess(`${activeLabConfig.duLabel}: ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
     process.exit(0);
   }
-  if (arg === '--start-ethernet') {
+  if (process.argv.includes('--start-ethernet')) {
+    activeLabConfig.backhaulProfile = 'ethernet';
     await startEthernetRollback();
     process.exit(0);
   }
-  if (arg === '--start-mono') {
+  if (process.argv.includes('--start-wifi-gre')) {
+    activeLabConfig.backhaulProfile = 'wifiGre';
+    activeLabConfig.jumboFrames = false;
+    await startEthernetRollback();
+    process.exit(0);
+  }
+  if (process.argv.includes('--start-quectel-wg')) {
+    activeLabConfig.backhaulProfile = 'quectelWg';
+    activeLabConfig.jumboFrames = false;
+    await startEthernetRollback();
+    process.exit(0);
+  }
+  if (process.argv.includes('--start-mono')) {
     await startMonolithic();
     process.exit(0);
   }
-  if (arg === '--start-caged-quectel') {
+  if (process.argv.includes('--start-caged-quectel')) {
     await launchSingleCuQuectelBackhaul();
     process.exit(0);
   }
-  if (arg === '--validate-caged-quectel') {
+  if (process.argv.includes('--validate-caged-quectel')) {
     await validateSingleCuQuectelBackhaul();
     process.exit(0);
   }
-  if (arg === '--rollback-caged-quectel') {
+  if (process.argv.includes('--rollback-caged-quectel')) {
     await stopAllConfigs();
     process.exit(0);
   }
