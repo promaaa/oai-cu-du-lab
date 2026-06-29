@@ -346,7 +346,7 @@ function execLocal(cmd, timeout = 60000) {
 }
 
 async function ssh(host, cmd, timeout = 60000) {
-  const full = `ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 ${host} ${quoteForSsh(cmd)}`;
+  const full = `ssh -o ProxyJump=none -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 ${host} ${quoteForSsh(cmd)}`;
   const res = await execLocal(full, timeout);
   if (!res.ok) throw new Error(res.combined || `command failed rc=${res.code}`);
   return res.combined;
@@ -361,7 +361,7 @@ async function sshChecked(host, cmd, timeout = 60000) {
 }
 
 async function sshLoose(host, cmd, timeout = 60000) {
-  const full = `ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 ${host} ${quoteForSsh(cmd)}`;
+  const full = `ssh -o ProxyJump=none -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 ${host} ${quoteForSsh(cmd)}`;
   return await execLocal(full, timeout);
 }
 
@@ -1476,6 +1476,21 @@ async function configureWifiGreBackhaul(minipc, dir) {
 
 async function configureQuectelWireGuardBackhaul(minipc, dir) {
   const apn = process.env.QUECTEL_APN || await prompt('Quectel APN for selected DU', 'oai');
+  printInfo('Ensuring Firecell donor gNB is running for Quectel registration...');
+  const donorConfig = await prepareMonolithicDonorRuntimeConfig(dir);
+  await showLines(donorConfig);
+  const donorStart = await sshChecked(FIRECELL, [
+    `sudo -n ip addr add 192.168.71.140/26 dev ${OAI_CN5G_BRIDGE_IF} 2>/dev/null || true`,
+    stopSoftmodemByConfigCmd(FIRECELL_DONOR_GNB_RUNTIME_CONF),
+    stopSoftmodemByConfigCmd(FIRECELL_DONOR_PROD_CONF),
+    startSoftmodemCmd(`${MONO_OAI}/cmake_targets/ran_build/build`, FIRECELL_DONOR_GNB_RUNTIME_CONF, FIRECELL_DONOR_GNB_LOG, '-E --continuous-tx --log_config.global_log_level info'),
+    'sleep 8',
+    'pgrep -a nr-softmodem || true',
+    `grep -Ei "NGSetup|in service|Cell ID|UHD|B200|B210|got sync|PRACH|RNTI|error|fail|assert" ${FIRECELL_DONOR_GNB_LOG} 2>/dev/null | tail -120 || true`,
+  ].join('\n'), 45000);
+  await showLines(donorStart);
+  appendEvidence(dir, 'logs/firecell-monolithic-donor-gnb-start.log', donorStart);
+  await validateMonolithicDonorInService(dir);
   printInfo(`Preparing Quectel/WireGuard transport on ${activeLabConfig.duLabel}...`);
   const quectel = await discoverQuectel(minipc.host, apn);
   await showLines(quectel.raw);
