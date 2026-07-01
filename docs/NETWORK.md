@@ -5,8 +5,8 @@
 | Host | Role | Notes |
 |---|---|---|
 | `serber-firecell` | Core Network and CU | Current split baseline uses management IP `10.76.170.38`; OAI CN subnet includes `192.168.71.129/132` evidence. |
-| `serber-minipc` | DU, USRP B210 access, Quectel backhaul experiments | Use the `serber-minipc` SSH alias because its management address can drift; the current split run resolved to `10.76.170.83` on `enp4s0`. Wi-Fi GRE evidence includes `wlp3s0`; Quectel evidence includes `wwan0`. |
-| `serber-pi` | Experimental lightweight DU | Raspberry Pi 5 migration target; 16 GB migration is not validated. |
+| `serber-minipc` | DU, USRP B210 access, Quectel backhaul experiments | Current verified management target is `serber@10.76.170.40` on `enp2s0`; aliases and older addresses have drifted. Wi-Fi GRE evidence includes `wlp3s0` at `10.85.168.144`; Quectel evidence includes `wwan0` and `wg-quectel-f1`. |
+| `serber-pi` | Experimental lightweight DU | Current verified management target is `serber@10.76.170.18` on `eth0`; OAI source is pinned at the split baseline commit. |
 | `oai-pc` | Powerful validation PC | Used to rule out hardware limits and for phone-screen validation. Older docs also call an OAI PC `oai`. |
 
 ## Hardware Relationships

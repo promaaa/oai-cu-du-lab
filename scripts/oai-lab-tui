@@ -45,8 +45,8 @@ try {
 }
 
 const DEFAULT_FIRECELL_HOST = 'serber@10.76.170.38';
-const DEFAULT_MINIPC_HOST = 'serber-minipc';
-const DEFAULT_PI_HOST = 'serber-pi';
+const DEFAULT_MINIPC_HOST = 'serber@10.76.170.40';
+const DEFAULT_PI_HOST = 'serber@10.76.170.18';
 const DEFAULT_PI_IP = '10.76.170.18';
 const BACKHAUL_PROFILES = {
   ethernet: {
@@ -114,12 +114,12 @@ const DEFAULT_LAB_CONFIGS = {
   },
 };
 const BASE_DU_DISCOVERY_CANDIDATES = [
+  DEFAULT_MINIPC_HOST,
+  DEFAULT_PI_HOST,
   '-o HostKeyAlias=10.76.170.109 serber@serber-minipc.kaust.edu.sa',
   'serber-minipc',
   'serber@serber-minipc',
   'serber@10.85.168.144',
-  DEFAULT_MINIPC_HOST,
-  DEFAULT_PI_HOST,
   `serber@${DEFAULT_PI_IP}`,
 ];
 let activeLabConfig = {

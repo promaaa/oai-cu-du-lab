@@ -56,8 +56,8 @@ Default professor-demo lab targets:
 
 ```text
 serber-firecell = serber@10.76.170.38
-serber-minipc   = serber-minipc
-serber-pi       = serber-pi
+serber-minipc   = serber@10.76.170.40
+serber-pi       = serber@10.76.170.18
 ```
 
 Monolithic reference startup is pinned to `serber-firecell` to match the

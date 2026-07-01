@@ -1,6 +1,6 @@
 # TUI Discovered Commands
 
-Discovery date: 2026-06-01.
+Discovery date: 2026-07-01.
 
 This file records only non-secret operational facts. Raw logs, packet captures,
 passwords, subscriber material, and UE authentication values remain excluded.
@@ -10,14 +10,14 @@ passwords, subscriber material, and UE authentication values remain excluded.
 | Target | Result |
 |---|---|
 | `serber@10.76.170.38` | Reached `serber-firecell`. |
-| `serber@10.76.170.100` | Reached `serber-minipc`. |
-| `serber-pi` | SSH timed out to `10.76.170.94`. |
+| `serber@10.76.170.40` | Reached `serber-minipc` on `enp2s0`. |
+| `serber@10.76.170.18` | Reached `serber-pi` on `eth0`. |
 | `oai-pc` | Hostname did not resolve in the current local environment. |
 | `10.76.170.90` | Observed as a stale F1 peer on the CU during Ethernet rollback testing. |
 
-The current local SSH aliases `serber-firecell` and `serber-minipc` both
-resolve to `10.85.168.144` through the local SSH config. The demo TUI therefore
-hard-codes direct `serber@10.76.170.38` and `serber@10.76.170.100` targets.
+Use direct targets for professor-demo work because local SSH aliases have
+drifted in prior sessions. The TUI defaults to `serber@10.76.170.38`,
+`serber@10.76.170.40`, and `serber@10.76.170.18`.
 
 ## External OAI Repositories
 
@@ -32,7 +32,6 @@ Observed external trees include:
 ```text
 /home/serber/monolithic/openairinterface5g
 /home/serber/cu-du/source/openairinterface5g
-/home/serber/cu-du-backhaul/source/openairinterface5g
 /home/serber/cu-du-minipc-backhaul/source/openairinterface5g
 ```
 
@@ -91,9 +90,10 @@ therefore calls out the `oai` APN/DNN requirement before phone validation.
 
 ## Blocked Workflows
 
-`serber-pi` is not operational in this environment because SSH did not connect.
-Before enabling launch actions, record SSH status, USRP detection, DU startup,
-CPU/RAM, temperature, throttling, logs, and failure reasons.
+`serber-pi` is reachable on Ethernet at `10.76.170.18`, but Pi DU launch
+actions still require fresh synchronized evidence before promotion beyond
+prepared benchmark status. Record USRP detection, DU startup, CPU/RAM,
+temperature, throttling, logs, and phone/service results for each run.
 
 `oai-pc` is not operational in this environment because the hostname did not
 resolve. Before enabling launch actions, record the target address, repository

@@ -8,22 +8,22 @@ hosts:
       - core-network
       - cu
       - monolithic-reference
-    status: verified_ssh_2026-06-01
+    status: verified_ssh_2026-07-01
 
   serber-minipc:
-    ssh_target: serber@10.76.170.100
+    ssh_target: serber@10.76.170.40
     role:
       - du
       - access-radio-host
       - nrue-host
       - quectel-backhaul-host
-    status: verified_ssh_2026-06-01
+    status: verified_ssh_2026-07-01
 
   serber-pi:
-    ssh_target: serber-pi
+    ssh_target: serber@10.76.170.18
     role:
       - experimental-lightweight-du
-    status: blocked_ssh_timeout_2026-06-01
+    status: verified_ssh_2026-07-01
 
   oai-pc:
     ssh_target: oai-pc
