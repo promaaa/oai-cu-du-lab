@@ -21,7 +21,7 @@ DU_LOG="${DU_QUECTEL_LOG:-$DU_LOG}"
 log "=== Phase 5c: Starting minipc access DU with Quectel/WireGuard F1 ==="
 log "F1 binding: DU listens on $WG_DU_IP, connects to CU at $WG_CU_IP"
 log "Access identity: DU_ID=$ACCESS_DU_ID cell=$ACCESS_NR_CELL_ID PCI=$ACCESS_PCI TAC=$ACCESS_TAC"
-log "Access radio: USRP B210 serial $ACCESS_B210_SERIAL (NOT used for backhaul)"
+log "Access radio: SDR args $ACCESS_SDR_ADDRS (NOT used for backhaul)"
 log ""
 
 ssh_host "$DU_HOST" "
@@ -67,8 +67,8 @@ if pgrep -x nr-softmodem >/dev/null; then
   log 'Another nr-softmodem is already running on minipc; access DU start may fail if it owns the B210.'
   pgrep -a nr-softmodem || true
 else
-  log 'Checking B210 serial $ACCESS_B210_SERIAL before access DU start...'
-  uhd_find_devices --args serial='$ACCESS_B210_SERIAL' 2>&1 || sudo -n uhd_find_devices --args serial='$ACCESS_B210_SERIAL' 2>&1 || true
+  log 'Checking SDR before access DU start...'
+  uhd_find_devices --args "$ACCESS_SDR_ADDRS" 2>&1 || sudo -n uhd_find_devices --args "$ACCESS_SDR_ADDRS" 2>&1 || true
 fi
 
 # Verify Quectel is still connected

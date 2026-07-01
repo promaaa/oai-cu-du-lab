@@ -1,4 +1,14 @@
 radios:
+  usrp_x310:
+    type: sdr
+    validated_role: none
+    intended_role: local_5g_access_radio_and_nr_ue_backhaul
+    host: serber-minipc
+    status: migration_in_progress
+    evidence_sources:
+      - experiments/20260625_x310_51prb_access_cell_verification.md
+    notes: "USRP X310 is under integration as a possible combined access/backhaul migration path. The 51-PRB access-cell run reached F1 and SIB8/PWS scheduling but did not prove phone attach or user-plane service."
+
   usrp_b210:
     type: sdr
     validated_role: local_5g_access_radio
@@ -25,7 +35,7 @@ radios:
     evidence_sources:
       - cu-du-5g-backhauling/README.md
       - cu-du-5g-backhauling/docs/quectel-f1-backhaul.md
-    notes: "Stable full F1 over the same access cell is not validated."
+    notes: "Stable full F1 over Quectel/WireGuard is not validated. The X310 path is experimental and has not replaced this documented backhaul target."
 
   nothing_phone:
     type: commercial_ue

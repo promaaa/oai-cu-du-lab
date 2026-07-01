@@ -17,12 +17,16 @@ else
   exit 1
 fi
 
+PRE_DU_HOST="${DU_HOST:-}"
+PRE_CU_HOST="${CU_HOST:-}"
 if [ -f "$REPO_BASE/conf/local/lab.env" ]; then
   # shellcheck source=conf/local/lab.env
   set +e
   source "$REPO_BASE/conf/local/lab.env" 2>/dev/null
   set -e
 fi
+[ -n "$PRE_DU_HOST" ] && DU_HOST="$PRE_DU_HOST"
+[ -n "$PRE_CU_HOST" ] && CU_HOST="$PRE_CU_HOST"
 
 # Fixed caged-lab access cell. Keep these aligned with the verified Ethernet
 # access-radio baseline so stale local overrides cannot weaken the phone cell.
@@ -31,11 +35,18 @@ ACCESS_GNB_ID="0xe00"
 ACCESS_NR_CELL_ID="12345678"
 ACCESS_PCI="0"
 ACCESS_TAC="1"
-ACCESS_B210_SERIAL="8002816"
+ACCESS_B210_SERIAL="${ACCESS_B210_SERIAL:-8002816}"
+if [[ "$ACCESS_B210_SERIAL" == *"="* ]]; then ACCESS_SDR_ADDRS="${ACCESS_SDR_ADDRS:-$ACCESS_B210_SERIAL}"; else ACCESS_SDR_ADDRS="${ACCESS_SDR_ADDRS:-serial=$ACCESS_B210_SERIAL}"; fi
 ACCESS_ATT_TX="3"
 ACCESS_ATT_RX="12"
 ACCESS_ARFCN_SSB="641280"
 ACCESS_ARFCN_POINTA="640008"
+
+DL_BLER_TARGET_UPPER="${DL_BLER_TARGET_UPPER:-0.35}"
+DL_BLER_TARGET_LOWER="${DL_BLER_TARGET_LOWER:-0.25}"
+UL_BLER_TARGET_UPPER="${UL_BLER_TARGET_UPPER:-0.35}"
+UL_BLER_TARGET_LOWER="${UL_BLER_TARGET_LOWER:-0.15}"
+FORCE_MCS="${FORCE_MCS:-0}"
 
 log "=== Generating OAI F1 configs for monolithic-donor Quectel backhaul ==="
 log "Target: firecell 5GC + firecell CU + monolithic donor gNB + minipc access DU"
@@ -116,23 +127,29 @@ sudo -n perl -0pi -e '
   s/(tracking_area_code\s*=\s*)\d+;/\${1}$ACCESS_TAC;/g;
   s/(physCellId\s*=\s*)\d+;/\${1}$ACCESS_PCI;/g;
   s/(nr_cellid\s*=\s*)\d+;/\${1}$ACCESS_NR_CELL_ID;/g;
-  s/(sdr_addrs\s*=\s*\")[^\"]+(\")/\${1}serial=$ACCESS_B210_SERIAL\${2}/g;
+  s/(sdr_addrs\s*=\s*\")[^\"]+(\")/\${1}$ACCESS_SDR_ADDRS\${2}/g;
   s/(att_tx\s*=\s*)\d+/\${1}$ACCESS_ATT_TX/g;
   s/(att_rx\s*=\s*)\d+/\${1}$ACCESS_ATT_RX/g;
   s/(absoluteFrequencySSB\s*=\s*)\d+;/\${1}$ACCESS_ARFCN_SSB;/g;
   s/(dl_absoluteFrequencyPointA\s*=\s*)\d+;/\${1}$ACCESS_ARFCN_POINTA;/g;
+  s/^\s*(?:dl_bler_target_upper|dl_bler_target_lower|ul_bler_target_upper|ul_bler_target_lower|dl_min_mcs|dl_max_mcs|ul_min_mcs|ul_max_mcs)\s*=\s*[^;]+;\n//mg;
+  s/(pucch_TargetSNRx10\s*=\s*\d+;)/\${1}\n    dl_bler_target_upper        = $DL_BLER_TARGET_UPPER;\n    dl_bler_target_lower        = $DL_BLER_TARGET_LOWER;\n    ul_bler_target_upper        = $UL_BLER_TARGET_UPPER;\n    ul_bler_target_lower        = $UL_BLER_TARGET_LOWER;/;
 ' \"\$CONF\"
+
+if [ \"$FORCE_MCS\" = \"1\" ]; then
+  sudo -n perl -0pi -e 's/(MACRLCs\s*=\s*\(\s*\{\s*num_cc\s*=\s*1;)/\${1}\n    dl_min_mcs = 10;\n    dl_max_mcs = 28;\n    ul_min_mcs = 10;\n    ul_max_mcs = 28;/;' \"\$CONF\"
+fi
 
 if ! grep -q 'local_n_if_name' \"\$CONF\"; then
   printf '\nlocal_n_if_name = \"$WG_IF\";\n' | sudo -n tee -a \"\$CONF\" >/dev/null
 fi
 
-printf '[*] Access DU identity: DU_ID=%s gNB_ID=%s cell=%s PCI=%s TAC=%s B210=%s att_tx=%s att_rx=%s SSB=%s PointA=%s\n' '$ACCESS_DU_ID' '$ACCESS_GNB_ID' '$ACCESS_NR_CELL_ID' '$ACCESS_PCI' '$ACCESS_TAC' '$ACCESS_B210_SERIAL' '$ACCESS_ATT_TX' '$ACCESS_ATT_RX' '$ACCESS_ARFCN_SSB' '$ACCESS_ARFCN_POINTA'
+printf '[*] Access DU identity: DU_ID=%s gNB_ID=%s cell=%s PCI=%s TAC=%s SDR=%s att_tx=%s att_rx=%s SSB=%s PointA=%s\n' '$ACCESS_DU_ID' '$ACCESS_GNB_ID' '$ACCESS_NR_CELL_ID' '$ACCESS_PCI' '$ACCESS_TAC' '$ACCESS_SDR_ADDRS' '$ACCESS_ATT_TX' '$ACCESS_ATT_RX' '$ACCESS_ARFCN_SSB' '$ACCESS_ARFCN_POINTA'
 printf '[*] Generated DU config: %s\n' \"\$CONF\"
-grep -En 'gNB_ID|gNB_DU_ID|tracking_area_code|physCellId|nr_cellid|sdr_addrs|att_tx|att_rx|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name|absoluteFrequencySSB|dl_absoluteFrequencyPointA' \"\$CONF\" | head -80 || true
+grep -En 'gNB_ID|gNB_DU_ID|tracking_area_code|physCellId|nr_cellid|sdr_addrs|att_tx|att_rx|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name|absoluteFrequencySSB|dl_absoluteFrequencyPointA|mcs|bler_target' \"\$CONF\" | head -80 || true
 
 
-for required in '$ACCESS_DU_ID' '$ACCESS_GNB_ID' '$ACCESS_NR_CELL_ID' '$ACCESS_B210_SERIAL' '$WG_DU_IP' '$WG_CU_IP' '$WG_IF'; do
+for required in '$ACCESS_DU_ID' '$ACCESS_GNB_ID' '$ACCESS_NR_CELL_ID' '$ACCESS_SDR_ADDRS' '$WG_DU_IP' '$WG_CU_IP' '$WG_IF'; do
   if ! grep -Fq \"\$required\" \"\$CONF\"; then
     echo \"[!] Generated access DU config is missing required value: \$required\"
     exit 2

@@ -46,13 +46,23 @@ scenarios:
       - phone_throughput_entry
 
   rpi_du:
-    label: "CU/DU split with serber-pi"
-    status: unverified_blocked_until_real_host_preflight_passes
+    label: "Raspberry Pi CU/DU benchmarks"
+    status: prepared_in_tui_requires_fresh_live_validation
     roles:
       serber-firecell: "Core Network + CU"
       serber-pi: "experimental DU + radio"
+    benchmark_profiles:
+      ethernet_f1:
+        tui_command: "./scripts/oai-lab-tui --pi-ethernet --start-ethernet"
+        selected_transport: ethernet
+      wifi_gre_f1:
+        tui_command: "PI_WIFI_IP=<pi-wifi-ip> ./scripts/oai-lab-tui --pi-wifi-gre --start-wifi-gre"
+        selected_transport: test-gre
+      quectel_wireguard_f1:
+        tui_command: "./scripts/oai-lab-tui --pi-quectel-wg --start-quectel-wg"
+        selected_transport: wg-quectel-f1
     rollback_target: false
-    pws_supported: false
+    pws_supported: true
     restart_required_after_pws_apply: true
     evidence_requirement:
       - ssh
@@ -60,7 +70,14 @@ scenarios:
       - cpu_ram
       - temperature
       - throttling
-      - du_startup_result
+      - selected_f1_transport_prepared
+      - runtime_cu_du_configs_with_selected_f1_ips
+      - f1_log_milestone
+      - f1_c_sctp_on_selected_transport
+      - no_f1_on_non_selected_paths
+      - phone_pws_observation
+      - phone_throughput_entry
+      - ethernet_rollback_rechecked_after_benchmark
 
   oai_pc_du:
     label: "CU/DU split with oai-pc"

@@ -110,6 +110,7 @@ const DEFAULT_LAB_CONFIGS = {
     cuRuntimeConf: '/tmp/oai-tui-gnb-cu-pi-quectel-wg-runtime.conf',
     backhaulProfile: 'quectelWg',
     jumboFrames: false,
+    clampMss: true,
   },
 };
 const BASE_DU_DISCOVERY_CANDIDATES = [
@@ -166,14 +167,14 @@ const FIRECELL_DONOR_DU_CONF = `${CU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/g
 const FIRECELL_DONOR_DU_LOG = '/tmp/oai-du-firecell-donor-local-f1.log';
 const FIRECELL_SEED_SUBSCRIBER = '/home/serber/cu-du-minipc-backhaul/roles/cn/seed-subscriber.sh';
 const CU_QUECTEL_CONF = `${CU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu-minipc-quectel-backhaul.conf`;
-const DU_QUECTEL_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-minipc-quectel-backhaul.conf`;
+let DU_QUECTEL_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-minipc-quectel-backhaul.conf`;
 const CU_QUECTEL_LOG = process.env.CU_QUECTEL_LOG || '/tmp/oai-cu-quectel.log';
 const DU_QUECTEL_LOG = process.env.DU_QUECTEL_LOG || '/tmp/oai-du-quectel.log';
 const EXPERIMENTAL_B210_LOG = process.env.EXPERIMENTAL_B210_LOG || '/tmp/oai-experimental-b210-rf-backhaul.log';
 const EXPERIMENTAL_B210_RUNTIME_CONF = process.env.EXPERIMENTAL_B210_RUNTIME_CONF || '/tmp/oai-tui-experimental-b210-rf-backhaul-runtime.conf';
 const LOCAL_DONOR_F1_CU_IP = '127.0.0.1';
 const LOCAL_DONOR_F1_DU_IP = '127.0.0.2';
-const ACCESS_B210_SERIAL = '8002816';
+const ACCESS_B210_SERIAL = process.env.ACCESS_B210_SERIAL || '8002816';
 const DONOR_DU_ID = '0xe11';
 const DONOR_GNB_ID = '0xe10';
 const DONOR_NR_CELL_ID = '22345678';
@@ -292,6 +293,7 @@ function applyLabConfig(config) {
   CU_RUNTIME_CONF = activeLabConfig.cuRuntimeConf || '/tmp/oai-tui-gnb-cu-ethernet-runtime.conf';
   DU_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${activeLabConfig.duConfName}`;
   DU_ETHERNET_RUNTIME_CONF = activeLabConfig.duRuntimeConf;
+  DU_QUECTEL_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${activeLabConfig.duLabel === 'serber-pi' ? 'gnb-pi-quectel-backhaul.conf' : 'gnb-minipc-quectel-backhaul.conf'}`;
   process.env.CU_HOST = FIRECELL;
   process.env.DU_HOST = MINIPC;
 }
@@ -713,7 +715,7 @@ async function discoverQuectel(minipcHost, apn) {
     'if [ -n "$qmi" ]; then',
     '  settings_out=""',
     '  pdu_ok=0',
-    '  if printf "%s\\n" "$qmi_preflight" | grep -Eiq "no-atr-received|not-initialized"; then',
+    '  if printf "%s\\n" "$qmi_preflight" | grep -Eiq "Card state: .absent|no-atr-received"; then',
     '    echo "quectel_sim_ready=0"',
     '  elif printf "%s\\n" "$qmi_preflight" | grep -Eiq "Registration state: .not-registered|PS: .detached"; then',
     '    echo "quectel_registered=0"',
@@ -1049,6 +1051,9 @@ async function ensurePduRoutes(minipcHost, quectel) {
 async function ensureWireGuard(minipcHost, quectel = null, options = {}) {
   const restart = options.restart !== false;
   if (quectel?.iface && quectel?.settings?.ip && quectel?.settings?.gateway) {
+    const firecellPubKey = (await sshChecked(FIRECELL, `sudo -n sh -c "wg pubkey < /etc/wireguard/${WG_IF}.key"`, 10000)).trim();
+    const minipcPubKey = (await sshChecked(minipcHost, `sudo -n sh -c "wg pubkey < /etc/wireguard/${WG_IF}.key"`, 10000)).trim();
+
     const preUpCmd = `PreUp = ip route replace ${FIRECELL_WG_ENDPOINT_IP}/32 via ${quectel.settings.gateway} dev ${quectel.iface} src ${quectel.settings.ip}`;
     const postDownCmd = `PostDown = ip route del ${FIRECELL_WG_ENDPOINT_IP}/32 dev ${quectel.iface} 2>/dev/null || true`;
 
@@ -1057,8 +1062,8 @@ async function ensureWireGuard(minipcHost, quectel = null, options = {}) {
       `sudo -n cp /etc/wireguard/${WG_IF}.conf /etc/wireguard/${WG_IF}.conf.bak-oai-tui 2>/dev/null || true`,
       `sudo -n perl -0pi -e ${shellQuote(`s#^PreUp\\s*=.*\\n##mg; s#^PostDown\\s*=.*${FIRECELL_WG_ENDPOINT_IP}.*\\n##mg; s#(\\[Interface\\])#\\[Interface\\]\\n${preUpCmd}\\n${postDownCmd}#g`)} /etc/wireguard/${WG_IF}.conf`,
       `sudo -n perl -0pi -e ${shellQuote(`s#^AllowedIPs\\s*=.*#AllowedIPs = ${WG_CU_IP}/32#m`)} /etc/wireguard/${WG_IF}.conf`,
-      `sudo -n grep -E '^(PreUp|PostDown) = ' /etc/wireguard/${WG_IF}.conf`,
-      `sudo -n grep -E '^AllowedIPs = ' /etc/wireguard/${WG_IF}.conf`,
+      `sudo -n perl -0pi -e ${shellQuote(`s#^PublicKey\\s*=.*#PublicKey = ${firecellPubKey}#m`)} /etc/wireguard/${WG_IF}.conf`,
+      `sudo -n grep -E '^(PreUp|PostDown|AllowedIPs|PublicKey) = ' /etc/wireguard/${WG_IF}.conf`,
     ].join('\n'), 15000);
 
     const postUpCmd = `PostUp = ip route replace ${quectel.settings.ip}/32 via ${OAI_UPF_IP} dev ${OAI_CN5G_BRIDGE_IF}`;
@@ -1068,7 +1073,8 @@ async function ensureWireGuard(minipcHost, quectel = null, options = {}) {
       'set -euo pipefail',
       `sudo -n cp /etc/wireguard/${WG_IF}.conf /etc/wireguard/${WG_IF}.conf.bak-oai-tui 2>/dev/null || true`,
       `sudo -n perl -0pi -e ${shellQuote(`s#^PostUp\\s*=.*${OAI_CN5G_BRIDGE_IF}.*\\n##mg; s#^PreDown\\s*=.*${OAI_CN5G_BRIDGE_IF}.*\\n##mg; s#(\\[Interface\\])#\\[Interface\\]\\n${postUpCmd}\\n${preDownCmd}#g`)} /etc/wireguard/${WG_IF}.conf`,
-      `sudo -n grep -E '^(PostUp|PreDown) = ' /etc/wireguard/${WG_IF}.conf`,
+      `sudo -n perl -0pi -e ${shellQuote(`s#^PublicKey\\s*=.*#PublicKey = ${minipcPubKey}#m`)} /etc/wireguard/${WG_IF}.conf`,
+      `sudo -n grep -E '^(PostUp|PreDown|PublicKey) = ' /etc/wireguard/${WG_IF}.conf`,
     ].join('\n'), 15000);
   }
   let firecellStart = { ok: true, combined: '' };
@@ -1495,7 +1501,7 @@ async function configureQuectelWireGuardBackhaul(minipc, dir) {
   const quectel = await discoverQuectel(minipc.host, apn);
   await showLines(quectel.raw);
   appendEvidence(dir, 'system-status/quectel-qmi.txt', quectel.raw);
-  if (/quectel_sim_ready=0|no-atr-received|not-initialized/i.test(quectel.raw)) {
+  if (/quectel_sim_ready=0|no-atr-received|Card state:\s*'absent'/i.test(quectel.raw)) {
     throw new Error('Quectel SIM is not readable on the Pi modem (QMI reports no ATR / not initialized)');
   }
   if (/quectel_registered=0|Registration state:\s*'not-registered|PS:\s*'detached/i.test(quectel.raw)) {
@@ -2409,9 +2415,9 @@ async function stopAllConfigs(minipcHost = null) {
 async function launchSingleCuQuectelBackhaul() {
   console.clear();
   printHeader('Launch Caged Quectel F1 Backhaul, Monolithic Donor');
-  if (activeLabConfig.duLabel !== 'serber-minipc') {
-    printError('Caged Quectel F1 backhaul is validated only for serber-minipc with the Quectel modem.');
-    printWarn('Use the configuration screen to select serber-minipc + serber-firecell before launching this workflow.');
+  if (activeLabConfig.duLabel !== 'serber-minipc' && activeLabConfig.duLabel !== 'serber-pi') {
+    printError('Caged Quectel F1 backhaul is validated for serber-minipc and serber-pi with the Quectel modem.');
+    printWarn('Use the configuration screen to select serber-minipc or serber-pi + serber-firecell before launching this workflow.');
     await prompt('Press Enter to continue');
     return;
   }
@@ -2429,7 +2435,7 @@ async function launchSingleCuQuectelBackhaul() {
   try {
     printStep(1, 14, 'Hardware preflight and live minipc discovery');
     minipc = await discoverMinipcTarget();
-    printSuccess(`serber-minipc via ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
+    printSuccess(`${activeLabConfig.duLabel} via ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
     appendEvidence(dir, 'system-status/minipc-discovery.txt', minipc.raw);
     await checkSsh(FIRECELL, 'serber-firecell');
     const governors = await Promise.all([
@@ -2448,7 +2454,7 @@ async function launchSingleCuQuectelBackhaul() {
     await showLines(hw);
     appendEvidence(dir, 'system-status/hardware-preflight.txt', hw);
     if (!/\/dev\/cdc-wdm|\/dev\/ttyUSB/i.test(hw)) throw new Error('Quectel control devices were not visible on minipc');
-    if (!/B210|USRP check skipped/i.test(hw)) throw new Error('B210 serial 8002816 was not visible and no running softmodem explained radio ownership');
+    if (!/B210|USRP check skipped/i.test(hw)) throw new Error(`B210 serial ${ACCESS_B210_SERIAL} was not visible and no running softmodem explained radio ownership`);
     const imsiEvidence = [
       `configured_imsi_present=${/^[0-9]{14,16}$/.test(configuredQuectelImsi || '')}`,
     ];
@@ -2497,6 +2503,8 @@ async function launchSingleCuQuectelBackhaul() {
     appendEvidence(dir, 'system-status/quectel-subscriber-seed.log', seed);
     const phoneSeed = await provisionLabPhoneSubscriber(dir);
     await showLines(phoneSeed);
+    await applyUpfMssClamping();
+    await ensureUpfRoutingAndNat();
     gate.subscriber = true;
 
     printStep(4, 14, 'Generate WireGuard CU and access-DU configs');
@@ -2642,9 +2650,9 @@ async function launchSingleCuQuectelBackhaul() {
 async function validateSingleCuQuectelBackhaul() {
   console.clear();
   printHeader('Validate Caged Quectel F1 Backhaul, Monolithic Donor');
-  if (activeLabConfig.duLabel !== 'serber-minipc') {
-    printError('Caged Quectel F1 backhaul validation is available only for serber-minipc with the Quectel modem.');
-    printWarn('Use the configuration screen to select serber-minipc + serber-firecell before validating this workflow.');
+  if (activeLabConfig.duLabel !== 'serber-minipc' && activeLabConfig.duLabel !== 'serber-pi') {
+    printError('Caged Quectel F1 backhaul validation is available for serber-minipc and serber-pi with the Quectel modem.');
+    printWarn('Use the configuration screen to select serber-minipc or serber-pi + serber-firecell before validating this workflow.');
     await prompt('Press Enter to continue');
     return;
   }
@@ -2905,7 +2913,7 @@ async function experimentalB210Mode() {
     appendEvidence(dir, 'system-status/b210-probe.txt', probe);
     const readiness = analyzeB210ExperimentReadiness(probe);
     appendEvidence(dir, 'system-status/architecture-readiness.json', JSON.stringify(readiness, null, 2));
-    if (!readiness.b210DetectedOrOwned) throw new Error('B210 serial 8002816 was not detected and no running softmodem explained ownership');
+    if (!readiness.b210DetectedOrOwned) throw new Error(`B210 serial ${ACCESS_B210_SERIAL} was not detected and no running softmodem explained ownership`);
     gate.b210 = true;
     if (!readiness.oaiCommitPinned) {
       printWarn('Could not confirm the DU OAI tree is at the pinned rollback commit from this probe.');

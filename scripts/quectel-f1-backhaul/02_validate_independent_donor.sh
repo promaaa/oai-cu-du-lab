@@ -11,12 +11,16 @@ else
   exit 1
 fi
 
+PRE_DU_HOST="${DU_HOST:-}"
+PRE_CU_HOST="${CU_HOST:-}"
 if [ -f "$REPO_BASE/conf/local/lab.env" ]; then
   # shellcheck source=conf/local/lab.env
   set +e
   source "$REPO_BASE/conf/local/lab.env" 2>/dev/null
   set -e
 fi
+[ -n "$PRE_DU_HOST" ] && DU_HOST="$PRE_DU_HOST"
+[ -n "$PRE_CU_HOST" ] && CU_HOST="$PRE_CU_HOST"
 
 log "=== Decision Gate 1: Quectel Independent Donor Validation ==="
 log "Host: $DU_HOST"

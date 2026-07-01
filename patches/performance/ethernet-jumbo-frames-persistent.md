@@ -30,6 +30,33 @@ Name=enp6s0
 MTUBytes=9000
 ```
 
+## Docker Core Bridge
+
+The split-core Docker network must be recreated after adding an MTU driver option. In the
+external deployment Compose file, keep the existing bridge name and add:
+
+```yaml
+networks:
+  public_net:
+    driver: bridge
+    name: oai-cn5g-minipc-public-net
+    driver_opts:
+      com.docker.network.bridge.name: "oai-cn5g-minipc"
+      com.docker.network.driver.mtu: "9000"
+```
+
+Validate before recreation, then use the deployment's normal core restart procedure:
+
+```bash
+docker compose -f docker-compose-minipc.yaml config -q
+docker compose -f docker-compose-minipc.yaml down
+docker compose -f docker-compose-minipc.yaml up -d
+```
+
+Confirm both the host bridge and the UPF veth report MTU 9000. Recreating only the core can
+leave an already-running CU without a usable UE session; restart the Ethernet CU/DU stack if
+the UE does not reattach.
+
 Apply on each host (requires systemd-networkd to be managing that interface):
 
 ```bash
@@ -64,6 +91,13 @@ ip link show enp4s0 | grep mtu          # expect: mtu 9000
 # Send a large ICMP probe to confirm the path supports jumbo frames end-to-end:
 ping -s 8972 -M do -c 5 10.76.170.38   # from serber-minipc to serber-firecell
 
-# Confirm GTP-U frames are no longer fragmented during a live split run:
-# (Check ip -s link show enp4s0: 'missed' counter should not grow during iperf3 DL traffic)
+# Confirm whether GTP-U frames are fragmented during a live split run. Do not infer this from
+# aggregate IP fragment counters alone: UE-originated inner packets can also be fragmented.
+sudo tcpdump -ni oai-cn5g-minipc \
+  'src host <upf-ip> and (ip[6:2] & 0x3fff != 0)'
 ```
+
+The 2026-06-22 live diagnostic verified that the Docker bridge and UPF veth reached MTU 9000
+and found no repeatable UPF-originated downlink fragments during large UE pings. It still saw
+UE-originated inner fragments. A synchronized phone throughput run is therefore required
+before claiming that this change raises the 19-23 Mb/s Ethernet baseline.

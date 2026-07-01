@@ -26,6 +26,7 @@ experiments/20*/
 build/
 cmake_targets/
 tmp/
+output/
 .cache/
 __pycache__/
 *.pyc

@@ -1,0 +1,18 @@
+diff --git a/radio/USRP/usrp_lib.cpp b/radio/USRP/usrp_lib.cpp
+--- a/radio/USRP/usrp_lib.cpp
++++ b/radio/USRP/usrp_lib.cpp
+@@ -1287,6 +1287,13 @@ static int trx_usrp_start(openair0_device *device)
+       std::cerr << "-- Using calibration table: calib_table_b210_38" << std::endl; // Bell Labs info
+     }
+     switch ((int)openair0_cfg[0].sample_rate) {
++      case 61440000:
++        s->usrp->set_master_clock_rate(61.44e6);
++        //openair0_cfg[0].samples_per_packet    = 1024;
++        openair0_cfg[0].tx_sample_advance     = 164;
++        openair0_cfg[0].tx_bw                 = 56e6;
++        openair0_cfg[0].rx_bw                 = 56e6;
++        break;
++
+       case 46080000:
+         s->usrp->set_master_clock_rate(46.08e6);
+         //openair0_cfg[0].samples_per_packet    = 1024;

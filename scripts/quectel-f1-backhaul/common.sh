@@ -92,6 +92,11 @@ ACCESS_NR_CELL_ID="${ACCESS_NR_CELL_ID:-12345678}"
 ACCESS_PCI="${ACCESS_PCI:-0}"
 ACCESS_TAC="${ACCESS_TAC:-1}"
 ACCESS_B210_SERIAL="${ACCESS_B210_SERIAL:-8002816}"
+if [[ "$ACCESS_B210_SERIAL" == *"="* ]]; then
+  ACCESS_SDR_ADDRS="${ACCESS_SDR_ADDRS:-$ACCESS_B210_SERIAL}"
+else
+  ACCESS_SDR_ADDRS="${ACCESS_SDR_ADDRS:-serial=$ACCESS_B210_SERIAL}"
+fi
 # Match the verified Ethernet access-cell RF profile for the caged phone.
 # The donor gNB is attenuated independently so the Quectel remains on PCI 1/TAC 2.
 ACCESS_ATT_TX="${ACCESS_ATT_TX:-3}"
