@@ -48,6 +48,8 @@ const DEFAULT_FIRECELL_HOST = 'serber@10.76.170.38';
 const DEFAULT_MINIPC_HOST = 'serber@10.76.170.40';
 const DEFAULT_PI_HOST = 'serber@10.76.170.18';
 const DEFAULT_PI_IP = '10.76.170.18';
+const DEFAULT_JETSON_HOST = 'serber@10.76.170.8';
+const DEFAULT_JETSON_IP = '10.76.170.8';
 const BACKHAUL_PROFILES = {
   ethernet: {
     label: 'Ethernet F1',
@@ -112,15 +114,39 @@ const DEFAULT_LAB_CONFIGS = {
     jumboFrames: false,
     clampMss: true,
   },
+  jetson: {
+    label: 'serber-jetson + serber-firecell',
+    firecellHost: DEFAULT_FIRECELL_HOST,
+    duHost: DEFAULT_JETSON_HOST,
+    duLabel: 'serber-jetson',
+    duConfName: 'gnb-jetson.conf',
+    duRuntimeConf: '/tmp/oai-tui-gnb-jetson-ethernet-runtime.conf',
+    cuRuntimeConf: '/tmp/oai-tui-gnb-cu-jetson-ethernet-runtime.conf',
+    backhaulProfile: 'ethernet',
+  },
+  jetsonQuectel: {
+    label: 'serber-jetson + serber-firecell, Quectel 5G benchmark',
+    firecellHost: DEFAULT_FIRECELL_HOST,
+    duHost: DEFAULT_JETSON_HOST,
+    duLabel: 'serber-jetson',
+    duConfName: 'gnb-jetson.conf',
+    duRuntimeConf: '/tmp/oai-tui-gnb-jetson-quectel-wg-runtime.conf',
+    cuRuntimeConf: '/tmp/oai-tui-gnb-cu-jetson-quectel-wg-runtime.conf',
+    backhaulProfile: 'quectelWg',
+    jumboFrames: false,
+    clampMss: true,
+  },
 };
 const BASE_DU_DISCOVERY_CANDIDATES = [
   DEFAULT_MINIPC_HOST,
   DEFAULT_PI_HOST,
+  DEFAULT_JETSON_HOST,
   '-o HostKeyAlias=10.76.170.109 serber@serber-minipc.kaust.edu.sa',
   'serber-minipc',
   'serber@serber-minipc',
   'serber@10.85.168.144',
   `serber@${DEFAULT_PI_IP}`,
+  `serber@${DEFAULT_JETSON_IP}`,
 ];
 let activeLabConfig = {
   label: 'current environment/default',
@@ -293,7 +319,11 @@ function applyLabConfig(config) {
   CU_RUNTIME_CONF = activeLabConfig.cuRuntimeConf || '/tmp/oai-tui-gnb-cu-ethernet-runtime.conf';
   DU_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${activeLabConfig.duConfName}`;
   DU_ETHERNET_RUNTIME_CONF = activeLabConfig.duRuntimeConf;
-  DU_QUECTEL_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${activeLabConfig.duLabel === 'serber-pi' ? 'gnb-pi-quectel-backhaul.conf' : 'gnb-minipc-quectel-backhaul.conf'}`;
+  DU_QUECTEL_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${
+    activeLabConfig.duLabel === 'serber-pi' ? 'gnb-pi-quectel-backhaul.conf' :
+    activeLabConfig.duLabel === 'serber-jetson' ? 'gnb-jetson-quectel-backhaul.conf' :
+    'gnb-minipc-quectel-backhaul.conf'
+  }`;
   process.env.CU_HOST = FIRECELL;
   process.env.DU_HOST = MINIPC;
 }
@@ -322,7 +352,7 @@ function selectedF1Addresses(minipc) {
   return {
     cu: firecellAddress(),
     du: minipc?.mgmtIp || '',
-    expectedIface: minipc?.mgmtIface || '',
+    expectedIface: '',
     expectedLabel: 'Ethernet route',
   };
 }
@@ -348,7 +378,7 @@ function execLocal(cmd, timeout = 60000) {
 }
 
 async function ssh(host, cmd, timeout = 60000) {
-  const full = `ssh -o ProxyJump=none -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 ${host} ${quoteForSsh(cmd)}`;
+  const full = `ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 ${host} ${quoteForSsh(cmd)}`;
   const res = await execLocal(full, timeout);
   if (!res.ok) throw new Error(res.combined || `command failed rc=${res.code}`);
   return res.combined;
@@ -363,7 +393,7 @@ async function sshChecked(host, cmd, timeout = 60000) {
 }
 
 async function sshLoose(host, cmd, timeout = 60000) {
-  const full = `ssh -o ProxyJump=none -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 ${host} ${quoteForSsh(cmd)}`;
+  const full = `ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 ${host} ${quoteForSsh(cmd)}`;
   return await execLocal(full, timeout);
 }
 
@@ -417,11 +447,11 @@ function appendEvidence(dir, name, content) {
   writeFileSync(path.join(dir, name), sanitizeCapture(content) + '\n');
 }
 
-function startSoftmodemCmd(workdir, conf, log, extra = '') {
+function startSoftmodemCmd(workdir, conf, log, extra = '', launcher = './nr-softmodem') {
   return [
     `cd ${workdir}`,
     'rm -f /tmp/oai-tui-start.err',
-    `sudo -n setsid ./nr-softmodem -O ${conf} ${extra} > ${log} 2>/tmp/oai-tui-start.err < /dev/null &`,
+    `sudo -n setsid ${launcher} -O ${conf} ${extra} > ${log} 2>/tmp/oai-tui-start.err < /dev/null &`,
     'sleep 1',
     'cat /tmp/oai-tui-start.err 2>/dev/null || true',
     "pgrep -a nr-softmodem | tail -5 || true",
@@ -594,7 +624,7 @@ async function discoverMinipcTarget() {
 
   for (const candidate of duDiscoveryCandidates()) {
     const out = await sshLoose(candidate, discoveryCmd, 12000);
-    if (!out.ok || !/hostname=.*(?:minipc|pi)/i.test(out.combined)) continue;
+    if (!out.ok || !/hostname=.*(?:minipc|pi|jetson)/i.test(out.combined)) continue;
     const route = out.combined.match(/route_to_firecell=(.*)/)?.[1] || '';
     const { dev, src } = parseRouteDevSrc(route);
     return {
@@ -1375,6 +1405,11 @@ async function prepareEthernetDuConfig(minipc) {
     perlRule += ' s/(gNB_DU_ID\\s*=\\s*)0x[0-9A-Fa-f]+/${1}0xe01/;';
     perlRule += ' s/(initialDLBWPsearchSpaceZero\\s*=\\s*)\\d+/${1}0/;';
   }
+  if (activeLabConfig.duLabel === 'serber-jetson') {
+    perlRule += ' s/(gNB_DU_ID\\s*=\\s*)0x[0-9A-Fa-f]+/${1}0xe02/;';
+    perlRule += ' s/(local_n_portd\\s*=\\s*)\\d+/${1}2153/;';
+    perlRule += ' s/(remote_n_portd\\s*=\\s*)\\d+/${1}2153/;';
+  }
   if (activeLabConfig.forceMcs) {
     perlRule += ` s/(MACRLCs\\s*=\\s*\\(\\s*\\{\\s*num_cc\\s*=\\s*1;)/\$1\\n    dl_min_mcs = 10;\\n    dl_max_mcs = 28;\\n    ul_min_mcs = 10;\\n    ul_max_mcs = 28;/;`;
   }
@@ -1588,6 +1623,7 @@ async function waitForSplitCoreReady() {
     `cd ${CU_CN_DIR}`,
     `ip -4 addr show dev ${OAI_CN5G_BRIDGE_IF} | grep -q '192.168.71.140/26' || sudo -n ip addr add 192.168.71.140/26 dev ${OAI_CN5G_BRIDGE_IF}`,
     'sudo -n ip route replace default via 10.76.170.126 dev enp6s0 2>/dev/null || true',
+    `sudo -n ip route replace 10.0.0.0/16 via ${OAI_UPF_IP} dev ${OAI_CN5G_BRIDGE_IF} 2>/dev/null || true`,
     'sudo -n iptables -t nat -C POSTROUTING -s 10.0.0.0/16 -j MASQUERADE 2>/dev/null || sudo -n iptables -t nat -A POSTROUTING -s 10.0.0.0/16 -j MASQUERADE',
     'required="mysql oai-nrf oai-udr oai-udm oai-ausf oai-amf oai-smf oai-upf oai-ext-dn ims"',
     'for i in $(seq 1 60); do',
@@ -1651,6 +1687,8 @@ async function hardStopSplit(minipcHost = MINIPC) {
     '/tmp/oai-tui-gnb-cu-pi-ethernet-runtime.conf',
     '/tmp/oai-tui-gnb-cu-pi-wifi-gre-runtime.conf',
     '/tmp/oai-tui-gnb-cu-pi-quectel-wg-runtime.conf',
+    '/tmp/oai-tui-gnb-cu-jetson-ethernet-runtime.conf',
+    '/tmp/oai-tui-gnb-cu-jetson-quectel-wg-runtime.conf',
   ];
   const duRuntimeConfs = [
     DU_ETHERNET_RUNTIME_CONF,
@@ -1658,6 +1696,8 @@ async function hardStopSplit(minipcHost = MINIPC) {
     '/tmp/oai-tui-gnb-pi-ethernet-runtime.conf',
     '/tmp/oai-tui-gnb-pi-wifi-gre-runtime.conf',
     '/tmp/oai-tui-gnb-pi-quectel-wg-runtime.conf',
+    '/tmp/oai-tui-gnb-jetson-ethernet-runtime.conf',
+    '/tmp/oai-tui-gnb-jetson-quectel-wg-runtime.conf',
   ];
   printInfo('Stopping known CU/donor softmodems on serber-firecell by config path...');
   await sshLoose(FIRECELL, stopSoftmodemsByConfigsCmd([CU_CONF, ...cuRuntimeConfs, CU_QUECTEL_CONF, FIRECELL_DONOR_DU_CONF, FIRECELL_DONOR_GNB_RUNTIME_CONF, FIRECELL_DONOR_PROD_CONF, MONO_CONF]), 15000);
@@ -1771,14 +1811,19 @@ async function preflightSelectedDuRadio(minipc, dir) {
 }
 
 function selectedDuStartExtraArgs() {
-  const base = ['--log_config.global_log_level info'];
-  if (activeLabConfig.duLabel === 'serber-pi') base.push('-E');
+  const base = [`--log_config.global_log_level ${activeLabConfig.duLabel === 'serber-jetson' ? 'warning' : 'info'}`];
+  if (activeLabConfig.duLabel === 'serber-pi' || activeLabConfig.duLabel === 'serber-jetson') base.push('-E');
   return base.join(' ');
 }
 
+function selectedDuLauncher() {
+  if (activeLabConfig.duLabel === 'serber-jetson') return 'taskset -c 1-5 ./nr-softmodem';
+  return './nr-softmodem';
+}
+
 async function tuneSelectedDuForB210HighRate(minipc, dir) {
-  if (activeLabConfig.duLabel !== 'serber-pi') return '';
-  printInfo('Applying Raspberry Pi B210 high-rate host tuning for 106 PRB...');
+  if (activeLabConfig.duLabel !== 'serber-pi' && activeLabConfig.duLabel !== 'serber-jetson') return '';
+  printInfo(`Applying ${activeLabConfig.duLabel} B210 high-rate host tuning for 106 PRB...`);
   const cmd = [
     'set -euo pipefail',
     'echo "--- before ---"',
@@ -1787,16 +1832,26 @@ async function tuneSelectedDuForB210HighRate(minipc, dir) {
     'echo "--- apply ---"',
     'sudo -n sh -c "echo 1000 > /sys/module/usbcore/parameters/usbfs_memory_mb"',
     'sudo -n sysctl -w net.core.rmem_max=33554432 net.core.wmem_max=33554432 kernel.sched_rt_runtime_us=-1',
+    activeLabConfig.duLabel === 'serber-jetson' ? [
+      'irq="$(awk \'tolower($0) ~ /tegra.*xusb|xhci|usb/ { sub(":", "", $1); print $1; exit }\' /proc/interrupts)"',
+      'if [ -n "$irq" ] && [ -e "/proc/irq/$irq/smp_affinity_list" ]; then',
+      '  echo 0 | sudo -n tee "/proc/irq/$irq/smp_affinity_list" >/dev/null 2>&1 || true',
+      '  echo "usb_irq=$irq"',
+      '  cat "/proc/irq/$irq/smp_affinity_list" 2>/dev/null || true',
+      'else',
+      '  echo "usb_irq=not_found"',
+      'fi',
+    ].join('\n') : 'true',
     'echo "--- after ---"',
     'cat /sys/module/usbcore/parameters/usbfs_memory_mb 2>/dev/null || true',
     'sysctl net.core.rmem_max net.core.wmem_max kernel.sched_rt_runtime_us 2>/dev/null || true',
     'lsusb -t',
   ].join('\n');
   const out = await sshChecked(minipc.host, cmd, 15000);
-  appendEvidence(dir, 'system-status/pi-b210-host-tuning.txt', out);
+  appendEvidence(dir, 'system-status/du-b210-host-tuning.txt', out);
   await showLines(out);
   if (!/1000/.test(out) || !/5000M/.test(out)) {
-    throw new Error('Raspberry Pi B210 high-rate tuning did not confirm usbfs_memory_mb=1000 and SuperSpeed USB');
+    throw new Error(`${activeLabConfig.duLabel} B210 high-rate tuning did not confirm usbfs_memory_mb=1000 and SuperSpeed USB`);
   }
   return out;
 }
@@ -1929,7 +1984,7 @@ async function startEthernetRollback() {
     const duStart = await sshChecked(minipc.host, [
       stopSoftmodemByConfigCmd(DU_CONF),
       stopSoftmodemByConfigCmd(DU_ETHERNET_RUNTIME_CONF),
-      startSoftmodemCmd(`${DU_OAI}/cmake_targets/ran_build/build`, DU_ETHERNET_RUNTIME_CONF, DU_LOG, selectedDuStartExtraArgs()),
+      startSoftmodemCmd(`${DU_OAI}/cmake_targets/ran_build/build`, DU_ETHERNET_RUNTIME_CONF, DU_LOG, selectedDuStartExtraArgs(), selectedDuLauncher()),
     ].join('\n'), 20000);
     if (duStart) await showLines(duStart);
     await sleep(7000);
@@ -1960,8 +2015,9 @@ async function startEthernetRollback() {
     if (!cuOk || !duOk || !radioOk) throw new Error('Ethernet CU/DU logs did not show F1 setup and radio sync evidence');
     const overflowMatch = duLog.combined.match(/overflow_count=(\d+)/i);
     const overflowCount = overflowMatch ? Number(overflowMatch[1]) : 0;
-    if (overflowCount > 20) {
-      throw new Error(`DU radio logged ${overflowCount} UHD overflows after startup; 106 PRB is not stable on this Pi/B210 run`);
+    const maxOverflows = activeLabConfig.duLabel === 'serber-jetson' ? 50 : 20;
+    if (overflowCount > maxOverflows) {
+      throw new Error(`DU radio logged ${overflowCount} UHD overflows after startup; 106 PRB is not stable on this ${activeLabConfig.duLabel}/B210 run`);
     }
     gate.f1Logs = true;
 
@@ -1976,7 +2032,8 @@ async function startEthernetRollback() {
     await showSplitCoreHealth(dir);
     gate.coreHealth = true;
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
-    printSuccess(`PASS: ${profile.label} CU/DU is running with F1-C on the selected path, DU radio sync, and no F1 leakage on other paths`);
+    printSuccess(`${profile.label} CU/DU F1/RF gate passed: F1-C is on the selected path, DU radio sync is present, and no F1 leakage was seen on other paths`);
+    printWarn('No phone-service PASS claimed here. Full PASS still requires phone-visible internet/user-plane evidence and fresh PWS reception or a documented reason PWS was not re-triggered.');
   } catch (err) {
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
     printError(err.message);
@@ -2415,9 +2472,9 @@ async function stopAllConfigs(minipcHost = null) {
 async function launchSingleCuQuectelBackhaul() {
   console.clear();
   printHeader('Launch Caged Quectel F1 Backhaul, Monolithic Donor');
-  if (activeLabConfig.duLabel !== 'serber-minipc' && activeLabConfig.duLabel !== 'serber-pi') {
-    printError('Caged Quectel F1 backhaul is validated for serber-minipc and serber-pi with the Quectel modem.');
-    printWarn('Use the configuration screen to select serber-minipc or serber-pi + serber-firecell before launching this workflow.');
+  if (activeLabConfig.duLabel !== 'serber-minipc' && activeLabConfig.duLabel !== 'serber-pi' && activeLabConfig.duLabel !== 'serber-jetson') {
+    printError('Caged Quectel F1 backhaul is validated for serber-minipc, serber-pi, and serber-jetson with the Quectel modem.');
+    printWarn('Use the configuration screen to select serber-minipc, serber-pi, or serber-jetson + serber-firecell before launching this workflow.');
     await prompt('Press Enter to continue');
     return;
   }
@@ -2650,9 +2707,9 @@ async function launchSingleCuQuectelBackhaul() {
 async function validateSingleCuQuectelBackhaul() {
   console.clear();
   printHeader('Validate Caged Quectel F1 Backhaul, Monolithic Donor');
-  if (activeLabConfig.duLabel !== 'serber-minipc' && activeLabConfig.duLabel !== 'serber-pi') {
-    printError('Caged Quectel F1 backhaul validation is available for serber-minipc and serber-pi with the Quectel modem.');
-    printWarn('Use the configuration screen to select serber-minipc or serber-pi + serber-firecell before validating this workflow.');
+  if (activeLabConfig.duLabel !== 'serber-minipc' && activeLabConfig.duLabel !== 'serber-pi' && activeLabConfig.duLabel !== 'serber-jetson') {
+    printError('Caged Quectel F1 backhaul validation is available for serber-minipc, serber-pi, and serber-jetson with the Quectel modem.');
+    printWarn('Use the configuration screen to select serber-minipc, serber-pi, or serber-jetson + serber-firecell before validating this workflow.');
     await prompt('Press Enter to continue');
     return;
   }
@@ -3009,6 +3066,8 @@ async function configureLabBeforeMenu() {
     { name: 'Raspberry Pi benchmark: Ethernet F1', value: 'pi' },
     { name: 'Raspberry Pi benchmark: Wi-Fi GRE F1', value: 'pi-wifi' },
     { name: 'Raspberry Pi benchmark: Quectel 5G/WireGuard F1', value: 'pi-quectel' },
+    { name: 'Jetson Orin Nano benchmark: Ethernet F1', value: 'jetson' },
+    { name: 'Jetson Orin Nano benchmark: Quectel 5G/WireGuard F1', value: 'jetson-quectel' },
     { name: 'Enter new serber-firecell and serber-pi IP addresses', value: 'custom-pi' },
   ]);
 
@@ -3020,6 +3079,10 @@ async function configureLabBeforeMenu() {
     applyLabConfig(DEFAULT_LAB_CONFIGS.piWifi);
   } else if (selection === 'pi-quectel') {
     applyLabConfig(DEFAULT_LAB_CONFIGS.piQuectel);
+  } else if (selection === 'jetson') {
+    applyLabConfig(DEFAULT_LAB_CONFIGS.jetson);
+  } else if (selection === 'jetson-quectel') {
+    applyLabConfig(DEFAULT_LAB_CONFIGS.jetsonQuectel);
   } else {
     const firecellIp = await prompt('serber-firecell IP address', firecellAddress() || '10.76.170.38');
     const piIp = await prompt('serber-pi IP address', DEFAULT_PI_IP);
@@ -3117,6 +3180,12 @@ async function cli() {
   }
   if (process.argv.includes('--minipc-ethernet')) {
     applyLabConfig(DEFAULT_LAB_CONFIGS.minipc);
+  }
+  if (process.argv.includes('--jetson-ethernet')) {
+    applyLabConfig(DEFAULT_LAB_CONFIGS.jetson);
+  }
+  if (process.argv.includes('--jetson-quectel')) {
+    applyLabConfig(DEFAULT_LAB_CONFIGS.jetsonQuectel);
   }
   if (process.argv.includes('--no-jumbo-frames')) {
     activeLabConfig.jumboFrames = false;

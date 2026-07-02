@@ -1,0 +1,32 @@
+template: jetson-du
+purpose: canonical DU split configuration for Jetson Orin Nano with USRP B210
+host: serber-jetson
+role: du
+oai_commit: 102965a669b9444857c27843ec8ce62780bf9d37
+plmn:
+  mcc: 1
+  mnc: 1
+  mnc_length: 2
+du:
+  f1_local_ip: 10.76.170.8
+  f1_peer_ip: 10.76.170.38
+  f1_port: 2153
+  gnb_id: 0xe00
+  gnb_du_id: 0xe02
+  gnb_name: gNB-CU-FIRECELL
+  tac: 1
+radio:
+  device: usrp_b210
+  host_role: local_access_cell
+  serial: 8002816
+  band: 78
+  prb: 106
+  scs_khz: 30
+  absolute_frequency_ssb: 641280
+  dl_absolute_frequency_point_a: 640008
+  clock_source: internal
+  att_tx: 3
+  att_rx: 12
+security:
+  subscriber_material: local_secret_only
+  generated_config_destination: conf/generated/
