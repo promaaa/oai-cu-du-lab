@@ -1455,13 +1455,30 @@ async function applyUpfMssClamping() {
 
 async function ensureUpfRoutingAndNat() {
   printInfo('Ensuring WAN gateway reachability and UE NAT rules on serber-firecell...');
+  
+  const checkCmd = 'ping -c 1 -W 1 10.76.170.126 >/dev/null 2>&1';
+  let routeIp = '10.76.170.126';
+  try {
+    await sshChecked(FIRECELL, checkCmd, 5000);
+  } catch (err) {
+    routeIp = '10.76.170.40';
+    printInfo(`WAN gateway 10.76.170.126 is unreachable directly from Core host. Configuring routing via MiniPC (${routeIp})...`);
+    const miniPcCmd = [
+      'sudo -n iptables -t nat -C POSTROUTING -s 10.76.170.38 -o enp2s0 -j MASQUERADE 2>/dev/null || sudo -n iptables -t nat -A POSTROUTING -s 10.76.170.38 -o enp2s0 -j MASQUERADE',
+      'sudo -n iptables -C FORWARD -s 10.76.170.38/32 -j ACCEPT 2>/dev/null || sudo -n iptables -I FORWARD 1 -s 10.76.170.38/32 -j ACCEPT',
+      'sudo -n iptables -C FORWARD -d 10.76.170.38/32 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || sudo -n iptables -I FORWARD 2 -d 10.76.170.38/32 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT'
+    ].join('\n');
+    await sshLoose(DEFAULT_MINIPC_HOST, miniPcCmd, 15000);
+  }
+
   const cmd = [
-    'sudo -n ip route replace default via 10.76.170.126 dev enp6s0 2>/dev/null || true',
+    `sudo -n ip route replace default via ${routeIp} dev enp6s0 2>/dev/null || true`,
+    `sudo -n ip route replace 10.0.0.0/16 via ${OAI_UPF_IP} dev ${OAI_CN5G_BRIDGE_IF} 2>/dev/null || true`,
     'sudo -n iptables -t nat -C POSTROUTING -s 10.0.0.0/16 -j MASQUERADE 2>/dev/null || sudo -n iptables -t nat -A POSTROUTING -s 10.0.0.0/16 -j MASQUERADE',
   ].join('\n');
   const out = await sshChecked(FIRECELL, cmd, 15000);
   await showLines(out);
-  printSuccess('WAN gateway route and UE NAT MASQUERADE verified on serber-firecell');
+  printSuccess(`WAN gateway route (via ${routeIp}) and UE NAT MASQUERADE verified on serber-firecell`);
 }
 
 async function configureWifiGreBackhaul(minipc, dir) {
@@ -1622,7 +1639,11 @@ async function waitForSplitCoreReady() {
     'set -euo pipefail',
     `cd ${CU_CN_DIR}`,
     `ip -4 addr show dev ${OAI_CN5G_BRIDGE_IF} | grep -q '192.168.71.140/26' || sudo -n ip addr add 192.168.71.140/26 dev ${OAI_CN5G_BRIDGE_IF}`,
-    'sudo -n ip route replace default via 10.76.170.126 dev enp6s0 2>/dev/null || true',
+    'if ping -c 1 -W 1 10.76.170.126 >/dev/null 2>&1; then',
+    '  sudo -n ip route replace default via 10.76.170.126 dev enp6s0 2>/dev/null || true',
+    'else',
+    '  sudo -n ip route replace default via 10.76.170.40 dev enp6s0 2>/dev/null || true',
+    'fi',
     `sudo -n ip route replace 10.0.0.0/16 via ${OAI_UPF_IP} dev ${OAI_CN5G_BRIDGE_IF} 2>/dev/null || true`,
     'sudo -n iptables -t nat -C POSTROUTING -s 10.0.0.0/16 -j MASQUERADE 2>/dev/null || sudo -n iptables -t nat -A POSTROUTING -s 10.0.0.0/16 -j MASQUERADE',
     'required="mysql oai-nrf oai-udr oai-udm oai-ausf oai-amf oai-smf oai-upf oai-ext-dn ims"',

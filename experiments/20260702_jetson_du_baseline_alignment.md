@@ -75,6 +75,7 @@ Two independent Jetson-specific blockers were found and corrected live:
 - F1-U port mismatch: the CU used F1-U on `10.76.170.38:2153`, but the Jetson runtime was listening on `10.76.170.8:2152`. The live runtime was corrected to `local_n_portd = 2153` and `remote_n_portd = 2153`, and the TUI Jetson runtime generation now forces those values.
 - Missing DU-side PWS patch: CU logs showed `[SIB8]` and `F1AP_WRITE_REPLACE_WARNING`, but the Jetson DU log showed no handler for F1AP procedure code `20`. The repo SIB8/PWS patch was applied to the Jetson OAI checkout without replacing the existing live `sib8.conf`, and `nr-softmodem` was rebuilt.
 - Core host routing mismatch: The Core host (`10.76.170.38`) was missing a static route for the UE subnet (`10.0.0.0/16`) pointing to the UPF container IP (`192.168.71.134`). As a result, incoming user-plane replies from the internet were un-masqueraded to the UE IP (`10.0.0.2`) but then routed out to the default gateway (`10.76.170.126`) and dropped. We corrected this by applying `sudo ip route replace 10.0.0.0/16 via 192.168.71.134 dev oai-cn5g-minipc` on the Core host.
+- Core host gateway reachability issue: The Core host (`10.76.170.38`) itself was unable to communicate with the network's default gateway `10.76.170.126` directly (ARP requests remained INCOMPLETE). We resolved this by routing Core host default traffic via the MiniPC (`10.76.170.40`) as a gateway and configuring forwarding/NAT masquerade rules for `10.76.170.38` on the MiniPC.
 
 Post-fix sanitized evidence:
 
@@ -85,14 +86,15 @@ Post-fix sanitized evidence:
 - External-DN ping to live UE IP `10.0.0.2` passed: `5 transmitted, 5 received, 0% packet loss`, with RTT average about `26.5 ms`.
 - Firecell NIC capture showed bidirectional F1-U on `10.76.170.38:2153 <-> 10.76.170.8:2153`.
 - Core host ping to live UE IP `10.0.0.2` passed: `3 packets transmitted, 3 received, 0% packet loss, time 2002ms` (previously failed with Destination Host Unreachable).
+- Core host ping to public IP `8.8.8.8` passed via MiniPC gateway: `3 packets transmitted, 3 received, 0% packet loss, time 2003ms` (previously failed with Destination Host Unreachable).
 
 ## Status
 
 Pending final user-plane verification (Awaiting phone-visible internet confirmation).
 
-The core routing blocker was identified and fixed. Previously, the Core host was missing a route back to the UE subnet (`10.0.0.0/16`) via the UPF container (`192.168.71.134`), causing un-NAT'ed reply packets to be routed to the external gateway and dropped. 
+The core routing and gateway blockers were identified and fixed. Previously, the Core host was missing a route back to the UE subnet (`10.0.0.0/16`) via the UPF container (`192.168.71.134`), and the Core host could not reach the default gateway `10.76.170.126` directly. 
 
-After adding the route (`sudo ip route replace 10.0.0.0/16 via 192.168.71.134 dev oai-cn5g-minipc`), the Core host successfully pinged the Nothing Phone (`10.0.0.2`) with 0% packet loss. This route addition has been automated in `scripts/oai-lab-tui`.
+We added the UE static route, routed Core host traffic via the MiniPC (`10.76.170.40`), and configured forwarding/NAT masquerade rules on the MiniPC. The Core host now successfully routes internet traffic. These routing rules and gateway fallback checks have been automated in `scripts/oai-lab-tui`.
 
 Verified milestones:
 - [x] Host readiness, B210 USB3, zero DU overflows
