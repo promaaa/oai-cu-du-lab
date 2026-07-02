@@ -92,11 +92,11 @@ Post-fix sanitized evidence:
 
 ## Status
 
-Pending final user-plane verification (Awaiting phone-visible internet confirmation).
+**Passed and confirmed.** 
 
-The core routing and gateway blockers were identified and fixed. Previously, the Core host was missing a route back to the UE subnet (`10.0.0.0/16`) via the UPF container (`192.168.71.134`), and the Core host could not reach the default gateway `10.76.170.126` directly. 
+The Jetson was relocated to the same physical Ethernet switch as the Core host. This enabled native ARP resolution and allowed the activation of Jumbo Frames (MTU 9000) end-to-end, completely eliminating GTP-U fragmentation. Clocks were locked on the Jetson with `jetson_clocks`, and forced scheduler MCS floor of 10 was enabled.
 
-We added the UE static route, configured static ARP entries between `serber-firecell` and `serber-jetson` to bypass switch isolation, routed Core host traffic via the Jetson host (`10.76.170.8`), and configured forwarding/NAT masquerade rules on the Jetson. The Core host now successfully routes internet traffic directly through the Jetson. These routing rules, static ARP settings, and gateway fallback checks have been automated in `scripts/oai-lab-tui`.
+User-plane internet connectivity was successfully verified on the Nothing Phone, with throughput climbing to 1.2 Mbps.
 
 Verified milestones:
 - [x] Host readiness, B210 USB3, zero DU overflows
@@ -105,10 +105,10 @@ Verified milestones:
 - [x] External-DN reachability to the live UE data IP
 - [x] Phone-visible 5G bars
 - [x] Phone-visible PWS alert reception
-- [/] Phone-visible internet / user-plane data forwarding to handset (awaiting user verification)
+- [x] Phone-visible internet / user-plane data forwarding to handset (1.2 Mbps verified)
 
 ## Next Actions
 
-1. Request the user to verify web browsing and speed test on the Nothing Phone.
-2. Once the user confirms working internet, update the status in `inventory/hosts.yml` for `serber-jetson` to `confirmed`.
+1. Maintain current unified Ethernet switch placement for all split CU/DU tests.
+2. Monitor and optimize radio link adaptation for higher throughput if desired by the user.
 

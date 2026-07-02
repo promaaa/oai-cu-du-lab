@@ -1884,6 +1884,7 @@ async function tuneSelectedDuForB210HighRate(minipc, dir) {
     'sudo -n sh -c "echo 1000 > /sys/module/usbcore/parameters/usbfs_memory_mb"',
     'sudo -n sysctl -w net.core.rmem_max=33554432 net.core.wmem_max=33554432 kernel.sched_rt_runtime_us=-1',
     activeLabConfig.duLabel === 'serber-jetson' ? [
+      'sudo -n jetson_clocks || true',
       'irq="$(awk \'tolower($0) ~ /tegra.*xusb|xhci|usb/ { sub(":", "", $1); print $1; exit }\' /proc/interrupts)"',
       'if [ -n "$irq" ] && [ -e "/proc/irq/$irq/smp_affinity_list" ]; then',
       '  echo 0 | sudo -n tee "/proc/irq/$irq/smp_affinity_list" >/dev/null 2>&1 || true',
