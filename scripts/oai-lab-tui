@@ -1461,14 +1461,20 @@ async function ensureUpfRoutingAndNat() {
   try {
     await sshChecked(FIRECELL, checkCmd, 5000);
   } catch (err) {
-    routeIp = '10.76.170.40';
-    printInfo(`WAN gateway 10.76.170.126 is unreachable directly from Core host. Configuring routing via MiniPC (${routeIp})...`);
-    const miniPcCmd = [
-      'sudo -n iptables -t nat -C POSTROUTING -s 10.76.170.38 -o enp2s0 -j MASQUERADE 2>/dev/null || sudo -n iptables -t nat -A POSTROUTING -s 10.76.170.38 -o enp2s0 -j MASQUERADE',
+    const duHost = activeLabConfig.duHost;
+    routeIp = duHost.includes('@') ? duHost.split('@')[1] : duHost;
+    printInfo(`WAN gateway 10.76.170.126 is unreachable directly from Core host. Configuring routing via DU host (${routeIp})...`);
+    
+    // Determine the DU host's external interface (default route interface) dynamically
+    const duRouteOut = await sshChecked(duHost, 'ip route get 8.8.8.8', 10000);
+    const duIface = parseRouteDevSrc(duRouteOut).dev || 'enp2s0';
+    
+    const duCmd = [
+      `sudo -n iptables -t nat -C POSTROUTING -s 10.76.170.38 -o ${duIface} -j MASQUERADE 2>/dev/null || sudo -n iptables -t nat -A POSTROUTING -s 10.76.170.38 -o ${duIface} -j MASQUERADE`,
       'sudo -n iptables -C FORWARD -s 10.76.170.38/32 -j ACCEPT 2>/dev/null || sudo -n iptables -I FORWARD 1 -s 10.76.170.38/32 -j ACCEPT',
       'sudo -n iptables -C FORWARD -d 10.76.170.38/32 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || sudo -n iptables -I FORWARD 2 -d 10.76.170.38/32 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT'
     ].join('\n');
-    await sshLoose(DEFAULT_MINIPC_HOST, miniPcCmd, 15000);
+    await sshLoose(duHost, duCmd, 15000);
   }
 
   const cmd = [
@@ -1574,6 +1580,28 @@ async function configureQuectelWireGuardBackhaul(minipc, dir) {
 }
 
 async function prepareSelectedBackhaul(minipc, dir) {
+  if (activeLabConfig.backhaulProfile === 'ethernet' && activeLabConfig.duLabel === 'serber-jetson') {
+    printInfo('Configuring static ARP entries between Core host and Jetson host to bypass switch-level ARP blocking...');
+    try {
+      const cuRoute = await sshChecked(FIRECELL, `ip route get ${minipc.mgmtIp}`, 10000);
+      const cuIface = parseRouteDevSrc(cuRoute).dev || 'enp6s0';
+      const duIface = minipc.mgmtIface || 'enP8p1s0';
+      
+      const cuMac = (await sshChecked(FIRECELL, `cat /sys/class/net/${cuIface}/address`, 5000)).trim();
+      const duMac = (await sshChecked(minipc.host, `cat /sys/class/net/${duIface}/address`, 5000)).trim();
+      
+      printInfo(`Core host interface ${cuIface} MAC: ${cuMac}, Jetson interface ${duIface} MAC: ${duMac}`);
+      
+      await Promise.all([
+        sshChecked(FIRECELL, `sudo arp -s ${minipc.mgmtIp} ${duMac}`, 10000),
+        sshChecked(minipc.host, `sudo arp -s ${firecellAddress()} ${cuMac}`, 10000)
+      ]);
+      printSuccess('Static ARP entries successfully configured on both hosts.');
+    } catch (err) {
+      printWarn(`Failed to configure static ARP entries: ${err.message}. Direct communication may fail if switch blocks ARP.`);
+    }
+  }
+
   if (activeLabConfig.backhaulProfile === 'wifiGre') {
     return await configureWifiGreBackhaul(minipc, dir);
   }
@@ -1635,6 +1663,8 @@ function restartSplitCoreCmd() {
 }
 
 async function waitForSplitCoreReady() {
+  const duHost = activeLabConfig.duHost;
+  const duIp = duHost.includes('@') ? duHost.split('@')[1] : duHost;
   const cmd = [
     'set -euo pipefail',
     `cd ${CU_CN_DIR}`,
@@ -1642,7 +1672,7 @@ async function waitForSplitCoreReady() {
     'if ping -c 1 -W 1 10.76.170.126 >/dev/null 2>&1; then',
     '  sudo -n ip route replace default via 10.76.170.126 dev enp6s0 2>/dev/null || true',
     'else',
-    '  sudo -n ip route replace default via 10.76.170.40 dev enp6s0 2>/dev/null || true',
+    `  sudo -n ip route replace default via ${duIp} dev enp6s0 2>/dev/null || true`,
     'fi',
     `sudo -n ip route replace 10.0.0.0/16 via ${OAI_UPF_IP} dev ${OAI_CN5G_BRIDGE_IF} 2>/dev/null || true`,
     'sudo -n iptables -t nat -C POSTROUTING -s 10.0.0.0/16 -j MASQUERADE 2>/dev/null || sudo -n iptables -t nat -A POSTROUTING -s 10.0.0.0/16 -j MASQUERADE',
