@@ -70,72 +70,30 @@ const BACKHAUL_PROFILES = {
     expectedIface: process.env.WG_IF || 'wg-quectel-f1',
   },
 };
-const DEFAULT_LAB_CONFIGS = {
+const KNOWN_DU_CONFIGS = {
   minipc: {
-    label: 'serber-minipc + serber-firecell',
-    firecellHost: DEFAULT_FIRECELL_HOST,
     duHost: DEFAULT_MINIPC_HOST,
     duLabel: 'serber-minipc',
     duConfName: 'gnb-minipc.conf',
-    duRuntimeConf: '/tmp/oai-tui-gnb-minipc-ethernet-runtime.conf',
-    cuRuntimeConf: '/tmp/oai-tui-gnb-cu-ethernet-runtime.conf',
-    backhaulProfile: 'ethernet',
+    runtimeStem: 'minipc',
   },
   pi: {
-    label: 'serber-pi + serber-firecell',
-    firecellHost: DEFAULT_FIRECELL_HOST,
     duHost: DEFAULT_PI_HOST,
     duLabel: 'serber-pi',
     duConfName: 'gnb-pi.conf',
-    duRuntimeConf: '/tmp/oai-tui-gnb-pi-ethernet-runtime.conf',
-    cuRuntimeConf: '/tmp/oai-tui-gnb-cu-pi-ethernet-runtime.conf',
-    backhaulProfile: 'ethernet',
-  },
-  piWifi: {
-    label: 'serber-pi + serber-firecell, Wi-Fi GRE benchmark',
-    firecellHost: DEFAULT_FIRECELL_HOST,
-    duHost: DEFAULT_PI_HOST,
-    duLabel: 'serber-pi',
-    duConfName: 'gnb-pi.conf',
-    duRuntimeConf: '/tmp/oai-tui-gnb-pi-wifi-gre-runtime.conf',
-    cuRuntimeConf: '/tmp/oai-tui-gnb-cu-pi-wifi-gre-runtime.conf',
-    backhaulProfile: 'wifiGre',
-    jumboFrames: false,
-  },
-  piQuectel: {
-    label: 'serber-pi + serber-firecell, Quectel 5G benchmark',
-    firecellHost: DEFAULT_FIRECELL_HOST,
-    duHost: DEFAULT_PI_HOST,
-    duLabel: 'serber-pi',
-    duConfName: 'gnb-pi.conf',
-    duRuntimeConf: '/tmp/oai-tui-gnb-pi-quectel-wg-runtime.conf',
-    cuRuntimeConf: '/tmp/oai-tui-gnb-cu-pi-quectel-wg-runtime.conf',
-    backhaulProfile: 'quectelWg',
-    jumboFrames: false,
-    clampMss: true,
+    runtimeStem: 'pi',
   },
   jetson: {
-    label: 'serber-jetson + serber-firecell',
-    firecellHost: DEFAULT_FIRECELL_HOST,
     duHost: DEFAULT_JETSON_HOST,
     duLabel: 'serber-jetson',
     duConfName: 'gnb-jetson.conf',
-    duRuntimeConf: '/tmp/oai-tui-gnb-jetson-ethernet-runtime.conf',
-    cuRuntimeConf: '/tmp/oai-tui-gnb-cu-jetson-ethernet-runtime.conf',
-    backhaulProfile: 'ethernet',
+    runtimeStem: 'jetson',
   },
-  jetsonQuectel: {
-    label: 'serber-jetson + serber-firecell, Quectel 5G benchmark',
-    firecellHost: DEFAULT_FIRECELL_HOST,
-    duHost: DEFAULT_JETSON_HOST,
-    duLabel: 'serber-jetson',
-    duConfName: 'gnb-jetson.conf',
-    duRuntimeConf: '/tmp/oai-tui-gnb-jetson-quectel-wg-runtime.conf',
-    cuRuntimeConf: '/tmp/oai-tui-gnb-cu-jetson-quectel-wg-runtime.conf',
-    backhaulProfile: 'quectelWg',
-    jumboFrames: false,
-    clampMss: true,
-  },
+};
+const DEFAULT_LAB_CONFIGS = {
+  minipc: buildLabConfigForDu('minipc', 'ethernet'),
+  pi: buildLabConfigForDu('pi', 'ethernet'),
+  jetson: buildLabConfigForDu('jetson', 'ethernet'),
 };
 const BASE_DU_DISCOVERY_CANDIDATES = [
   DEFAULT_MINIPC_HOST,
@@ -148,6 +106,51 @@ const BASE_DU_DISCOVERY_CANDIDATES = [
   `serber@${DEFAULT_PI_IP}`,
   `serber@${DEFAULT_JETSON_IP}`,
 ];
+
+function runtimeSuffixForBackhaul(profileKey) {
+  if (profileKey === 'wifiGre') return 'wifi-gre';
+  if (profileKey === 'quectelWg') return 'quectel-wg';
+  return 'ethernet';
+}
+
+function cuRuntimeConfForDu(runtimeStem, profileKey) {
+  if (runtimeStem === 'minipc' && profileKey === 'ethernet') return '/tmp/oai-tui-gnb-cu-ethernet-runtime.conf';
+  return `/tmp/oai-tui-gnb-cu-${runtimeStem}-${runtimeSuffixForBackhaul(profileKey)}-runtime.conf`;
+}
+
+function buildLabConfigForDu(duKey, profileKey = 'ethernet', overrides = {}) {
+  const du = KNOWN_DU_CONFIGS[duKey];
+  if (!du) throw new Error(`Unknown DU config: ${duKey}`);
+  const runtimeSuffix = runtimeSuffixForBackhaul(profileKey);
+  return {
+    label: `${du.duLabel} + serber-firecell`,
+    firecellHost: DEFAULT_FIRECELL_HOST,
+    duHost: du.duHost,
+    duLabel: du.duLabel,
+    duConfName: du.duConfName,
+    duRuntimeConf: `/tmp/oai-tui-gnb-${du.runtimeStem}-${runtimeSuffix}-runtime.conf`,
+    cuRuntimeConf: cuRuntimeConfForDu(du.runtimeStem, profileKey),
+    backhaulProfile: profileKey,
+    jumboFrames: profileKey === 'ethernet',
+    clampMss: true,
+    ...overrides,
+  };
+}
+
+function setActiveBackhaulProfile(profileKey) {
+  const duKey = activeLabConfig.duLabel.replace('serber-', '');
+  if (KNOWN_DU_CONFIGS[duKey]) {
+    applyLabConfig(buildLabConfigForDu(duKey, profileKey, {
+      firecellHost: activeLabConfig.firecellHost,
+      duHost: activeLabConfig.duHost,
+      label: activeLabConfig.label,
+    }));
+    return;
+  }
+  activeLabConfig.backhaulProfile = profileKey;
+  activeLabConfig.jumboFrames = profileKey === 'ethernet';
+}
+
 let activeLabConfig = {
   label: 'current environment/default',
   firecellHost: process.env.CU_HOST || DEFAULT_FIRECELL_HOST,
@@ -306,7 +309,7 @@ function formatLabConfig(config = activeLabConfig) {
     `Core/CU serber-firecell: ${config.firecellHost}`,
     `DU/radio ${config.duLabel}: ${config.duHost}`,
     `DU startup config: ${config.duConfName}`,
-    `Benchmark backhaul: ${profile.label}`,
+    `Shared F1 config: ${profile.label}`,
   ].join('\n    ');
 }
 
@@ -1383,19 +1386,49 @@ async function prepareCuRuntimeConfig(minipc) {
 async function prepareEthernetDuConfig(minipc) {
   const f1 = selectedF1Addresses(minipc);
   if (!f1.du || !f1.cu) throw new Error('Live F1 CU/DU addresses are required for DU runtime config');
-  // BLER target window defaults match OAI's reference band77 config and are
-  // required for the live B210 radio to climb above the floor of MCS 5.
-  // The OAI defaults (0.05/0.15) are unreachable when the radio runs 22 to 35
-  // percent HARQ round-1 retransmits, so the scheduler pins MCS at the floor.
+  // The split lab tolerates a wider HARQ/BLER operating window than stock OAI.
+  // Without this, the live B210 radio often stays pinned at MCS 0 even while
+  // the same Pi/radio can move tens of Mbps outside the split launch state.
   // See experiments/20260622_154000_eth_cu_du_msc_bump_fix.md for evidence.
-  const blerUpper = process.env.DL_BLER_TARGET_UPPER || '0.35';
-  const blerLower = process.env.DL_BLER_TARGET_LOWER || '0.25';
-  const ulBlerUpper = process.env.UL_BLER_TARGET_UPPER || '0.35';
-  const ulBlerLower = process.env.UL_BLER_TARGET_LOWER || '0.15';
+  const blerUpper = process.env.DL_BLER_TARGET_UPPER || '0.65';
+  const blerLower = process.env.DL_BLER_TARGET_LOWER || '0.45';
+  const ulBlerUpper = process.env.UL_BLER_TARGET_UPPER || '0.45';
+  const ulBlerLower = process.env.UL_BLER_TARGET_LOWER || '0.25';
   for (const [name, val] of [['DL_BLER_TARGET_UPPER', blerUpper], ['DL_BLER_TARGET_LOWER', blerLower], ['UL_BLER_TARGET_UPPER', ulBlerUpper], ['UL_BLER_TARGET_LOWER', ulBlerLower]]) {
     const num = Number(val);
     if (!Number.isFinite(num) || num < 0 || num > 1) {
       throw new Error(`${name} must be a number between 0 and 1, got: ${val}`);
+    }
+  }
+  const defaultDlMinMcs = activeLabConfig.forceMcs ? '12' : (process.env.SPLIT_DL_MIN_MCS || process.env.SPLIT_MIN_MCS || '10');
+  const defaultUlMinMcs = activeLabConfig.forceMcs ? '8' : (process.env.SPLIT_UL_MIN_MCS || '5');
+  const dlMinMcs = process.env.DL_MIN_MCS || defaultDlMinMcs;
+  const ulMinMcs = process.env.UL_MIN_MCS || defaultUlMinMcs;
+  const dlMaxMcs = process.env.DL_MAX_MCS || process.env.SPLIT_DL_MAX_MCS || '18';
+  const ulMaxMcs = process.env.UL_MAX_MCS || '28';
+  for (const [name, val] of [['DL_MIN_MCS', dlMinMcs], ['UL_MIN_MCS', ulMinMcs], ['DL_MAX_MCS', dlMaxMcs], ['UL_MAX_MCS', ulMaxMcs]]) {
+    const num = Number(val);
+    if (!Number.isInteger(num) || num < 0 || num > 28) {
+      throw new Error(`${name} must be an integer between 0 and 28, got: ${val}`);
+    }
+  }
+  const puschTargetSnr = process.env.UL_PUSCH_TARGET_SNR_X10 || '170';
+  const pucchTargetSnr = process.env.UL_PUCCH_TARGET_SNR_X10 || '240';
+  const puschP0 = process.env.UL_P0_NOMINAL_WITH_GRANT || '-86';
+  const pucchP0 = process.env.UL_PUCCH_P0_NOMINAL || '-86';
+  const pucchDtx = process.env.PUCCH0_DTX_THRESHOLD || '140';
+  const prachDtx = process.env.PRACH_DTX_THRESHOLD || '180';
+  for (const [name, val, min, max] of [
+    ['UL_PUSCH_TARGET_SNR_X10', puschTargetSnr, 0, 400],
+    ['UL_PUCCH_TARGET_SNR_X10', pucchTargetSnr, 0, 400],
+    ['UL_P0_NOMINAL_WITH_GRANT', puschP0, -120, -60],
+    ['UL_PUCCH_P0_NOMINAL', pucchP0, -120, -60],
+    ['PUCCH0_DTX_THRESHOLD', pucchDtx, 0, 300],
+    ['PRACH_DTX_THRESHOLD', prachDtx, 0, 300],
+  ]) {
+    const num = Number(val);
+    if (!Number.isInteger(num) || num < min || num > max) {
+      throw new Error(`${name} must be an integer between ${min} and ${max}, got: ${val}`);
     }
   }
   let perlRule = `s/local_n_address\\s*=\\s*"[^"]+"/local_n_address = "${f1.du}"/; s/remote_n_address\\s*=\\s*"[^"]+"/remote_n_address = "${f1.cu}"/;`;
@@ -1404,25 +1437,35 @@ async function prepareEthernetDuConfig(minipc) {
     // Match the Pi runtime shape that produced F1/SIB8 evidence on 2026-06-15.
     perlRule += ' s/(gNB_DU_ID\\s*=\\s*)0x[0-9A-Fa-f]+/${1}0xe01/;';
     perlRule += ' s/(initialDLBWPsearchSpaceZero\\s*=\\s*)\\d+/${1}0/;';
+    perlRule += ' s/(sdr_addrs\\s*=\\s*"serial=8002816)"/${1},num_recv_frames=64,num_send_frames=64"/;';
+    perlRule += ' s/(max_pdschReferenceSignalPower\\s*=\\s*)-?\\d+/${1}-20/;';
+    perlRule += ` s/(pusch_TargetSNRx10\\s*=\\s*)\\d+/\${1}${puschTargetSnr}/;`;
+    perlRule += ` s/(pucch_TargetSNRx10\\s*=\\s*)\\d+/\${1}${pucchTargetSnr}/;`;
+    perlRule += ` s/(p0_NominalWithGrant\\s*=\\s*)-?\\d+/\${1}${puschP0}/;`;
+    perlRule += ` s/(p0_nominal\\s*=\\s*)-?\\d+/\${1}${pucchP0}/;`;
+    perlRule += ` s/(pucch0_dtx_threshold\\s*=\\s*)\\d+/\${1}${pucchDtx}/;`;
+    perlRule += ` s/(prach_dtx_threshold\\s*=\\s*)\\d+/\${1}${prachDtx}/;`;
   }
   if (activeLabConfig.duLabel === 'serber-jetson') {
     perlRule += ' s/(gNB_DU_ID\\s*=\\s*)0x[0-9A-Fa-f]+/${1}0xe02/;';
     perlRule += ' s/(local_n_portd\\s*=\\s*)\\d+/${1}2153/;';
     perlRule += ' s/(remote_n_portd\\s*=\\s*)\\d+/${1}2153/;';
+    perlRule += ' s/(sdr_addrs\\s*=\\s*"serial=8002816)"/${1},num_recv_frames=64,num_send_frames=64"/;';
+    perlRule += ' s/(max_pdschReferenceSignalPower\\s*=\\s*)-?\\d+/${1}-20/;';
+    perlRule += ' s/(pucch0_dtx_threshold\\s*=\\s*)\\d+/${1}100/;';
+    perlRule += ' s/(prach_dtx_threshold\\s*=\\s*)\\d+/${1}180/;';
   }
-  if (activeLabConfig.forceMcs) {
-    perlRule += ` s/(MACRLCs\\s*=\\s*\\(\\s*\\{\\s*num_cc\\s*=\\s*1;)/\$1\\n    dl_min_mcs = 10;\\n    dl_max_mcs = 28;\\n    ul_min_mcs = 10;\\n    ul_max_mcs = 28;/;`;
-  }
-  // Always inject the BLER target window so the live radio can climb above
-  // MCS 5 under sustained traffic. Independent of the MCS floor (forceMcs).
-  perlRule += ` s/(pucch_TargetSNRx10\\s*=\\s*\\d+;)/\$1\\n    dl_bler_target_upper        = ${blerUpper};\\n    dl_bler_target_lower        = ${blerLower};\\n    ul_bler_target_upper        = ${ulBlerUpper};\\n    ul_bler_target_lower        = ${ulBlerLower};/;`;
+  // Keep DL ambitious while leaving UL more robust for control/ACK traffic.
+  // The phone-side 10 Mbps plateau showed repeated PUSCH DTX when UL was
+  // forced to match DL, so the defaults are intentionally asymmetric.
+  perlRule += ` s/(MACRLCs\\s*=\\s*\\(\\s*\\{\\s*num_cc\\s*=\\s*\\d+;)/\$1\\n    dl_min_mcs                  = ${dlMinMcs};\\n    dl_max_mcs                  = ${dlMaxMcs};\\n    ul_min_mcs                  = ${ulMinMcs};\\n    ul_max_mcs                  = ${ulMaxMcs};\\n    dl_bler_target_upper        = ${blerUpper};\\n    dl_bler_target_lower        = ${blerLower};\\n    ul_bler_target_upper        = ${ulBlerUpper};\\n    ul_bler_target_lower        = ${ulBlerLower};/;`;
   const cmd = [
     'set -euo pipefail',
     `test -f ${DU_CONF}`,
     `cp ${DU_CONF} ${DU_ETHERNET_RUNTIME_CONF}`,
     `perl -0pi -e ${shellQuote(perlRule)} ${DU_ETHERNET_RUNTIME_CONF}`,
     `awk '/MACRLCs[[:space:]]*=/{in_mac=1} in_mac && /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/{key=$1; sub(/[[:space:]]*=.*/, "", key); count[key]++} in_mac && /^[[:space:]]*\\)[[:space:]]*;/{in_mac=0} END{bad=0; for (key in count) if (count[key] > 1) { print "duplicate MACRLC key " key "=" count[key] > "/dev/stderr"; bad=1 } exit bad}' ${DU_ETHERNET_RUNTIME_CONF}`,
-    `grep -En 'gNB_DU_ID|local_n_address|remote_n_address|sdr_addrs|mcs|bler_target|dl_absoluteFrequencyPointA|carrierBandwidth|initialDLBWP|initialULBWP' ${DU_ETHERNET_RUNTIME_CONF}`,
+    `grep -En 'gNB_DU_ID|local_n_address|remote_n_address|sdr_addrs|mcs|bler_target|p0_NominalWithGrant|p0_nominal|TargetSNRx10|dtx_threshold|dl_absoluteFrequencyPointA|carrierBandwidth|initialDLBWP|initialULBWP' ${DU_ETHERNET_RUNTIME_CONF}`,
   ].join('\n');
   return await sshChecked(minipc.host, cmd, 15000);
 }
@@ -1435,14 +1478,21 @@ async function applyUpfMssClamping() {
   if (activeLabConfig.jumboFrames) {
     printInfo('Jumbo Frames are active. MSS clamping still helps radio throughput by keeping DL TBs modest in size; UL MSS is set by the UE and is not clamped here.');
   }
-  printInfo('Applying TCP MSS clamping inside the UPF container...');
+  const mssClamp = process.env.TCP_MSS_CLAMP || '1200';
+  const mssClampNum = Number(mssClamp);
+  if (!Number.isInteger(mssClampNum) || mssClampNum < 536 || mssClampNum > 1460) {
+    throw new Error(`TCP_MSS_CLAMP must be an integer between 536 and 1460, got: ${mssClamp}`);
+  }
+  printInfo(`Applying TCP MSS clamping inside the UPF container (MSS ${mssClamp})...`);
   const upfContainer = 'oai-cn5g-minipc-oai-upf-1';
-  const checkRuleOut = `sudo -n docker exec ${upfContainer} iptables -t mangle -C FORWARD -o tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360 2>/dev/null`;
-  const addRuleOut = `sudo -n docker exec ${upfContainer} iptables -t mangle -A FORWARD -o tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360`;
-  const checkRuleIn = `sudo -n docker exec ${upfContainer} iptables -t mangle -C FORWARD -i tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360 2>/dev/null`;
-  const addRuleIn = `sudo -n docker exec ${upfContainer} iptables -t mangle -A FORWARD -i tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360`;
+  const cleanupOldMss = `sudo -n docker exec ${upfContainer} sh -lc 'for mss in 1000 1200 1360; do while iptables -t mangle -D FORWARD -o tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$mss" 2>/dev/null; do :; done; while iptables -t mangle -D FORWARD -i tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$mss" 2>/dev/null; do :; done; done'`;
+  const checkRuleOut = `sudo -n docker exec ${upfContainer} iptables -t mangle -C FORWARD -o tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss ${mssClamp} 2>/dev/null`;
+  const addRuleOut = `sudo -n docker exec ${upfContainer} iptables -t mangle -A FORWARD -o tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss ${mssClamp}`;
+  const checkRuleIn = `sudo -n docker exec ${upfContainer} iptables -t mangle -C FORWARD -i tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss ${mssClamp} 2>/dev/null`;
+  const addRuleIn = `sudo -n docker exec ${upfContainer} iptables -t mangle -A FORWARD -i tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss ${mssClamp}`;
 
   const cmd = [
+    cleanupOldMss,
     `${checkRuleOut} || ${addRuleOut}`,
     `${checkRuleIn} || ${addRuleIn}`,
     `sudo -n docker exec ${upfContainer} iptables -t mangle -L FORWARD -v -n`,
@@ -1453,7 +1503,7 @@ async function applyUpfMssClamping() {
   printSuccess('TCP MSS clamping rules applied successfully inside UPF container.');
 }
 
-async function ensureUpfRoutingAndNat() {
+async function ensureUpfRoutingAndNat(minipc = null) {
   printInfo('Ensuring WAN gateway reachability and UE NAT rules on serber-firecell...');
   
   const checkCmd = 'ping -c 1 -W 1 10.76.170.126 >/dev/null 2>&1';
@@ -1461,12 +1511,12 @@ async function ensureUpfRoutingAndNat() {
   try {
     await sshChecked(FIRECELL, checkCmd, 5000);
   } catch (err) {
-    const duHost = activeLabConfig.duHost;
-    routeIp = duHost.includes('@') ? duHost.split('@')[1] : duHost;
+    const duSshHost = minipc?.host || activeLabConfig.duHost;
+    routeIp = minipc?.mgmtIp || (activeLabConfig.duHost.includes('@') ? activeLabConfig.duHost.split('@')[1] : activeLabConfig.duHost);
     printInfo(`WAN gateway 10.76.170.126 is unreachable directly from Core host. Configuring routing via DU host (${routeIp})...`);
     
     // Determine the DU host's external interface (default route interface) dynamically
-    const duRouteOut = await sshChecked(duHost, 'ip route get 8.8.8.8', 10000);
+    const duRouteOut = await sshChecked(duSshHost, 'ip route get 8.8.8.8', 10000);
     const duIface = parseRouteDevSrc(duRouteOut).dev || 'enp2s0';
     
     const duCmd = [
@@ -1474,7 +1524,7 @@ async function ensureUpfRoutingAndNat() {
       'sudo -n iptables -C FORWARD -s 10.76.170.38/32 -j ACCEPT 2>/dev/null || sudo -n iptables -I FORWARD 1 -s 10.76.170.38/32 -j ACCEPT',
       'sudo -n iptables -C FORWARD -d 10.76.170.38/32 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || sudo -n iptables -I FORWARD 2 -d 10.76.170.38/32 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT'
     ].join('\n');
-    await sshLoose(duHost, duCmd, 15000);
+    await sshLoose(duSshHost, duCmd, 15000);
   }
 
   const cmd = [
@@ -1735,19 +1785,25 @@ async function hardStopSplit(minipcHost = MINIPC) {
   const cuRuntimeConfs = [
     CU_RUNTIME_CONF,
     '/tmp/oai-tui-gnb-cu-ethernet-runtime.conf',
+    '/tmp/oai-tui-gnb-cu-minipc-wifi-gre-runtime.conf',
+    '/tmp/oai-tui-gnb-cu-minipc-quectel-wg-runtime.conf',
     '/tmp/oai-tui-gnb-cu-pi-ethernet-runtime.conf',
     '/tmp/oai-tui-gnb-cu-pi-wifi-gre-runtime.conf',
     '/tmp/oai-tui-gnb-cu-pi-quectel-wg-runtime.conf',
     '/tmp/oai-tui-gnb-cu-jetson-ethernet-runtime.conf',
+    '/tmp/oai-tui-gnb-cu-jetson-wifi-gre-runtime.conf',
     '/tmp/oai-tui-gnb-cu-jetson-quectel-wg-runtime.conf',
   ];
   const duRuntimeConfs = [
     DU_ETHERNET_RUNTIME_CONF,
     '/tmp/oai-tui-gnb-minipc-ethernet-runtime.conf',
+    '/tmp/oai-tui-gnb-minipc-wifi-gre-runtime.conf',
+    '/tmp/oai-tui-gnb-minipc-quectel-wg-runtime.conf',
     '/tmp/oai-tui-gnb-pi-ethernet-runtime.conf',
     '/tmp/oai-tui-gnb-pi-wifi-gre-runtime.conf',
     '/tmp/oai-tui-gnb-pi-quectel-wg-runtime.conf',
     '/tmp/oai-tui-gnb-jetson-ethernet-runtime.conf',
+    '/tmp/oai-tui-gnb-jetson-wifi-gre-runtime.conf',
     '/tmp/oai-tui-gnb-jetson-quectel-wg-runtime.conf',
   ];
   printInfo('Stopping known CU/donor softmodems on serber-firecell by config path...');
@@ -1762,7 +1818,7 @@ async function blockOaiPcF1ForMinipcDemo() {
   const rule = `-s ${OAI_PC_IP} -p sctp --dport 38472 -j DROP`;
   const cmd = `sudo -n iptables -C INPUT ${rule} 2>/dev/null || sudo -n iptables -I INPUT 1 ${rule}`;
   const out = await sshLoose(FIRECELL, cmd, 10000);
-  if (out.ok) printSuccess('oai-pc F1 peer isolated for selected CU/DU benchmark');
+  if (out.ok) printSuccess('oai-pc F1 peer isolated for selected CU/DU config');
   else printWarn(`Could not add oai-pc F1 block: ${out.combined || 'unknown error'}`);
 }
 
@@ -1937,10 +1993,10 @@ async function validateMonolithicIsolation(dir, minipc) {
 async function startEthernetRollback() {
   console.clear();
   const profile = selectedBackhaulProfile();
-  printHeader(`${profile.label} CU/DU Benchmark Startup`);
+  printHeader(`${profile.label} CU/DU Startup`);
   const dir = runDir(profile.evidenceSlug);
   printInfo(`Evidence directory: ${dir}`);
-  printInfo(`Selected benchmark profile: ${profile.label}`);
+  printInfo(`Selected CU/DU config: ${profile.label} on ${activeLabConfig.duLabel}`);
   const gate = {};
   let minipc = null;
 
@@ -1970,7 +2026,7 @@ async function startEthernetRollback() {
     await stopMonolithicCoreForSplit();
     gate.monolithicCoreStopped = true;
 
-    printStep(5, 14, 'Isolate selected CU/DU benchmark from competing oai-pc DU');
+    printStep(5, 14, 'Isolate selected CU/DU config from competing oai-pc DU');
     await blockOaiPcF1ForMinipcDemo();
     gate.oaiPcIsolated = true;
 
@@ -1999,7 +2055,7 @@ async function startEthernetRollback() {
 
     // Apply TCP MSS Clamping inside UPF container (disabled by default when jumbo frames are on)
     await applyUpfMssClamping();
-    await ensureUpfRoutingAndNat();
+    await ensureUpfRoutingAndNat(minipc);
 
     // Apply jumbo frames (MTU 9000) on both F1 interfaces to eliminate GTP-U fragmentation
     if (activeLabConfig.backhaulProfile === 'ethernet') {
@@ -2010,7 +2066,7 @@ async function startEthernetRollback() {
         `${activeLabConfig.duLabel} ${minipc.mgmtIface}:\n${jumboOut.minipcOut}\n\nfirecell ${firecellEthIface}:\n${jumboOut.firecellOut}`);
       gate.jumboFrames = activeLabConfig.jumboFrames;
     } else {
-      printInfo('Jumbo frames are skipped for non-Ethernet benchmark profiles.');
+      printInfo('Jumbo frames are skipped for non-Ethernet F1 configs.');
       gate.jumboFrames = 'skipped_non_ethernet';
     }
 
@@ -2479,8 +2535,7 @@ async function stopAllConfigs(minipcHost = null) {
     if (isRunning.combined.trim()) {
       printInfo('Cleaning up TCP MSS clamping rules inside UPF container...');
       const cleanCmd = [
-        `sudo -n docker exec ${upfContainer} iptables -t mangle -D FORWARD -o tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360 2>/dev/null || true`,
-        `sudo -n docker exec ${upfContainer} iptables -t mangle -D FORWARD -i tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360 2>/dev/null || true`,
+        `sudo -n docker exec ${upfContainer} sh -lc 'for mss in 1000 1200 1360; do while iptables -t mangle -D FORWARD -o tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$mss" 2>/dev/null; do :; done; while iptables -t mangle -D FORWARD -i tun0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$mss" 2>/dev/null; do :; done; done'`,
       ].join('\n');
       await sshLoose(FIRECELL, cleanCmd, 15000);
     }
@@ -2613,7 +2668,7 @@ async function launchSingleCuQuectelBackhaul() {
     const phoneSeed = await provisionLabPhoneSubscriber(dir);
     await showLines(phoneSeed);
     await applyUpfMssClamping();
-    await ensureUpfRoutingAndNat();
+    await ensureUpfRoutingAndNat(minipc);
     gate.subscriber = true;
 
     printStep(4, 14, 'Generate WireGuard CU and access-DU configs');
@@ -3086,7 +3141,7 @@ async function getRunningConfig() {
       return 'caged Quectel F1 backhaul, monolithic donor';
     }
     if (out.includes(CU_RUNTIME_CONF) || out.includes('gnb-cu-minipc.conf')) {
-      return `${selectedBackhaulProfile().label} CU/DU benchmark`;
+      return `${selectedBackhaulProfile().label} CU/DU config`;
     }
     if (out.includes(EXPERIMENTAL_B210_RUNTIME_CONF)) {
       return 'experimental single-B210 RF backhaul';
@@ -3103,7 +3158,7 @@ async function getRunningConfig() {
   }
 }
 
-async function configureLabBeforeMenu() {
+async function configureLabBeforeMenu({ allowKeepCurrent = true } = {}) {
   console.clear();
   printHeader('Lab Configuration');
   console.log('\n  Current config:');
@@ -3111,50 +3166,46 @@ async function configureLabBeforeMenu() {
   const running = await getRunningConfig();
   console.log(`\n  Detected running OAI config on firecell: ${running}`);
 
-  if (await confirm('Use current config?', true)) return;
+  if (allowKeepCurrent && await confirm('Use current config?', true)) return;
 
-  const selection = await choose('Choose lab config:', [
-    { name: 'Default serber-minipc + serber-firecell', value: 'minipc' },
-    { name: 'Raspberry Pi benchmark: Ethernet F1', value: 'pi' },
-    { name: 'Raspberry Pi benchmark: Wi-Fi GRE F1', value: 'pi-wifi' },
-    { name: 'Raspberry Pi benchmark: Quectel 5G/WireGuard F1', value: 'pi-quectel' },
-    { name: 'Jetson Orin Nano benchmark: Ethernet F1', value: 'jetson' },
-    { name: 'Jetson Orin Nano benchmark: Quectel 5G/WireGuard F1', value: 'jetson-quectel' },
-    { name: 'Enter new serber-firecell and serber-pi IP addresses', value: 'custom-pi' },
+  const duSelection = await choose('Choose DU host:', [
+    { name: 'serber-minipc', value: 'minipc' },
+    { name: 'serber-pi', value: 'pi' },
+    { name: 'serber-jetson', value: 'jetson' },
+    { name: 'Custom DU target', value: 'custom' },
   ]);
 
-  if (selection === 'minipc') {
-    applyLabConfig(DEFAULT_LAB_CONFIGS.minipc);
-  } else if (selection === 'pi') {
-    applyLabConfig(DEFAULT_LAB_CONFIGS.pi);
-  } else if (selection === 'pi-wifi') {
-    applyLabConfig(DEFAULT_LAB_CONFIGS.piWifi);
-  } else if (selection === 'pi-quectel') {
-    applyLabConfig(DEFAULT_LAB_CONFIGS.piQuectel);
-  } else if (selection === 'jetson') {
-    applyLabConfig(DEFAULT_LAB_CONFIGS.jetson);
-  } else if (selection === 'jetson-quectel') {
-    applyLabConfig(DEFAULT_LAB_CONFIGS.jetsonQuectel);
-  } else {
+  const profile = await choose('Choose shared CU/DU F1 config:', [
+    { name: 'Ethernet F1', value: 'ethernet' },
+    { name: 'Wi-Fi GRE F1', value: 'wifiGre' },
+    { name: 'Quectel 5G/WireGuard F1', value: 'quectelWg' },
+  ]);
+
+  if (duSelection === 'custom') {
     const firecellIp = await prompt('serber-firecell IP address', firecellAddress() || '10.76.170.38');
-    const piIp = await prompt('serber-pi IP address', DEFAULT_PI_IP);
-    const profile = await choose('Pi benchmark transport:', [
-      { name: 'Ethernet F1', value: 'ethernet' },
-      { name: 'Wi-Fi GRE F1', value: 'wifiGre' },
-      { name: 'Quectel 5G/WireGuard F1', value: 'quectelWg' },
+    const duLabel = await choose('Custom DU type:', [
+      { name: 'serber-minipc-compatible', value: 'serber-minipc' },
+      { name: 'serber-pi-compatible', value: 'serber-pi' },
+      { name: 'serber-jetson-compatible', value: 'serber-jetson' },
     ]);
-    const runtimeSuffix = profile === 'wifiGre' ? 'wifi-gre' : profile === 'quectelWg' ? 'quectel-wg' : 'ethernet';
+    const defaultIp = duLabel === 'serber-pi' ? DEFAULT_PI_IP : duLabel === 'serber-jetson' ? DEFAULT_JETSON_IP : DEFAULT_MINIPC_HOST.split('@').pop();
+    const duIp = await prompt(`${duLabel} SSH target or IP address`, defaultIp);
+    const runtimeStem = duLabel.replace('serber-', '');
+    const runtimeSuffix = runtimeSuffixForBackhaul(profile);
     applyLabConfig({
-      label: 'custom serber-pi + serber-firecell',
+      label: `custom ${duLabel} + serber-firecell`,
       firecellHost: sshTargetFromAddress(firecellIp),
-      duHost: sshTargetFromAddress(piIp),
-      duLabel: 'serber-pi',
-      duConfName: 'gnb-pi.conf',
-      duRuntimeConf: `/tmp/oai-tui-gnb-pi-${runtimeSuffix}-runtime.conf`,
-      cuRuntimeConf: `/tmp/oai-tui-gnb-cu-pi-${runtimeSuffix}-runtime.conf`,
+      duHost: sshTargetFromAddress(duIp),
+      duLabel,
+      duConfName: `gnb-${runtimeStem}.conf`,
+      duRuntimeConf: `/tmp/oai-tui-gnb-${runtimeStem}-${runtimeSuffix}-runtime.conf`,
+      cuRuntimeConf: cuRuntimeConfForDu(runtimeStem, profile),
       backhaulProfile: profile,
       jumboFrames: profile === 'ethernet',
+      clampMss: true,
     });
+  } else {
+    applyLabConfig(buildLabConfigForDu(duSelection, profile));
   }
 
   console.log('\n  Selected config:');
@@ -3169,9 +3220,9 @@ async function mainMenu() {
     console.log('\n  Demo targets:');
     console.log(`    Core/CU: ${FIRECELL}`);
     console.log(`    Monolithic reference: ${FIRECELL}`);
-    console.log(`    DU/USRP: ${activeLabConfig.duLabel} (${MINIPC}), discovered live for selected benchmark`);
-    console.log(`    Benchmark backhaul: ${selectedBackhaulProfile().label}`);
-    console.log('\n  The selected CU/DU benchmark discovers the DU each run. Legacy caged Quectel launch/validation is guarded to serber-minipc.\n');
+    console.log(`    DU/USRP: ${activeLabConfig.duLabel} (${MINIPC}), discovered live at launch`);
+    console.log(`    Shared F1 config: ${selectedBackhaulProfile().label}`);
+    console.log('\n  The selected CU/DU launch discovers the DU each run. Caged Quectel launch/validation remains evidence-gated.\n');
     const running = await getRunningConfig();
     let statusStr = running;
     if (running === 'none') {
@@ -3183,7 +3234,8 @@ async function mainMenu() {
     }
     console.log(`  currently running config: ${statusStr}\n`);
     const action = await choose('What would you like to do?', [
-      { name: `Launch selected CU/DU benchmark: ${selectedBackhaulProfile().label} + live ${activeLabConfig.duLabel} DU`, value: 'start-split' },
+      { name: `Launch selected CU/DU config: ${selectedBackhaulProfile().label} + ${activeLabConfig.duLabel}`, value: 'start-split' },
+      { name: 'Change selected DU/config', value: 'change-config' },
       { name: 'Launch monolithic firecell core + gNB', value: 'start-mono' },
       { name: 'Launch caged Quectel F1 backhaul, monolithic donor', value: 'start-caged-quectel' },
       { name: 'Validate caged Quectel F1 backhaul, monolithic donor', value: 'validate-caged-quectel' },
@@ -3197,6 +3249,10 @@ async function mainMenu() {
       { name: 'Exit', value: 'exit' },
     ]);
     if (action === 'exit') break;
+    if (action === 'change-config') {
+      await configureLabBeforeMenu({ allowKeepCurrent: false });
+      continue;
+    }
     if (action === 'toggle-jumbo') {
       activeLabConfig.jumboFrames = !activeLabConfig.jumboFrames;
       continue;
@@ -3221,23 +3277,57 @@ async function mainMenu() {
 }
 
 async function cli() {
+  const duArg = process.argv.find(arg => arg.startsWith('--du='));
+  if (duArg) {
+    const value = duArg.split('=')[1];
+    const duKey = value?.replace(/^serber-/, '');
+    if (!KNOWN_DU_CONFIGS[duKey]) throw new Error(`Unsupported --du value: ${value}. Use serber-minipc, serber-pi, or serber-jetson.`);
+    applyLabConfig(buildLabConfigForDu(duKey, activeLabConfig.backhaulProfile));
+  }
+  const backhaulArg = process.argv.find(arg => arg.startsWith('--backhaul='));
+  if (backhaulArg) {
+    const value = backhaulArg.split('=')[1];
+    const aliases = {
+      ethernet: 'ethernet',
+      'wifi-gre': 'wifiGre',
+      wifiGre: 'wifiGre',
+      quectel: 'quectelWg',
+      'quectel-wg': 'quectelWg',
+      quectelWg: 'quectelWg',
+    };
+    const profileKey = aliases[value];
+    if (!profileKey) throw new Error(`Unsupported --backhaul value: ${value}. Use ethernet, wifi-gre, or quectel-wg.`);
+    setActiveBackhaulProfile(profileKey);
+  }
   if (process.argv.includes('--pi-ethernet')) {
-    applyLabConfig(DEFAULT_LAB_CONFIGS.pi);
+    applyLabConfig(buildLabConfigForDu('pi', 'ethernet'));
   }
   if (process.argv.includes('--pi-wifi-gre')) {
-    applyLabConfig(DEFAULT_LAB_CONFIGS.piWifi);
+    applyLabConfig(buildLabConfigForDu('pi', 'wifiGre'));
   }
   if (process.argv.includes('--pi-quectel-wg')) {
-    applyLabConfig(DEFAULT_LAB_CONFIGS.piQuectel);
+    applyLabConfig(buildLabConfigForDu('pi', 'quectelWg'));
   }
   if (process.argv.includes('--minipc-ethernet')) {
-    applyLabConfig(DEFAULT_LAB_CONFIGS.minipc);
+    applyLabConfig(buildLabConfigForDu('minipc', 'ethernet'));
   }
   if (process.argv.includes('--jetson-ethernet')) {
-    applyLabConfig(DEFAULT_LAB_CONFIGS.jetson);
+    applyLabConfig(buildLabConfigForDu('jetson', 'ethernet'));
+  }
+  if (process.argv.includes('--minipc-wifi-gre')) {
+    applyLabConfig(buildLabConfigForDu('minipc', 'wifiGre'));
+  }
+  if (process.argv.includes('--minipc-quectel-wg')) {
+    applyLabConfig(buildLabConfigForDu('minipc', 'quectelWg'));
+  }
+  if (process.argv.includes('--jetson-wifi-gre')) {
+    applyLabConfig(buildLabConfigForDu('jetson', 'wifiGre'));
   }
   if (process.argv.includes('--jetson-quectel')) {
-    applyLabConfig(DEFAULT_LAB_CONFIGS.jetsonQuectel);
+    applyLabConfig(buildLabConfigForDu('jetson', 'quectelWg'));
+  }
+  if (process.argv.includes('--jetson-quectel-wg')) {
+    applyLabConfig(buildLabConfigForDu('jetson', 'quectelWg'));
   }
   if (process.argv.includes('--no-jumbo-frames')) {
     activeLabConfig.jumboFrames = false;
@@ -3257,19 +3347,17 @@ async function cli() {
     process.exit(0);
   }
   if (process.argv.includes('--start-ethernet')) {
-    activeLabConfig.backhaulProfile = 'ethernet';
+    setActiveBackhaulProfile('ethernet');
     await startEthernetRollback();
     process.exit(0);
   }
   if (process.argv.includes('--start-wifi-gre')) {
-    activeLabConfig.backhaulProfile = 'wifiGre';
-    activeLabConfig.jumboFrames = false;
+    setActiveBackhaulProfile('wifiGre');
     await startEthernetRollback();
     process.exit(0);
   }
   if (process.argv.includes('--start-quectel-wg')) {
-    activeLabConfig.backhaulProfile = 'quectelWg';
-    activeLabConfig.jumboFrames = false;
+    setActiveBackhaulProfile('quectelWg');
     await startEthernetRollback();
     process.exit(0);
   }

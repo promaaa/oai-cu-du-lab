@@ -48,9 +48,10 @@ Run `./scripts/oai-lab-tui` to launch and inspect the deployed lab modes:
 - read-only discovery for Raspberry Pi DU, `oai-pc` DU, and nrUE internet-through-radio workflows until they are validated.
 
 The TUI first shows the active lab config and asks whether to use it. Operators
-can keep the current environment/default config, choose the known
-`serber-firecell` + `serber-minipc` or `serber-firecell` + `serber-pi` layouts,
-or enter custom firecell/Pi IP addresses.
+can keep the current environment/default config or choose a DU from the known
+set: `serber-minipc`, `serber-pi`, or `serber-jetson`. After the DU selection,
+the same shared launch interface offers Ethernet F1, Wi-Fi GRE F1, or
+Quectel/WireGuard F1 where those gates can pass on the selected hardware.
 
 Default professor-demo lab targets:
 
@@ -58,6 +59,7 @@ Default professor-demo lab targets:
 serber-firecell = serber@10.76.170.38
 serber-minipc   = serber@10.76.170.40
 serber-pi       = serber@10.76.170.18
+serber-jetson   = serber@10.76.170.8
 ```
 
 Monolithic reference startup is pinned to `serber-firecell` to match the
@@ -65,6 +67,14 @@ existing monolithic demo workflow. Ethernet CU/DU startup first stops the
 firecell monolithic core containers so the split core is the only active OAI CN
 stack, then installs a temporary CU-side SCTP drop rule for the stale `oai-pc`
 F1 peer at `10.76.170.90`. `Stop Ethernet CU/DU` removes that temporary rule.
+The generated split DU config also uses a live-radio scheduler profile by
+default: DL BLER target `0.45..0.65`, UL BLER target `0.25..0.45`,
+`SPLIT_DL_MIN_MCS=10`, `SPLIT_DL_MAX_MCS=18`, `SPLIT_UL_MIN_MCS=5`, and
+`TCP_MSS_CLAMP=1200` unless overridden by environment variables or
+`--force-mcs`. The Pi DU profile also raises UL/control robustness by default:
+`UL_PUSCH_TARGET_SNR_X10=170`, `UL_PUCCH_TARGET_SNR_X10=240`,
+`UL_P0_NOMINAL_WITH_GRANT=-86`, `UL_PUCCH_P0_NOMINAL=-86`,
+`PUCCH0_DTX_THRESHOLD=140`, and `PRACH_DTX_THRESHOLD=180`.
 
 It uses SSH and local commands only; it does not store passwords.
 

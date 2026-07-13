@@ -12,22 +12,23 @@ step-by-step status output instead of the previous curses scroll screen.
 
 Before the main menu, the TUI shows the active lab configuration and any
 detected running OAI config on `serber-firecell`. The operator can keep the
-current environment/default config or choose one of the known layouts:
+current environment/default config or choose one of the known DUs:
 
 ```text
-serber-firecell + serber-minipc = serber@10.76.170.38 + serber-minipc
-serber-firecell + serber-pi     = serber@10.76.170.38 + serber-pi
+serber-minipc = serber@10.76.170.40
+serber-pi     = serber@10.76.170.18
+serber-jetson = serber@10.76.170.8
 ```
 
-The same screen can also build a custom `serber-firecell` + `serber-pi`
-configuration from operator-supplied IP addresses. The Raspberry Pi benchmark
-presets cover:
+After selecting the DU, the TUI asks for the shared CU/DU F1 config:
 
 - Ethernet F1;
 - Wi-Fi GRE F1;
 - Quectel 5G/WireGuard F1.
 
-CU/DU benchmark actions discover the selected DU management path at runtime.
+The same screen can also build a custom `serber-firecell` + selected-DU
+configuration from operator-supplied SSH targets or IP addresses. CU/DU launch
+actions discover the selected DU management path at runtime.
 Legacy caged Quectel donor actions remain gated and must still produce live
 modem, WireGuard, F1, phone-service, and rollback evidence before any PASS.
 
@@ -60,7 +61,15 @@ The caged Quectel monolithic-donor actions also support direct launch and retry:
 ./scripts/oai-lab-tui --rollback-caged-quectel
 ```
 
-Raspberry Pi benchmark shortcuts:
+Unified DU/config CLI shortcuts:
+
+```bash
+./scripts/oai-lab-tui --du=serber-minipc --backhaul=ethernet --start-ethernet
+PI_WIFI_IP=<du-wifi-ip> ./scripts/oai-lab-tui --du=serber-pi --backhaul=wifi-gre --start-wifi-gre
+./scripts/oai-lab-tui --du=serber-jetson --backhaul=quectel-wg --start-quectel-wg
+```
+
+Older Raspberry Pi shortcut aliases still work:
 
 ```bash
 ./scripts/oai-lab-tui --pi-ethernet --start-ethernet
@@ -71,6 +80,18 @@ PI_WIFI_IP=<pi-wifi-ip> ./scripts/oai-lab-tui --pi-wifi-gre --start-wifi-gre
 The Wi-Fi GRE profile uses `GRE_NAME=test-gre`,
 `GRE_CU_INNER_IP=10.255.0.1`, and `GRE_DU_INNER_IP=10.255.0.2` unless
 overridden in `conf/local/lab.env`.
+
+Split DU runtime generation uses a less conservative scheduler profile than
+stock OAI so the live B210 cell can climb instead of camping at MCS 0:
+DL BLER target `0.45..0.65`, UL BLER target `0.25..0.45`,
+`SPLIT_DL_MIN_MCS=10`, `SPLIT_DL_MAX_MCS=18`, `SPLIT_UL_MIN_MCS=5`, and
+`TCP_MSS_CLAMP=1200` by default. Use `DL_MIN_MCS`/`UL_MIN_MCS` and
+`DL_MAX_MCS`/`UL_MAX_MCS` for per-direction overrides, or `--force-mcs` for the
+stronger asymmetric floor. The Pi DU profile additionally defaults to a more
+robust UL/control profile: `UL_PUSCH_TARGET_SNR_X10=170`,
+`UL_PUCCH_TARGET_SNR_X10=240`, `UL_P0_NOMINAL_WITH_GRANT=-86`,
+`UL_PUCCH_P0_NOMINAL=-86`, `PUCCH0_DTX_THRESHOLD=140`, and
+`PRACH_DTX_THRESHOLD=180`; each value can be overridden from the environment.
 
 ## Supported Starts
 
@@ -83,9 +104,8 @@ overridden in `conf/local/lab.env`.
 
 The main menu intentionally shows only the operator-ready workflows:
 
-- launch Ethernet CU/DU split;
-- launch Raspberry Pi CU/DU benchmarks over Ethernet, Wi-Fi GRE, or
-  Quectel/WireGuard after selecting the corresponding Pi profile;
+- launch the selected CU/DU config on the selected DU;
+- change the selected DU/config;
 - launch monolithic firecell core + gNB;
 - launch or validate caged Quectel F1 backhaul with monolithic donor;
 - change PWS/SIB8 warning text everywhere;
@@ -98,12 +118,12 @@ operator menu until they have current validation evidence.
 
 ## Ethernet CU/DU Rollback Baseline
 
-The CU/DU benchmark startup action discovers the selected DU SSH target,
+The CU/DU startup action discovers the selected DU SSH target,
 management source IP, and selected F1 transport before launching the split. It
 builds temporary `/tmp/oai-tui-gnb-*-runtime.conf` files from the checked-in CU
 and DU configs and patches only the runtime copies with the live F1 addresses.
 
-The TUI gates the CU/DU benchmark run in this order:
+The TUI gates the CU/DU run in this order:
 
 1. Host and selected DU discovery.
 2. Selected-DU radio preflight before changing lab state.
@@ -132,7 +152,7 @@ temporary CU-side iptables rule that drops SCTP/F1 traffic from the stale
 `oai-pc` peer at `10.76.170.90`. This prevents the old `gNB-DU-OAI-PC` process
 from claiming the same DU identity before the minipc DU attaches. `Stop the current config` removes that temporary rule.
 
-The CU/DU benchmark scenario prints **PASS** only after F1 setup, SIB8/PWS
+The CU/DU scenario prints **PASS** only after F1 setup, SIB8/PWS
 delivery, DU radio sync, F1-C SCTP on the selected transport, and no F1-C or
 F1-U leakage on the non-selected paths is visible.
 
@@ -141,12 +161,11 @@ B210 through UHD. If a currently running softmodem owns the radio, the TUI
 accepts the USB presence only as a temporary preflight signal, stops the old
 softmodem, and then requires UHD visibility before any CU/DU launch.
 
-The Pi Ethernet profile has the strongest current Pi evidence, but it is still
-a benchmark path rather than the rollback baseline. The Pi Wi-Fi GRE profile
-fails closed if `serber-firecell` cannot reach `PI_WIFI_IP` before creating the
-tunnel. The Pi Quectel/WireGuard profile fails closed if QMI shows the SIM is
-not initialized, the modem is not packet-registered, or no live PDU IP/gateway
-is available.
+The Ethernet CU/DU profile remains the rollback baseline only when run on the
+validated baseline hardware. Wi-Fi GRE fails closed if `serber-firecell` cannot
+reach the selected DU Wi-Fi IP before creating the tunnel. Quectel/WireGuard
+fails closed if QMI shows the SIM is not initialized, the modem is not
+packet-registered, or no live PDU IP/gateway is available.
 
 ## Monolithic Reference
 

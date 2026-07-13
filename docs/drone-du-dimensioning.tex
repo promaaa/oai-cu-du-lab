@@ -1,0 +1,408 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{pgf}
+\usepackage{siunitx}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+\setlength{\emergencystretch}{3em}
+
+\sisetup{
+  detect-all,
+  round-mode=places,
+  round-precision=2,
+  group-minimum-digits=4
+}
+
+\title{Drone-Carried OAI DU Dimensioning Model}
+\author{OAI CU/DU Split Lab}
+\date{2026-07-06}
+
+% ---------------------------------------------------------------------------
+% Editable mission assumptions.
+% Change these values first when resizing the airborne payload.
+% ---------------------------------------------------------------------------
+\pgfmathsetmacro{\MissionMinutes}{20}
+\pgfmathsetmacro{\ElectricalReserveFactor}{1.30}
+\pgfmathsetmacro{\UsableBatteryFraction}{0.80}
+\pgfmathsetmacro{\DCEfficiency}{0.88}
+\pgfmathsetmacro{\BatterySpecificEnergyWhKg}{190}
+\pgfmathsetmacro{\DronePayloadUtilization}{0.70}
+
+% ---------------------------------------------------------------------------
+% Editable configuration profiles.
+% Masses are grams. Powers are watts. Each profile includes a dedicated payload
+% electronics battery; if the drone supplies payload power, set the profile
+% battery calculation to zero and keep a DC conversion allowance.
+% ---------------------------------------------------------------------------
+\pgfmathsetmacro{\MassPiFive}{46}
+\pgfmathsetmacro{\MassJetsonCarrier}{250}
+\pgfmathsetmacro{\MassMiniPc}{650}
+\pgfmathsetmacro{\MassBTwoZeroFiveMini}{24}
+\pgfmathsetmacro{\MassBTwoTen}{350}
+\pgfmathsetmacro{\MassQuectelKit}{180}
+\pgfmathsetmacro{\MassRfTimingLight}{180}
+\pgfmathsetmacro{\MassRfTimingBTwoTen}{250}
+\pgfmathsetmacro{\MassPowerMountLight}{300}
+\pgfmathsetmacro{\MassPowerMountMedium}{350}
+\pgfmathsetmacro{\MassPowerMountHeavy}{500}
+\pgfmathsetmacro{\MassDualRadioExtra}{650}
+
+\pgfmathsetmacro{\PowerPiFive}{18}
+\pgfmathsetmacro{\PowerJetson}{25}
+\pgfmathsetmacro{\PowerMiniPc}{45}
+\pgfmathsetmacro{\PowerBTwoZeroFiveMini}{4}
+\pgfmathsetmacro{\PowerBTwoTen}{8}
+\pgfmathsetmacro{\PowerQuectel}{9}
+\pgfmathsetmacro{\PowerAuxLight}{6}
+\pgfmathsetmacro{\PowerAuxMedium}{8}
+\pgfmathsetmacro{\PowerAuxHeavy}{10}
+\pgfmathsetmacro{\PowerDualRadioExtra}{28}
+
+% ---------------------------------------------------------------------------
+% Derived profile calculations.
+% ---------------------------------------------------------------------------
+\pgfmathsetmacro{\WhFactor}{\MissionMinutes/60*\ElectricalReserveFactor/(\DCEfficiency*\UsableBatteryFraction)}
+
+\pgfmathsetmacro{\AStaticG}{\MassPiFive+\MassBTwoZeroFiveMini+\MassQuectelKit+\MassRfTimingLight+\MassPowerMountLight}
+\pgfmathsetmacro{\APowerW}{\PowerPiFive+\PowerBTwoZeroFiveMini+\PowerQuectel+\PowerAuxLight}
+\pgfmathsetmacro{\ABatteryWh}{\APowerW*\WhFactor}
+\pgfmathsetmacro{\ABatteryG}{(\ABatteryWh/\BatterySpecificEnergyWhKg)*1000}
+\pgfmathsetmacro{\ATotalG}{\AStaticG+\ABatteryG}
+\pgfmathsetmacro{\ARequiredPayloadKg}{\ATotalG/1000/\DronePayloadUtilization}
+
+\pgfmathsetmacro{\BStaticG}{\MassJetsonCarrier+\MassBTwoTen+\MassQuectelKit+\MassRfTimingBTwoTen+\MassPowerMountMedium}
+\pgfmathsetmacro{\BPowerW}{\PowerJetson+\PowerBTwoTen+\PowerQuectel+\PowerAuxMedium}
+\pgfmathsetmacro{\BBatteryWh}{\BPowerW*\WhFactor}
+\pgfmathsetmacro{\BBatteryG}{(\BBatteryWh/\BatterySpecificEnergyWhKg)*1000}
+\pgfmathsetmacro{\BTotalG}{\BStaticG+\BBatteryG}
+\pgfmathsetmacro{\BRequiredPayloadKg}{\BTotalG/1000/\DronePayloadUtilization}
+
+\pgfmathsetmacro{\CStaticG}{\MassMiniPc+\MassBTwoTen+\MassQuectelKit+\MassRfTimingBTwoTen+\MassPowerMountHeavy}
+\pgfmathsetmacro{\CPowerW}{\PowerMiniPc+\PowerBTwoTen+\PowerQuectel+\PowerAuxHeavy}
+\pgfmathsetmacro{\CBatteryWh}{\CPowerW*\WhFactor}
+\pgfmathsetmacro{\CBatteryG}{(\CBatteryWh/\BatterySpecificEnergyWhKg)*1000}
+\pgfmathsetmacro{\CTotalG}{\CStaticG+\CBatteryG}
+\pgfmathsetmacro{\CRequiredPayloadKg}{\CTotalG/1000/\DronePayloadUtilization}
+
+\pgfmathsetmacro{\DStaticG}{\CStaticG+\MassDualRadioExtra}
+\pgfmathsetmacro{\DPowerW}{\CPowerW+\PowerDualRadioExtra}
+\pgfmathsetmacro{\DBatteryWh}{\DPowerW*\WhFactor}
+\pgfmathsetmacro{\DBatteryG}{(\DBatteryWh/\BatterySpecificEnergyWhKg)*1000}
+\pgfmathsetmacro{\DTotalG}{\DStaticG+\DBatteryG}
+\pgfmathsetmacro{\DRequiredPayloadKg}{\DTotalG/1000/\DronePayloadUtilization}
+
+\newcommand{\numkg}[1]{\pgfmathparse{#1}\num{\pgfmathresult}}
+\newcommand{\numg}[1]{\pgfmathparse{#1}\num{\pgfmathresult}}
+\newcommand{\numw}[1]{\pgfmathparse{#1}\num{\pgfmathresult}}
+\newcommand{\numwh}[1]{\pgfmathparse{#1}\num{\pgfmathresult}}
+\newcommand{\fit}{\textcolor{green!45!black}{Fit}}
+\newcommand{\tight}{\textcolor{orange!70!black}{Tight}}
+\newcommand{\nofit}{\textcolor{red!70!black}{No}}
+
+\begin{document}
+\maketitle
+
+\section*{Purpose}
+
+This document turns the portable-DU idea into an editable sizing model. It does
+not claim that the airborne deployment has been validated. The lab rollback
+baseline remains Ethernet CU/DU with SIB8 at OAI commit
+\texttt{102965a669b9444857c27843ec8ce62780bf9d37}; the drone work should be
+treated as a future packaging and flight-integration step after the Quectel F1
+path is stable.
+
+Public component and drone specifications cited here were checked on
+2026-07-06. Treat the cited aircraft ratings as planning inputs only; confirm
+the exact regional manual, payload mount, firmware limitations, and supplier
+configuration before procurement or flight.
+
+The intended architecture is one ground OAI 5GC plus one shared CU, one donor DU
+for the Quectel modem-serving cell, and one airborne access DU carrying the
+local USRP access radio. The Quectel modem provides the wireless F1 backhaul to
+the ground CU. The USRP B210 is the current lab access-radio baseline; the USRP
+B205mini-i is listed as a lighter future radio candidate, not as a proven
+drop-in replacement for the current B210 profile.
+
+\section*{Editable Formula Model}
+
+The sizing model uses component switches, mass assumptions, and power
+assumptions. The equations below dimension the payload electronics pack and the
+aircraft payload-rating margin. They are not a full rotorcraft endurance model:
+the aircraft flight battery, rotor/motor efficiency, propeller geometry, air
+density, wind, and actual flight path must still be checked with the selected
+drone's vendor tools or flight tests.
+
+\subsection*{Formula provenance}
+
+The payload-electronics energy equation is a constant-power battery sizing
+model. It follows the standard energy relation $E=P\,t$, with derating for
+usable capacity and DC conversion efficiency. This is consistent with UAV
+endurance literature that estimates endurance from available energy divided by
+required power, then refines that estimate with battery-discharge behaviour.
+Hwang, Cha, and Jung describe multirotor endurance estimation as a required
+power calculation followed by battery-discharge calculation, and note that
+endurance is commonly estimated from available energy and power consumption;
+their practical method also includes payload weight in total vehicle
+weight.\footnote{M.-h. Hwang, H.-R. Cha, and S. Y. Jung, ``Practical Endurance
+Estimation for Minimizing Energy Consumption of Multirotor Unmanned Aerial
+Vehicles,'' \emph{Energies}, vol. 11, no. 9, 2221, 2018.
+\url{https://www.mdpi.com/1996-1073/11/9/2221}} Abdilla, Richards, and
+Burrow derive battery-powered rotorcraft endurance formulae with available and
+usable battery-capacity factors, which motivates keeping an explicit usable
+battery fraction rather than using nominal pack energy directly.\footnote{A.
+Abdilla, A. Richards, and S. Burrow, ``Power and Endurance Modelling of
+Battery-Powered Rotorcraft,'' \emph{IEEE/RSJ International Conference on
+Intelligent Robots and Systems workshop proceedings}, 2015.
+\url{https://www.semanticscholar.org/paper/Power-and-endurance-modelling-of-battery-powered-Abdilla-Richards/76ffb97d686447bca76d36a079762e88c6f4bc30}}
+
+The selected-drone gate
+$C_\mathrm{required}=m_\mathrm{payload}/\gamma_\mathrm{payload}$ is not taken
+from a paper. It is a conservative lab margin rule: the OAI payload should use
+only a chosen fraction of the advertised drone payload rating. The literature
+does justify why this margin is needed, because multirotor endurance and
+required power are strongly affected by payload weight, drag, battery discharge,
+and the selected flight regime.\footnote{Y. Zeng, J. Xu, and R. Zhang,
+``Energy Minimization for Wireless Communication with Rotary-Wing UAV,''
+\emph{IEEE Transactions on Wireless Communications}, vol. 18, no. 4, pp.
+2329--2345, 2019. The paper separates communication-related energy from
+propulsion energy and gives a rotary-wing propulsion power model.
+\url{https://arxiv.org/pdf/1804.02238}}
+
+For a selected configuration $S$:
+
+\[
+  m_\mathrm{fixed}(S)=\sum_i x_i(S)m_i
+\]
+
+\[
+  P_\mathrm{payload}(S)=\sum_i x_i(S)P_i
+\]
+
+\[
+  E_\mathrm{nom}(S)=
+  \frac{P_\mathrm{payload}(S)t_\mathrm{mission}r_\mathrm{reserve}}
+       {\eta_\mathrm{dc}u_\mathrm{battery}}
+\]
+
+\[
+  m_\mathrm{battery}(S)=
+  \frac{1000E_\mathrm{nom}(S)}{\rho_\mathrm{battery}}
+\]
+
+\[
+  m_\mathrm{payload}(S)=m_\mathrm{fixed}(S)+m_\mathrm{battery}(S)
+\]
+
+\[
+  C_\mathrm{required}(S)=
+  \frac{m_\mathrm{payload}(S)}{\gamma_\mathrm{payload}}
+\]
+
+A drone is considered eligible when
+$C_\mathrm{drone}\geq C_\mathrm{required}$. The default
+$\gamma_\mathrm{payload}=0.70$ keeps the electronics payload below
+\SI{70}{\percent} of the published drone payload rating, leaving margin for hot
+weather, altitude, vibration isolation, mounting mistakes, antenna separation,
+and small later additions.
+
+\begin{table}[h]
+\centering
+\caption{Global sizing assumptions defined at the top of this \LaTeX{} file.}
+\begin{tabular}{lll}
+\toprule
+Symbol & Current value & Meaning \\
+\midrule
+$t_\mathrm{mission}$ & \num{\MissionMinutes} min & Payload electronics run time \\
+$r_\mathrm{reserve}$ & \num{\ElectricalReserveFactor} & Electrical reserve multiplier \\
+$u_\mathrm{battery}$ & \num{\UsableBatteryFraction} & Usable fraction of nominal pack energy \\
+$\eta_\mathrm{dc}$ & \num{\DCEfficiency} & DC/DC conversion efficiency \\
+$\rho_\mathrm{battery}$ & \num{\BatterySpecificEnergyWhKg} Wh/kg & Practical LiPo/Li-ion pack specific energy \\
+$\gamma_\mathrm{payload}$ & \num{\DronePayloadUtilization} & Max allowed fraction of drone payload rating \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Component Defaults}
+
+The values below are deliberately conservative for early design. Vendor-published
+board weights are used where available. Carrier boards, RF cabling, thermal
+management, antennas, payload plate, fasteners, and power conversion are grouped
+as editable engineering allowances because they depend on the mechanical design.
+
+\begin{longtable}{p{0.25\linewidth}p{0.15\linewidth}p{0.13\linewidth}p{0.38\linewidth}}
+\caption{Editable component assumptions.}\\
+\toprule
+Component & Mass & Power & Source and sizing note \\
+\midrule
+\endfirsthead
+\toprule
+Component & Mass & Power & Source and sizing note \\
+\midrule
+\endhead
+Raspberry Pi 5 board & \numg{\MassPiFive} g & \numw{\PowerPiFive} W &
+Board mass should be re-weighed with cooler and storage. Raspberry Pi lists the Pi 5 platform and the official supply is commonly sized around the 5 V, 5 A class.\footnote{\url{https://www.raspberrypi.com/products/raspberry-pi-5/}} \\
+Jetson Orin Nano carrier class & \numg{\MassJetsonCarrier} g & \numw{\PowerJetson} W &
+Editable mass for module, carrier, cooling, and storage. NVIDIA lists Jetson Orin Nano Super Developer Kit power modes from 7 W to 25 W.\footnote{\url{https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-orin/nano-super-developer-kit/}} \\
+Mini-PC/x86 class DU & \numg{\MassMiniPc} g & \numw{\PowerMiniPc} W &
+Editable stand-in for the smallest x86 host capable of the chosen OAI real-time profile. ASUS NUC 13 Pro configurations list cTDP classes from 20 W to 45 W depending on CPU.\footnote{\url{https://www.asus.com/us/displays-desktops/nucs/nuc-mini-pcs/asus-nuc-13-pro/techspec/}} \\
+USRP B205mini-i & \numg{\MassBTwoZeroFiveMini} g & \numw{\PowerBTwoZeroFiveMini} W &
+Light SDR candidate. NI/Ettus B205mini-i published dimensions are 83.3 x 50.8 x 8.4 mm and weight is 24.0 g; it is bus-powered over USB 3.0.\footnote{\url{https://mm.digikey.com/Volume0/opasdata/d220001/medias/docus/822/6002-410-021_Web.pdf}} \\
+USRP B210 & \numg{\MassBTwoTen} g & \numw{\PowerBTwoTen} W &
+Current lab access-radio baseline. Ettus/Digilent lists 97 x 155 x 15 mm and 350 g for the B210.\footnote{\url{https://digilent.com/shop/ni-ettus-usrp-b210-2x2-70mhz-6ghz-sdr-cognitive-radio/}} \\
+Quectel RM500Q-GL kit & \numg{\MassQuectelKit} g & \numw{\PowerQuectel} W &
+Module plus M.2 carrier, thermal pad/heatsink, SIM holder, USB/PCIe adapter, and antennas. The module itself is about 8.7 g and 30.0 x 52.0 x 2.3 mm.\footnote{\url{https://www.icpdas.com/web/product/download/wireless/modem/3g4g/rm500q-gl/document/data_sheet/RM500Q-GL_datasheet_en.pdf}} \\
+Light RF/timing set & \numg{\MassRfTimingLight} g & \numw{\PowerAuxLight} W &
+Editable allowance for GNSS/timing, filters, short RF cables, antenna mounts, and small fan loads. \\
+B210 RF/timing set & \numg{\MassRfTimingBTwoTen} g & \numw{\PowerAuxMedium} W &
+Editable allowance for heavier antenna separation, coax, filters, clocking, and thermal margin. \\
+Power/mount light & \numg{\MassPowerMountLight} g & included & DC regulators, payload plate, isolation, fasteners, enclosure, wiring, and safety tether. \\
+Power/mount medium & \numg{\MassPowerMountMedium} g & included & Same allowance with stronger B210 vibration isolation. \\
+Power/mount heavy & \numg{\MassPowerMountHeavy} g & included & Same allowance for x86 host, larger heatsink, and serviceable field enclosure. \\
+\bottomrule
+\end{longtable}
+
+\section*{Computed Payload Configurations}
+
+\begin{longtable}{p{0.18\linewidth}p{0.27\linewidth}rrrrr}
+\caption{Computed electronics payload for the default \num{\MissionMinutes} minute mission.}\\
+\toprule
+ID & Configuration & Fixed mass g & Power W & Battery Wh & Battery g & Payload g \\
+\midrule
+\endfirsthead
+\toprule
+ID & Configuration & Fixed mass g & Power W & Battery Wh & Battery g & Payload g \\
+\midrule
+\endhead
+A & Minimum airborne access-DU proof: Pi 5, USRP B205mini-i, Quectel kit & \numg{\AStaticG} & \numw{\APowerW} & \numwh{\ABatteryWh} & \numg{\ABatteryG} & \numg{\ATotalG} \\
+B & B210 validation payload: Jetson-class compute, USRP B210, Quectel kit & \numg{\BStaticG} & \numw{\BPowerW} & \numwh{\BBatteryWh} & \numg{\BBatteryG} & \numg{\BTotalG} \\
+C & Actual mini-PC class: x86 mini-PC, USRP B210, Quectel kit & \numg{\CStaticG} & \numw{\CPowerW} & \numwh{\CBatteryWh} & \numg{\CBatteryG} & \numg{\CTotalG} \\
+D & Dual-radio prototype: mini-PC class plus extra donor/access RF margin & \numg{\DStaticG} & \numw{\DPowerW} & \numwh{\DBatteryWh} & \numg{\DBatteryG} & \numg{\DTotalG} \\
+\bottomrule
+\end{longtable}
+
+\begin{table}[h]
+\centering
+\caption{Drone payload rating required when using the default 70 percent utilization rule.}
+\begin{tabular}{lrr}
+\toprule
+Configuration & Computed payload kg & Required drone payload rating kg \\
+\midrule
+A & \numkg{\ATotalG/1000} & \numkg{\ARequiredPayloadKg} \\
+B & \numkg{\BTotalG/1000} & \numkg{\BRequiredPayloadKg} \\
+C & \numkg{\CTotalG/1000} & \numkg{\CRequiredPayloadKg} \\
+D & \numkg{\DTotalG/1000} & \numkg{\DRequiredPayloadKg} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Drone Selection Matrix}
+
+Payload ratings change by battery choice, temperature, altitude, propellers, and
+regulatory takeoff weight limits. The values below are planning gates, not
+purchase approval. Re-check the current manual for the exact region and payload
+mount before buying or flying.
+
+\begin{longtable}{p{0.20\linewidth}p{0.16\linewidth}p{0.18\linewidth}p{0.27\linewidth}}
+\caption{Candidate drones for each configuration.}\\
+\toprule
+Drone & Published payload gate & Fits default profiles & Recommendation \\
+\midrule
+\endfirsthead
+\toprule
+Drone & Published payload gate & Fits default profiles & Recommendation \\
+\midrule
+\endhead
+Freefly Astro Max & 3.0 kg maximum payload; Freefly also lists about 18 min at 3.0 kg payload.\footnote{\url{https://freeflysystems.com/astro/specs}}\footnote{\url{https://freeflysystems.com/knowledge-base/how-long-can-astro-fly}} &
+A: \fit, B: \fit, C: \nofit, D: \nofit &
+Best compact research drone if the payload is kept near the light or Jetson/B210 profile. Not the first choice for x86 mini-PC packaging. \\
+DJI Matrice 350 RTK & About 2.7 kg gross-weight margin from 9.2 kg max takeoff weight minus 6.47 kg with TB65 batteries; the single downward gimbal damper is rated much lower at 960 g.\footnote{\url{https://enterprise.dji.com/matrice-350-rtk/specs}} &
+A: \fit, B: \fit, C: \nofit, D: \nofit &
+Good mature enterprise platform for the light and B210 validation payloads only if the custom mount carries the load through an approved airframe interface rather than the small single-gimbal damper. \\
+DJI Matrice 400 & Up to 6 kg payload and 59 min maximum flight time.\footnote{\url{https://enterprise.dji.com/matrice-400/specs}} &
+A: \fit, B: \fit, C: \fit, D: \fit &
+Best first serious choice for the actual x86 mini-PC plus B210 plus Quectel configuration. It keeps enough payload margin for a real enclosure and later RF changes. \\
+Inspired Flight IF1200A & 8.6 kg max payload class, with 24.9 kg max gross takeoff weight in current specifications.\footnote{\url{https://www.inspiredflight.com/if1200}} &
+A: \fit, B: \fit, C: \fit, D: \fit &
+Heavy-lift research choice when the payload needs open integration space, larger batteries, or test instrumentation beyond the radio stack. \\
+Skyfront Perimeter 8 / 8+ hybrid & Skyfront advertises 5 kg payload for 3 h and 10 kg maximum payload for 1 h on the Perimeter 8 family.\footnote{\url{https://skyfront.com/}} &
+A: \fit, B: \fit, C: \fit, D: \fit &
+Use only when endurance is the primary requirement. It is mechanically and operationally larger than needed for first airborne DU proofs. \\
+\bottomrule
+\end{longtable}
+
+\section*{Configuration Decisions}
+
+\subsection*{Recommended first build}
+
+Start with Configuration B if the priority is continuity with the current lab
+radio baseline. It keeps the USRP B210, uses a smaller compute class than the
+current mini-PC, and remains eligible for both DJI Matrice 350 RTK and DJI
+Matrice 400 with the default margin rule. The Matrice 400 is the cleaner first
+purchase target because it leaves meaningful reserve for enclosure growth,
+antenna standoffs, RF shielding, heat, and a second modem or timing board.
+
+\subsection*{Minimum-weight research path}
+
+Configuration A is the best mechanical path if the USRP B205mini-i proves
+sufficient for the selected OAI bandwidth and access-cell objective. It reduces
+the radio board mass from the B210's 350 g class to about 24 g, but it should be
+treated as an experiment until OAI attach, PWS/SIB8 observation, user-plane
+traffic, Quectel F1 traffic, and Ethernet rollback are all recorded.
+
+\subsection*{Actual mini-PC path}
+
+Configuration C is the closest to carrying the current mini-PC style deployment
+without pretending the packaging is already optimized. It should skip the
+Matrice 350/Astro class and go directly to a 6 kg-class or heavier drone. For
+this configuration, the Matrice 400 is the most balanced option; IF1200A is the
+reserve-heavy alternative.
+
+\subsection*{Dual-radio or full donor/access prototype}
+
+Configuration D models the case where the airborne payload grows beyond one
+access radio and one modem, for example by adding extra RF, a second SDR path,
+or field instrumentation. It belongs on Matrice 400 or heavier platforms from
+the beginning. The IF1200A or Skyfront class becomes attractive only if payload
+development, endurance, or integration access matters more than portability.
+
+\section*{Pre-Flight Engineering Checklist}
+
+\begin{itemize}
+  \item Weigh the exact compute board, SDR, Quectel carrier, antennas, coax,
+        heatsinks, payload battery, DC converters, enclosure, and mount before
+        selecting the final drone.
+  \item Recompute this document with the measured masses and with the real OAI
+        power draw under radio load, not idle desktop power.
+  \item Keep the USRP B210 as the verified access-radio baseline until the
+        lighter USRP-mini path has fresh attach, PWS, user-plane, and rollback
+        evidence.
+  \item Keep generated configs, modem logs, packet captures, SIM data, WireGuard
+        keys, and subscriber material out of Git.
+  \item Record sanitized evidence for every airborne trial: OAI commit, drone
+        payload mass, power profile, thermal state, F1-C/F1-U packet proof,
+        Quectel state, phone service/PWS observation, and rollback test.
+  \item Re-check local flight approval, spectrum authorization, payload mounting
+        limits, propeller clearance, and battery transport rules before any
+        outdoor flight.
+\end{itemize}
+
+\section*{How to Re-Use This File}
+
+Edit the numeric variables near the top of this file, then compile:
+
+\begin{verbatim}
+tectonic docs/drone-du-dimensioning.tex
+\end{verbatim}
+
+The tables will update automatically. The most important values to change after
+the first bench packaging pass are \texttt{\textbackslash MissionMinutes},
+\texttt{\textbackslash BatterySpecificEnergyWhKg},
+\texttt{\textbackslash DronePayloadUtilization}, component masses, and component
+powers.
+
+\end{document}
