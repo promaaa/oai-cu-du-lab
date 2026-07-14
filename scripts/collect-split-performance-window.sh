@@ -26,7 +26,8 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAMP="$(date -u +%Y%m%d_%H%M%S)"
-OUT_DIR="$REPO_ROOT/experiments/${STAMP}_split_performance_window"
+STATE_ROOT="${OAI_LAB_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/oai-cu-du-lab}"
+OUT_DIR="$STATE_ROOT/runs/${STAMP}_split_performance_window"
 
 if [[ -f "$REPO_ROOT/conf/local/lab.env" ]]; then
   # Sourcing lab.env which contains CU_HOST, DU_HOST, etc.

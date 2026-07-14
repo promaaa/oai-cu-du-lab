@@ -14,10 +14,9 @@ conf/generated/
 !conf/generated/.gitkeep
 conf/local/
 
-# Runtime evidence retained locally by default
+# Runtime evidence retained outside the repository by default
 logs/
 captures/
-experiments/20*/
 *.pcap
 *.pcapng
 *.log

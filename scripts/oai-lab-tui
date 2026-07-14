@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import { createInterface } from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { homedir } from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -11,6 +12,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO = path.resolve(__dirname, '..');
 const QUECTEL_SCRIPT_DIR = path.join(REPO, 'scripts', 'quectel-f1-backhaul');
+const ISOLATED_TEST_MODE = process.env.OAI_TUI_ISOLATED_TEST === '1';
+const STATE_ROOT = process.env.OAI_LAB_STATE_DIR
+  ? path.resolve(process.env.OAI_LAB_STATE_DIR)
+  : path.join(homedir(), '.local', 'state', 'oai-cu-du-lab');
 
 // Load environment variables from conf/local/lab.env if it exists
 try {
@@ -241,6 +246,7 @@ let scriptedInputIndex = 0;
 const rl = createInterface({ input, output });
 
 function sleep(ms) {
+  if (ISOLATED_TEST_MODE) return Promise.resolve();
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -369,6 +375,13 @@ function duDiscoveryCandidates() {
 }
 
 function execLocal(cmd, timeout = 60000) {
+  if (ISOLATED_TEST_MODE) {
+    return Promise.resolve({
+      ok: false,
+      code: 97,
+      combined: `isolated test mock blocked external command: ${String(cmd).split('\n')[0]}`,
+    });
+  }
   return new Promise(resolve => {
     exec(cmd, { timeout }, (err, stdout, stderr) => {
       resolve({
@@ -427,8 +440,9 @@ async function choose(message, choices) {
   choices.forEach((choice, idx) => console.log(`  ${idx + 1}. ${choice.name}`));
   while (true) {
     const answer = await prompt('\n  Select option');
-    if (answer === null) return choices[choices.length - 1].value;
-    if (scriptedInput && !answer) return choices[choices.length - 1].value;
+    if (answer === null || (scriptedInput && !answer)) {
+      throw new Error('Scripted input exhausted before a menu selection was made');
+    }
     const idx = Number(answer) - 1;
     if (idx >= 0 && idx < choices.length) return choices[idx].value;
     printError('Invalid selection');
@@ -438,7 +452,7 @@ async function choose(message, choices) {
 function runDir(slug) {
   const now = new Date();
   const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '_');
-  const dir = path.join(REPO, 'experiments', `${stamp}_${slug}`);
+  const dir = path.join(STATE_ROOT, 'runs', `${stamp}_${slug}`);
   mkdirSync(path.join(dir, 'logs'), { recursive: true });
   mkdirSync(path.join(dir, 'measurements'), { recursive: true });
   mkdirSync(path.join(dir, 'system-status'), { recursive: true });
@@ -1389,7 +1403,7 @@ async function prepareEthernetDuConfig(minipc) {
   // The split lab tolerates a wider HARQ/BLER operating window than stock OAI.
   // Without this, the live B210 radio often stays pinned at MCS 0 even while
   // the same Pi/radio can move tens of Mbps outside the split launch state.
-  // See experiments/20260622_154000_eth_cu_du_msc_bump_fix.md for evidence.
+  // Preserve the validated jumbo-frame tuning only on the direct Ethernet path.
   const blerUpper = process.env.DL_BLER_TARGET_UPPER || '0.65';
   const blerLower = process.env.DL_BLER_TARGET_LOWER || '0.45';
   const ulBlerUpper = process.env.UL_BLER_TARGET_UPPER || '0.45';
@@ -1446,19 +1460,28 @@ async function prepareEthernetDuConfig(minipc) {
     perlRule += ` s/(pucch0_dtx_threshold\\s*=\\s*)\\d+/\${1}${pucchDtx}/;`;
     perlRule += ` s/(prach_dtx_threshold\\s*=\\s*)\\d+/\${1}${prachDtx}/;`;
   }
+  if (activeLabConfig.duLabel === 'serber-minipc') {
+    perlRule += ' s/(sdr_addrs\\s*=\\s*)"[^"]+"/${1}"serial=8002816,num_recv_frames=64,num_send_frames=64"/;';
+  }
   if (activeLabConfig.duLabel === 'serber-jetson') {
     perlRule += ' s/(gNB_DU_ID\\s*=\\s*)0x[0-9A-Fa-f]+/${1}0xe02/;';
     perlRule += ' s/(local_n_portd\\s*=\\s*)\\d+/${1}2153/;';
     perlRule += ' s/(remote_n_portd\\s*=\\s*)\\d+/${1}2153/;';
     perlRule += ' s/(sdr_addrs\\s*=\\s*"serial=8002816)"/${1},num_recv_frames=64,num_send_frames=64"/;';
     perlRule += ' s/(max_pdschReferenceSignalPower\\s*=\\s*)-?\\d+/${1}-20/;';
-    perlRule += ' s/(pucch0_dtx_threshold\\s*=\\s*)\\d+/${1}100/;';
-    perlRule += ' s/(prach_dtx_threshold\\s*=\\s*)\\d+/${1}180/;';
+    perlRule += ` s/(p0_NominalWithGrant\\s*=\\s*)-?\\d+/\${1}${puschP0}/;`;
+    perlRule += ` s/(p0_nominal\\s*=\\s*)-?\\d+/\${1}${pucchP0}/;`;
+    perlRule += ` s/(pucch0_dtx_threshold\\s*=\\s*)\\d+/\${1}${pucchDtx}/;`;
+    perlRule += ` s/(prach_dtx_threshold\\s*=\\s*)\\d+/\${1}${prachDtx}/;`;
   }
   // Keep DL ambitious while leaving UL more robust for control/ACK traffic.
   // The phone-side 10 Mbps plateau showed repeated PUSCH DTX when UL was
   // forced to match DL, so the defaults are intentionally asymmetric.
-  perlRule += ` s/(MACRLCs\\s*=\\s*\\(\\s*\\{\\s*num_cc\\s*=\\s*\\d+;)/\$1\\n    dl_min_mcs                  = ${dlMinMcs};\\n    dl_max_mcs                  = ${dlMaxMcs};\\n    ul_min_mcs                  = ${ulMinMcs};\\n    ul_max_mcs                  = ${ulMaxMcs};\\n    dl_bler_target_upper        = ${blerUpper};\\n    dl_bler_target_lower        = ${blerLower};\\n    ul_bler_target_upper        = ${ulBlerUpper};\\n    ul_bler_target_lower        = ${ulBlerLower};/;`;
+  let macRlcParams = `\\n    dl_min_mcs                  = ${dlMinMcs};\\n    dl_max_mcs                  = ${dlMaxMcs};\\n    ul_min_mcs                  = ${ulMinMcs};\\n    ul_max_mcs                  = ${ulMaxMcs};\\n    dl_bler_target_upper        = ${blerUpper};\\n    dl_bler_target_lower        = ${blerLower};\\n    ul_bler_target_upper        = ${ulBlerUpper};\\n    ul_bler_target_lower        = ${ulBlerLower};`;
+  if (activeLabConfig.duLabel === 'serber-jetson') {
+    macRlcParams += `\\n    pusch_TargetSNRx10          = ${puschTargetSnr};\\n    pucch_TargetSNRx10          = ${pucchTargetSnr};`;
+  }
+  perlRule += ` s/(MACRLCs\\s*=\\s*\\(\\s*\\{\\s*num_cc\\s*=\\s*\\d+;)/\$1${macRlcParams}/;`;
   const cmd = [
     'set -euo pipefail',
     `test -f ${DU_CONF}`,
@@ -1590,6 +1613,48 @@ async function configureWifiGreBackhaul(minipc, dir) {
 
 async function configureQuectelWireGuardBackhaul(minipc, dir) {
   const apn = process.env.QUECTEL_APN || await prompt('Quectel APN for selected DU', 'oai');
+  printInfo('Starting split 5G Core before Quectel donor registration...');
+  const coreStart = await sshChecked(FIRECELL, restartSplitCoreCmd(), 120000);
+  appendEvidence(dir, 'logs/core-start-before-quectel.log', coreStart);
+  const coreReady = await waitForSplitCoreReady();
+  await showLines(coreReady);
+  appendEvidence(dir, 'logs/core-ready-before-quectel.log', coreReady);
+
+  const configuredQuectelImsi = process.env.QUECTEL_IMSI || '';
+  let quectelImsi = configuredQuectelImsi;
+  const imsiEvidence = [
+    `configured_imsi_present=${/^[0-9]{14,16}$/.test(configuredQuectelImsi || '')}`,
+  ];
+  try {
+    const modemImsi = await readQuectelModemImsi(minipc.host);
+    const modemValid = /^[0-9]{14,16}$/.test(modemImsi.imsi || '');
+    const configuredMatches = modemValid && configuredQuectelImsi === modemImsi.imsi;
+    imsiEvidence.push(`modem_imsi_detected=${modemValid}`);
+    imsiEvidence.push(`modem_at_port=${modemImsi.atPort || 'unknown'}`);
+    imsiEvidence.push(`modem_imsi_attempts=${modemImsi.attempts || 1}`);
+    imsiEvidence.push(`configured_matches_modem=${configuredMatches}`);
+    if (modemValid) {
+      quectelImsi = modemImsi.imsi;
+      imsiEvidence.push('effective_imsi_source=live_modem');
+    } else {
+      imsiEvidence.push('effective_imsi_source=configured');
+    }
+  } catch (err) {
+    imsiEvidence.push('modem_imsi_detected=false');
+    if (/^[0-9]{14,16}$/.test(configuredQuectelImsi || '')) {
+      imsiEvidence.push('effective_imsi_source=configured_fallback');
+    } else {
+      imsiEvidence.push('effective_imsi_source=none');
+      appendEvidence(dir, 'system-status/quectel-imsi-check.txt', imsiEvidence.join('\n'));
+      throw new Error(`Could not read live Quectel IMSI and no valid QUECTEL_IMSI fallback is configured (${err.message})`);
+    }
+  }
+  appendEvidence(dir, 'system-status/quectel-imsi-check.txt', imsiEvidence.join('\n'));
+  printInfo('Ensuring Quectel subscriber exists in split core database...');
+  const seed = await provisionQuectelSubscriber(quectelImsi);
+  await showLines(seed);
+  appendEvidence(dir, 'system-status/quectel-subscriber-seed.log', seed);
+
   printInfo('Ensuring Firecell donor gNB is running for Quectel registration...');
   const donorConfig = await prepareMonolithicDonorRuntimeConfig(dir);
   await showLines(donorConfig);
@@ -1606,6 +1671,16 @@ async function configureQuectelWireGuardBackhaul(minipc, dir) {
   appendEvidence(dir, 'logs/firecell-monolithic-donor-gnb-start.log', donorStart);
   await validateMonolithicDonorInService(dir);
   printInfo(`Preparing Quectel/WireGuard transport on ${activeLabConfig.duLabel}...`);
+  printInfo('Resetting Quectel registration onto the Firecell donor cell...');
+  let registration = '';
+  try {
+    registration = await resetQuectelRegistration(minipc.host);
+  } catch (err) {
+    appendEvidence(dir, 'system-status/quectel-registration.log', err.evidence || err.message || '');
+    throw err;
+  }
+  await showLines(registration);
+  appendEvidence(dir, 'system-status/quectel-registration.log', registration);
   const quectel = await discoverQuectel(minipc.host, apn);
   await showLines(quectel.raw);
   appendEvidence(dir, 'system-status/quectel-qmi.txt', quectel.raw);
@@ -1626,7 +1701,7 @@ async function configureQuectelWireGuardBackhaul(minipc, dir) {
   appendEvidence(dir, 'system-status/wireguard.txt', `${wg.minipc}\n\n${wg.firecell}`);
   await showLines(wg.minipc);
   await showLines(wg.firecell);
-  return { quectel, wg, iface: WG_IF };
+  return { quectel, wg, iface: WG_IF, coreStarted: true };
 }
 
 async function prepareSelectedBackhaul(minipc, dir) {
@@ -1941,7 +2016,7 @@ async function tuneSelectedDuForB210HighRate(minipc, dir) {
     'sudo -n sysctl -w net.core.rmem_max=33554432 net.core.wmem_max=33554432 kernel.sched_rt_runtime_us=-1',
     activeLabConfig.duLabel === 'serber-jetson' ? [
       'sudo -n jetson_clocks || true',
-      'irq="$(awk \'tolower($0) ~ /tegra.*xusb|xhci|usb/ { sub(":", "", $1); print $1; exit }\' /proc/interrupts)"',
+      'irq="$(awk \'BEGIN { best=""; best_score=-1 } tolower($0) ~ /xhci-hcd|tegra.*xusb|[0-9]+\\.usb|usb/ { irq=$1; sub(":", "", irq); count=0; for (i=2; i<=7; i++) if ($i ~ /^[0-9]+$/) count += $i; score=count + (tolower($0) ~ /xhci-hcd/ ? 1000000000000 : 0); if (score > best_score) { best=irq; best_score=score } } END { if (best != "") print best }\' /proc/interrupts)"',
       'if [ -n "$irq" ] && [ -e "/proc/irq/$irq/smp_affinity_list" ]; then',
       '  echo 0 | sudo -n tee "/proc/irq/$irq/smp_affinity_list" >/dev/null 2>&1 || true',
       '  echo "usb_irq=$irq"',
@@ -1999,6 +2074,7 @@ async function startEthernetRollback() {
   printInfo(`Selected CU/DU config: ${profile.label} on ${activeLabConfig.duLabel}`);
   const gate = {};
   let minipc = null;
+  let completed = false;
 
   try {
     printStep(1, 14, `Connect to lab hosts and discover live ${activeLabConfig.duLabel}`);
@@ -2044,11 +2120,16 @@ async function startEthernetRollback() {
     else gate.transport = 'ethernet_direct';
 
     printStep(8, 14, 'Start split 5G Core on serber-firecell');
-    const core = await ssh(FIRECELL, restartSplitCoreCmd(), 120000);
-    if (core) await showLines(core);
-    appendEvidence(dir, 'logs/core-start.log', core);
-    printSuccess('Core start command completed');
-    await sleep(5000);
+    if (transportEvidence?.coreStarted) {
+      printInfo('Split core was already started for Quectel donor registration; keeping it running.');
+      appendEvidence(dir, 'logs/core-start.log', 'split core already started during Quectel transport preparation');
+    } else {
+      const core = await ssh(FIRECELL, restartSplitCoreCmd(), 120000);
+      if (core) await showLines(core);
+      appendEvidence(dir, 'logs/core-start.log', core);
+      printSuccess('Core start command completed');
+      await sleep(5000);
+    }
 
     await provisionLabPhoneSubscriber(dir);
     gate.core = true;
@@ -2142,6 +2223,7 @@ async function startEthernetRollback() {
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
     printSuccess(`${profile.label} CU/DU F1/RF gate passed: F1-C is on the selected path, DU radio sync is present, and no F1 leakage was seen on other paths`);
     printWarn('No phone-service PASS claimed here. Full PASS still requires phone-visible internet/user-plane evidence and fresh PWS reception or a documented reason PWS was not re-triggered.');
+    completed = true;
   } catch (err) {
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
     printError(err.message);
@@ -2149,6 +2231,7 @@ async function startEthernetRollback() {
   }
 
   await prompt('Press Enter to continue');
+  return completed;
 }
 
 // stopEthernet has been combined into stopAllConfigs
@@ -2160,6 +2243,7 @@ async function startMonolithic() {
   printInfo(`Evidence directory: ${dir}`);
   const gate = {};
   let minipc = null;
+  let completed = false;
   try {
     printStep(1, 8, `Connect to firecell and discover live ${activeLabConfig.duLabel}`);
     if (!await checkSsh(MONO_HOST, 'serber-firecell')) throw new Error('serber-firecell SSH failed');
@@ -2218,13 +2302,16 @@ async function startMonolithic() {
 
     console.log('\n    Toggle airplane mode on the phone, wait for registration, then show data/PWS.');
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
-    printSuccess('PASS: Monolithic firecell gNB/core is running with AMF attach, SIB8, radio sync, and no split CU/DU traffic');
+    printSuccess('Monolithic machine-side gNB/core gate passed: AMF/gNB setup, SIB8 log, radio sync, and split isolation were observed');
+    printWarn('PARTIAL: no full scenario PASS is claimed until phone-visible PWS, registration, PDU session, internet, and throughput are recorded separately.');
+    completed = true;
   } catch (err) {
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
     printError(err.message);
     printWarn('No PASS claimed. Evidence was still written where available.');
   }
   await prompt('Press Enter to continue');
+  return completed;
 }
 
 async function statusView() {
@@ -2583,15 +2670,16 @@ async function launchSingleCuQuectelBackhaul() {
     printError('Caged Quectel F1 backhaul is validated for serber-minipc, serber-pi, and serber-jetson with the Quectel modem.');
     printWarn('Use the configuration screen to select serber-minipc, serber-pi, or serber-jetson + serber-firecell before launching this workflow.');
     await prompt('Press Enter to continue');
-    return;
+    return false;
   }
   const dir = runDir('caged_quectel_f1_backhaul_start');
   printInfo(`Evidence directory: ${dir}`);
-  printInfo('This scenario uses one 5GC and one CU on firecell, a monolithic firecell donor gNB for the Quectel modem, and a caged minipc access DU over WireGuard. PASS is packet-gated.');
+  printInfo('This scenario uses one 5GC and one CU on firecell, a monolithic firecell donor gNB for the Quectel modem, and a caged minipc access DU over WireGuard. Machine-side packet gates are necessary but not a full scenario PASS.');
 
   const gate = {};
   let minipc = null;
   let quectel = null;
+  let completed = false;
   const apn = process.env.QUECTEL_APN || await prompt('Quectel APN for firecell monolithic donor gNB', 'oai');
   const configuredQuectelImsi = process.env.QUECTEL_IMSI || '';
   let quectelImsi = configuredQuectelImsi;
@@ -2800,7 +2888,9 @@ async function launchSingleCuQuectelBackhaul() {
     await checkSsh(FIRECELL, 'serber-firecell management');
     await checkSsh(minipc.host, 'serber-minipc management');
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
-    printSuccess('PASS: firecell monolithic donor gNB served Quectel, minipc F1-C/F1-U are on wg-quectel-f1, WireGuard UDP is on the live Quectel interface, and management interfaces carried no minipc F1');
+    printSuccess('Caged Quectel machine-side packet gate passed: donor service, F1-C/F1-U placement, WireGuard outer UDP, and management-path isolation were observed');
+    printWarn('PARTIAL: no full scenario PASS is claimed until phone-visible PWS, registration, PDU session, internet, and throughput are recorded separately.');
+    completed = true;
   } catch (err) {
     if (err.evidence) appendEvidence(dir, err.evidenceFile || 'measurements/failing-hop.txt', err.evidence);
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
@@ -2809,6 +2899,7 @@ async function launchSingleCuQuectelBackhaul() {
   }
 
   await prompt('Press Enter to continue');
+  return completed;
 }
 
 async function validateSingleCuQuectelBackhaul() {
@@ -2818,13 +2909,14 @@ async function validateSingleCuQuectelBackhaul() {
     printError('Caged Quectel F1 backhaul validation is available for serber-minipc, serber-pi, and serber-jetson with the Quectel modem.');
     printWarn('Use the configuration screen to select serber-minipc, serber-pi, or serber-jetson + serber-firecell before validating this workflow.');
     await prompt('Press Enter to continue');
-    return;
+    return false;
   }
   const dir = runDir('caged_quectel_f1_backhaul_validate');
   printInfo(`Evidence directory: ${dir}`);
   const gate = {};
   let minipc = null;
   let quectel = null;
+  let completed = false;
   const apn = process.env.QUECTEL_APN || await prompt('Quectel APN for live PDU refresh', 'oai');
 
   try {
@@ -2892,7 +2984,9 @@ async function validateSingleCuQuectelBackhaul() {
     await checkSsh(FIRECELL, 'serber-firecell management');
     await checkSsh(minipc.host, 'serber-minipc management');
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
-    printSuccess('PASS: firecell monolithic donor gNB is in service, minipc F1-C/F1-U are on wg-quectel-f1, WireGuard UDP is on the live Quectel interface, and management interfaces carried no minipc F1');
+    printSuccess('Caged Quectel machine-side packet gate passed: donor service, F1-C/F1-U placement, WireGuard outer UDP, and management-path isolation were observed');
+    printWarn('PARTIAL: no full scenario PASS is claimed until phone-visible PWS, registration, PDU session, internet, and throughput are recorded separately.');
+    completed = true;
   } catch (err) {
     if (err.evidence) appendEvidence(dir, err.evidenceFile || 'measurements/failing-hop.txt', err.evidence);
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
@@ -2901,6 +2995,7 @@ async function validateSingleCuQuectelBackhaul() {
   }
 
   await prompt('Press Enter to continue');
+  return completed;
 }
 
 async function quectelShowcase() {
@@ -3276,7 +3371,73 @@ async function mainMenu() {
   }
 }
 
+const CLI_ACTION_FLAGS = [
+  '--verify',
+  '--start-ethernet',
+  '--start-wifi-gre',
+  '--start-quectel-wg',
+  '--start-mono',
+  '--start-caged-quectel',
+  '--validate-caged-quectel',
+  '--rollback-caged-quectel',
+  '--status',
+  '--logs',
+];
+
+const CLI_EXACT_FLAGS = new Set([
+  '--help', '-h',
+  ...CLI_ACTION_FLAGS,
+  '--pi-ethernet', '--pi-wifi-gre', '--pi-quectel-wg',
+  '--minipc-ethernet', '--minipc-wifi-gre', '--minipc-quectel-wg',
+  '--jetson-ethernet', '--jetson-wifi-gre', '--jetson-quectel', '--jetson-quectel-wg',
+  '--no-jumbo-frames', '--no-clamp-mss', '--force-mcs',
+]);
+
+function cliHelp() {
+  return `Usage: ./scripts/oai-lab-tui [configuration] [action]
+
+Without arguments, opens the interactive operator menu.
+
+Configuration:
+  --du=serber-minipc|serber-pi|serber-jetson
+  --backhaul=ethernet|wifi-gre|quectel-wg
+  --pi-ethernet | --pi-wifi-gre | --pi-quectel-wg
+  --minipc-ethernet | --minipc-wifi-gre | --minipc-quectel-wg
+  --jetson-ethernet | --jetson-wifi-gre | --jetson-quectel-wg
+  --no-jumbo-frames  --no-clamp-mss  --force-mcs
+
+Read-only actions:
+  --status             Show live host, process, and core status
+  --logs               Show recent OAI logs and milestones
+  --verify             Check SSH/discovery only; contacts configured lab hosts
+
+Mutating actions (require exclusive lab ownership):
+  --start-ethernet | --start-wifi-gre | --start-quectel-wg
+  --start-mono | --start-caged-quectel | --validate-caged-quectel
+  --rollback-caged-quectel
+
+  --help, -h           Show this help and exit
+
+Static checks are not live acceptance. Scenario PASS requires separate evidence
+for machine-side F1/RF, phone PWS, registration, PDU session, internet, and throughput.`;
+}
+
+function validateCliArgs(args) {
+  const unknown = args.filter(arg => !CLI_EXACT_FLAGS.has(arg) && !arg.startsWith('--du=') && !arg.startsWith('--backhaul='));
+  if (unknown.length) throw new Error(`Unsupported option: ${unknown[0]}. Use --help for supported options.`);
+  const actions = CLI_ACTION_FLAGS.filter(flag => args.includes(flag));
+  if (actions.length > 1) throw new Error(`Choose exactly one action flag; received: ${actions.join(', ')}`);
+  return actions[0] || '';
+}
+
 async function cli() {
+  const args = process.argv.slice(2);
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(cliHelp());
+    rl.close();
+    return;
+  }
+  const cliAction = validateCliArgs(args);
   const duArg = process.argv.find(arg => arg.startsWith('--du='));
   if (duArg) {
     const value = duArg.split('=')[1];
@@ -3338,43 +3499,55 @@ async function cli() {
   if (process.argv.includes('--force-mcs')) {
     activeLabConfig.forceMcs = true;
   }
+  if (ISOLATED_TEST_MODE && cliAction) {
+    console.log(`[isolated-test] dispatch=${cliAction}`);
+    console.log('[isolated-test] ssh=mocked prompts=scripted sleeps=mocked external_commands=blocked');
+    if (process.env.OAI_TUI_TEST_FAIL_ACTION === '1') {
+      printError(`Mocked prerequisite failed for ${cliAction}`);
+      printWarn('No PASS claimed.');
+      process.exit(1);
+    }
+    process.exit(0);
+  }
   if (process.argv.includes('--verify')) {
     console.clear();
     printHeader('OAI Lab TUI Verification');
-    await checkSsh(FIRECELL, 'serber-firecell');
+    if (!await checkSsh(FIRECELL, 'serber-firecell')) throw new Error('serber-firecell SSH failed');
     const minipc = await discoverMinipcTarget();
     printSuccess(`${activeLabConfig.duLabel}: ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
     process.exit(0);
   }
   if (process.argv.includes('--start-ethernet')) {
     setActiveBackhaulProfile('ethernet');
-    await startEthernetRollback();
-    process.exit(0);
+    process.exit(await startEthernetRollback() ? 0 : 1);
   }
   if (process.argv.includes('--start-wifi-gre')) {
     setActiveBackhaulProfile('wifiGre');
-    await startEthernetRollback();
-    process.exit(0);
+    process.exit(await startEthernetRollback() ? 0 : 1);
   }
   if (process.argv.includes('--start-quectel-wg')) {
     setActiveBackhaulProfile('quectelWg');
-    await startEthernetRollback();
-    process.exit(0);
+    process.exit(await startEthernetRollback() ? 0 : 1);
   }
   if (process.argv.includes('--start-mono')) {
-    await startMonolithic();
-    process.exit(0);
+    process.exit(await startMonolithic() ? 0 : 1);
   }
   if (process.argv.includes('--start-caged-quectel')) {
-    await launchSingleCuQuectelBackhaul();
-    process.exit(0);
+    process.exit(await launchSingleCuQuectelBackhaul() ? 0 : 1);
   }
   if (process.argv.includes('--validate-caged-quectel')) {
-    await validateSingleCuQuectelBackhaul();
-    process.exit(0);
+    process.exit(await validateSingleCuQuectelBackhaul() ? 0 : 1);
   }
   if (process.argv.includes('--rollback-caged-quectel')) {
     await stopAllConfigs();
+    process.exit(0);
+  }
+  if (process.argv.includes('--status')) {
+    await statusView();
+    process.exit(0);
+  }
+  if (process.argv.includes('--logs')) {
+    await logsView();
     process.exit(0);
   }
   await configureLabBeforeMenu();
@@ -3382,8 +3555,26 @@ async function cli() {
   rl.close();
 }
 
-cli().catch(async err => {
-  printError(err.message);
-  rl.close();
-  process.exit(1);
-});
+export const tuiTestApi = {
+  BACKHAUL_PROFILES,
+  KNOWN_DU_CONFIGS,
+  analyzeB210ExperimentReadiness,
+  buildLabConfigForDu,
+  cliHelp,
+  close: () => rl.close(),
+  maskIpv4ToPrefix,
+  parseQmiSettings,
+  parseRouteDevSrc,
+  runtimeSuffixForBackhaul,
+  sanitizeCapture,
+  selectedF1Addresses,
+  validateCliArgs,
+};
+
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  cli().catch(async err => {
+    printError(err.message);
+    rl.close();
+    process.exit(1);
+  });
+}
