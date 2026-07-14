@@ -2,7 +2,8 @@
 
 This private repository is the canonical deployment context for an OpenAirInterface 5G NR CU/DU split lab that broadcasts SIB8/PWS messages and is moving toward wireless F1 backhaul through a Quectel modem while the USRP B210 remains the local access radio.
 
-Read first: `README.md`, `docs/BASELINES.md`, `docs/NETWORK.md`, `docs/SECURITY.md`, and `audit/MIGRATION_MAP.md`.
+Read first: `README.md`, `docs/STATUS.md`, `docs/BASELINES.md`,
+`docs/NETWORK.md`, and `docs/SECURITY.md`.
 
 Immutable rules:
 - No secrets in Git: no UE `Ki`, `OPc`, passwords, tokens, private keys, raw logs, or packet captures.

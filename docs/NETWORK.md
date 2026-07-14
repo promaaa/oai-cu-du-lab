@@ -1,29 +1,34 @@
-# Network
+# Network and hardware
 
-## Hosts
+These are management defaults, not a substitute for live discovery.
 
-| Host | Role | Notes |
+| Host | Default management target | Role |
 |---|---|---|
-| `serber-firecell` | Core Network and CU | Current split baseline uses management IP `10.76.170.38`; OAI CN subnet includes `192.168.71.129/132` evidence. |
-| `serber-minipc` | DU, USRP B210 access, Quectel backhaul experiments | Current verified management target is `serber@10.76.170.40` on `enp2s0`; aliases and older addresses have drifted. Wi-Fi GRE evidence includes `wlp3s0` at `10.85.168.144`; Quectel evidence includes `wwan0` and `wg-quectel-f1`. |
-| `serber-pi` | Experimental lightweight DU | Current verified management target is `serber@10.76.170.18` on `eth0`; OAI source is pinned at the split baseline commit. |
-| `oai-pc` | Powerful validation PC | Used to rule out hardware limits and for phone-screen validation. Older docs also call an OAI PC `oai`. |
+| `serber-firecell` | `serber@10.76.170.38` | 5GC, shared CU, monolithic reference radio |
+| `serber-minipc` | `serber@10.76.170.40` | canonical access DU, B210, Quectel experiments |
+| `serber-pi` | `serber@10.76.170.18` | lightweight DU candidate |
+| `serber-jetson` | `serber@10.76.170.8` | Jetson Orin Nano DU candidate |
+| `oai-pc` | discover before use | X310 and high-performance validation host |
 
-## Hardware Relationships
+## Radios
 
-- USRP B210 remains the local 5G access radio for `serber-minipc`.
-- Quectel RM500Q-GL on `serber-minipc` is the intended F1/backhaul modem.
-- Nothing Phone is the commercial UE used for validation.
+- B210 serial `8002816`: movable access radio used by MiniPC, Pi, or Jetson;
+  one host may own it at a time.
+- Firecell B210 serial `35F8ABA`: monolithic reference radio.
+- Quectel RM500Q-GL: intended independent wireless backhaul modem.
+- USRP X310: transport-sensitive validation radio; 106 PRB is blocked on a
+  negotiated 1 Gb/s path.
 
-## Backhaul Variants
+## Transport reference
 
-- Ethernet F1: canonical rollback baseline.
-- Wi-Fi GRE F1: verified wireless-backhaul baseline.
-- Quectel/WireGuard F1: partial packet-path evidence; stable full F1 is not yet validated.
-- Quectel donor DU: independent cell attached to the shared CU; required so the modem does not depend on the access cell it is backhauling.
+| Transport | Interface or overlay | Requirement |
+|---|---|---|
+| Ethernet F1 | selected host Ethernet | verify route, MTU, link rate, and F1 isolation |
+| Wi-Fi GRE F1 | `test-gre` | verify underlay reachability before CU/DU launch |
+| Quectel F1 | `wg-quectel-f1` over `wwan0` | prove modem registration, WireGuard outer traffic, and F1-C/F1-U |
 
-## Identifier Policy
+The canonical Quectel overlay uses CU `10.250.0.1` and access DU `10.250.0.2`.
+Management traffic must remain outside the experimental backhaul path.
 
-Allowed here when useful: hostnames, usernames already present in source repos, infrastructure IP addresses, interface names, and non-secret topology IDs.
-
-Never commit: UE `Ki`, `OPc`, passwords, tokens, private keys, raw subscriber dumps, unsanitized logs, or packet captures.
+Never store UE authentication values, passwords, private keys, or subscriber
+dumps in this file or any other tracked file.

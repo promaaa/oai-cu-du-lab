@@ -1,85 +1,45 @@
-# oai-cu-du-lab
+# OAI CU/DU Lab
 
-Private canonical control repo for an OAI 5G NR CU/DU split research lab.
+Canonical control repository for an OpenAirInterface 5G NR CU/DU split lab
+with SIB8/PWS and Ethernet, Wi-Fi GRE, and Quectel/WireGuard F1 transports.
 
-## Objective
+## Current state
 
-Investigate an OAI CU/DU split that can broadcast SIB8/PWS messages and later carry F1 over a wireless backhaul suitable for a lightweight or drone-carried DU.
+- Ethernet CU/DU with SIB8 is the rollback baseline.
+- The monolithic deployment is a reference, not the target architecture.
+- The target Quectel design is one shared CU with an independent donor DU and
+  an access DU. The older monolithic-donor flow is not proof of that design.
+- No scenario is a full PASS without separate phone-visible PWS, registration,
+  PDU session, internet, and throughput evidence.
 
-## Current Status
+See [Current status](docs/STATUS.md) before operating the lab.
 
-This repo now contains the lean lab context plus an operator TUI that can launch the deployed baselines from one place. OAI source trees, generated runtime configs, logs, captures, and credentials remain outside Git.
+## Quick start
 
-## Repository Purpose
-
-This repository gives future operators and agents a clean starting point for deployment-oriented work without requiring them to rediscover old public repositories.
-
-## Directory Overview
-
-- `docs/`: concise system, baseline, security, roadmap, and runbook context.
-- `inventory/`: compact machine-readable host, radio, and baseline inventory.
-- `experiments/`: future experiment index and report template.
-- `prompts/`: reusable prompt skeletons for future agents.
-- `patches/`: feature-separated patches and concise migration notes.
-- `conf/`: sanitized templates and generated-config placeholders.
-- `scripts/`: the launch TUI and vetted reusable helpers.
-- `audit/`: source repository audit, exposure report, and migration map.
-- `wiki/`: static operator wiki published through GitHub Pages.
-
-## Confirmed Baselines
-
-- Monolithic OAI reference: working reference, about `150 Mb/s` observed.
-- Ethernet CU/DU with SIB8: working canonical rollback candidate, about `19-23 Mb/s` observed.
-- Wi-Fi CU/DU with SIB8: working wireless-backhaul candidate, about `12 Mb/s` observed.
-
-## Immediate Next Objective
-
-Establish F1 backhaul through the Quectel module connected to `serber-minipc` using the target split topology: one 5GC and one shared CU on `serber-firecell`, one donor DU for the Quectel serving cell, and one access DU on `serber-minipc` with B210 serial `8002816`; access-DU F1 runs over WireGuard-over-Quectel.
-
-## Operator TUI
-
-Run `./scripts/oai-lab-tui` to launch and inspect the deployed lab modes:
-
-- monolithic Core + gNB using the existing monolithic demo style;
-- Ethernet CU/DU rollback with Core/CU on the CU host and DU/USRP on the DU host;
-- PWS/SIB8 message apply for monolithic and Ethernet split modes;
-- experimental caged Quectel tooling that predates the target donor-DU/access-DU topology and must not be treated as proof of it;
-- guided phone throughput entry and timestamped local run records;
-- read-only discovery for Raspberry Pi DU, `oai-pc` DU, and nrUE internet-through-radio workflows until they are validated.
-
-The TUI first shows the active lab config and asks whether to use it. Operators
-can keep the current environment/default config or choose a DU from the known
-set: `serber-minipc`, `serber-pi`, or `serber-jetson`. After the DU selection,
-the same shared launch interface offers Ethernet F1, Wi-Fi GRE F1, or
-Quectel/WireGuard F1 where those gates can pass on the selected hardware.
-
-Default professor-demo lab targets:
-
-```text
-serber-firecell = serber@10.76.170.38
-serber-minipc   = serber@10.76.170.40
-serber-pi       = serber@10.76.170.18
-serber-jetson   = serber@10.76.170.8
+```bash
+./scripts/oai-lab-tui
 ```
 
-Monolithic reference startup is pinned to `serber-firecell` to match the
-existing monolithic demo workflow. Ethernet CU/DU startup first stops the
-firecell monolithic core containers so the split core is the only active OAI CN
-stack, then installs a temporary CU-side SCTP drop rule for the stale `oai-pc`
-F1 peer at `10.76.170.90`. `Stop Ethernet CU/DU` removes that temporary rule.
-The generated split DU config also uses a live-radio scheduler profile by
-default: DL BLER target `0.45..0.65`, UL BLER target `0.25..0.45`,
-`SPLIT_DL_MIN_MCS=10`, `SPLIT_DL_MAX_MCS=18`, `SPLIT_UL_MIN_MCS=5`, and
-`TCP_MSS_CLAMP=1200` unless overridden by environment variables or
-`--force-mcs`. The Pi DU profile also raises UL/control robustness by default:
-`UL_PUSCH_TARGET_SNR_X10=170`, `UL_PUCCH_TARGET_SNR_X10=240`,
-`UL_P0_NOMINAL_WITH_GRANT=-86`, `UL_PUCCH_P0_NOMINAL=-86`,
-`PUCCH0_DTX_THRESHOLD=140`, and `PRACH_DTX_THRESHOLD=180`.
+The TUI writes runtime evidence outside the repository under
+`~/.local/state/oai-cu-du-lab/runs/`. Override this with
+`OAI_LAB_STATE_DIR` when another private evidence location is required.
 
-It uses SSH and local commands only; it does not store passwords.
+## Repository map
 
-See `docs/tui/TUI.md`, `docs/tui/TUI_DEMO_GUIDE.md`, and `docs/tui/TUI_DISCOVERED_COMMANDS.md` for details.
+- `conf/` — sanitized templates; local and generated configuration is ignored.
+- `docs/` — the canonical architecture, status, operating, and security guides.
+- `patches/` — feature-separated changes for the pinned external OAI source.
+- `scripts/` — the operator TUI, focused helpers, and static tests.
+- `wiki/` — the small public operator reference published by GitHub Pages.
 
-## Security Warning
+OAI source, generated configs, credentials, raw logs, and packet captures stay
+outside Git.
 
-Secrets are never stored here. Use `conf/local/lab.env`, SSH config/agents, local ignored secret files, and sanitized evidence only.
+## Read next
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Baselines](docs/BASELINES.md)
+- [Network and hardware](docs/NETWORK.md)
+- [Operator guide](docs/OPERATOR_GUIDE.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Security](docs/SECURITY.md)

@@ -1,32 +1,36 @@
 # Baselines
 
-## Monolithic OAI Reference
+Historical throughput is context, not a current ceiling. A baseline becomes
+current only after a controlled rerun records machine and phone gates
+separately.
 
-- Status: working gated TUI reference.
-- Observed user throughput: about `150 Mb/s`.
-- Role: separate reference only. It is not the Quectel F1 backhaul architecture.
-- OAI commit: not confirmed from repository evidence for this exact baseline.
+| Scenario | Role | Recorded result | Current classification |
+|---|---|---:|---|
+| Monolithic OAI | Reference only | about 150 Mb/s historically | `PARTIAL`: machine-side reference reproduced 2026-07-14; phone gates not rerun |
+| MiniPC Ethernet CU/DU + SIB8 | Canonical rollback | about 19–23 Mb/s historically | `BLOCKED`: B210 was not on MiniPC during the latest rollback attempt |
+| Wi-Fi GRE CU/DU + SIB8 | Wireless candidate | about 12 Mb/s historically | `HISTORICAL`: requires fresh validation |
+| Raspberry Pi Ethernet CU/DU | Lightweight candidate | about 18–23 Mb/s historically | `HISTORICAL`: requires fresh validation |
+| Jetson Ethernet CU/DU | Embedded candidate | 6.5–7.3 Mb/s in an earlier run | `PARTIAL`: see current status |
+| Quectel/WireGuard F1 | Target wireless backhaul | no accepted end-to-end result | `BLOCKED`: canonical donor-DU/access-DU topology not proven |
 
-## Ethernet CU/DU With SIB8
+## OAI source pin
 
-- Status: working canonical rollback baseline.
-- Observed user throughput: about `19-23 Mb/s`.
-- OAI commit: `102965a669b9444857c27843ec8ce62780bf9d37`.
-- Rollback baseline: yes.
+The documented split baseline commit is
+`102965a669b9444857c27843ec8ce62780bf9d37`. Every run must record the actual
+CU and DU commit and local patch state; a directory name or old binary is not
+proof of the pin.
 
-## Wi-Fi CU/DU With SIB8
+## Full PASS gate
 
-- Status: working wireless-backhaul baseline candidate.
-- Observed user throughput: about `12 Mb/s`.
-- OAI commit: `102965a669b9444857c27843ec8ce62780bf9d37`.
-- Rollback baseline: no, but documented as confirmed working.
+A full scenario PASS requires fresh evidence for:
 
-## Quectel F1 Backhaul
-
-- Status: target architecture documented; runtime implementation and PASS require fresh live packet-gated validation.
-- OAI commit: `102965a669b9444857c27843ec8ce62780bf9d37`.
-- Rollback baseline: no; rollback target is Ethernet CU/DU.
-- Canonical architecture: one 5GC and one shared CU on `serber-firecell`; one donor DU for the Quectel serving cell; one access DU on `serber-minipc`; access-DU F1 over WireGuard-over-Quectel.
-- Donor rule: Quectel attaches only to the independent donor-DU cell; it must never attach to the minipc access DU.
-- Access rule: B210 serial `8002816` remains access-cell only, PCI `0`, TAC `1`, DU ID `0xe01`.
-- PASS rule: no PASS without both donor-DU and access-DU F1 evidence, Quectel serving-cell/IP evidence, tcpdump proof for minipc F1-C/F1-U on `wg-quectel-f1`, WireGuard outer UDP on `wwan0`, phone service/PWS evidence, and a verified Ethernet rollback.
+1. process and core health;
+2. NG and applicable F1-C/F1-U paths;
+3. RF readiness and timing stability;
+4. phone-visible PWS;
+5. UE registration;
+6. PDU session and external-DN reachability;
+7. phone internet;
+8. timestamped downlink and uplink throughput;
+9. clean stop and residue check;
+10. reproducible Ethernet rollback.

@@ -1,32 +1,31 @@
-# Security
+# Security and evidence
 
-## Secret Handling Policy
+## Never commit
 
-This repository must contain only placeholders and sanitized evidence. Treat any value that authenticates a UE, host, tunnel, API, or database as secret.
+- UE `Ki`, `OPc`, subscriber database secrets, IMSI dumps, or raw SIM profiles;
+- passwords, tokens, private keys, or credential-bearing environment files;
+- raw logs, packet captures, generated OAI configs, databases, or core dumps.
 
-## Prohibited Values
+Use placeholders such as `<ue-imsi>`, `<ue-ki>`, `<ssh-user>`, and
+`<wireguard-private-key>` in documentation.
 
-- UE `Ki`, `OPc`, `K`, subscriber database secrets, and raw SIM profiles.
-- Passwords, SSH credential strings, tokens, API keys, and private keys.
-- Unsanitized `.env` files.
-- Raw logs or captures that include identifiers or credentials.
+## Local state
 
-## Placeholder Strategy
+- Local configuration belongs in ignored `conf/local/`.
+- Generated configuration belongs in ignored `conf/generated/` or remote
+  runtime paths.
+- Run evidence belongs under `~/.local/state/oai-cu-du-lab/runs/` or the path
+  selected with `OAI_LAB_STATE_DIR`.
 
-Use names such as `<ue-imsi>`, `<ue-ki>`, `<ue-opc>`, `<ssh-user>`, `<secret-file>`, `<wireguard-private-key>`, and `<apn>`.
+Only a minimized, reviewed conclusion should enter `STATUS.md`, `BASELINES.md`,
+or a feature patch README.
 
-## Local Secret Injection
+## Publication check
 
-Runtime credentials belong in ignored local files under `secrets/` or environment variables supplied outside Git. Scripts migrated in Phase 2 must fail closed when required secret inputs are missing.
+Before committing or publishing:
 
-## Git History Remediation
-
-Public repositories with exposed secrets require sanitizing current files and rewriting Git history before they can be considered clean. History rewrites require explicit approval and coordinated force-push.
-
-## Rotation Rule
-
-Any secret committed to a public repository must be rotated or replaced, even after history cleanup.
-
-## Evidence Rule
-
-Raw logs and packet captures stay untracked by default. Commit only minimized, sanitized excerpts after review.
+1. inspect the exact staged file list;
+2. scan for credential and subscriber patterns;
+3. ensure no raw evidence or generated configuration is staged;
+4. verify host and radio identifiers are operational context, not secrets;
+5. rotate any secret that was ever committed to a public repository.

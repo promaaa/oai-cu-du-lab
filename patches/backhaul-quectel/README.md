@@ -8,7 +8,7 @@ Essential retained facts are in:
 - `docs/ROADMAP.md`
 - `docs/NETWORK.md`
 - `conf/templates/quectel-wireguard.yml`
-- `inventory/radios.yml`
+- `docs/NETWORK.md`
 
 Future scripts should be limited to:
 - modem detection;

@@ -1,32 +1,28 @@
 # Roadmap
 
-## Current Objective
+## 1. Restore the rollback baseline
 
-Establish the Quectel 5G F1 backhaul using the lab's single-CU split architecture:
+- return B210 `8002816` to MiniPC on USB3;
+- reconcile the pinned OAI source and required SIB8 patch;
+- rerun Ethernet CU/DU with all machine and phone gates;
+- prove clean stop and repeatable rollback.
 
-- `serber-firecell`: one OAI 5GC and one shared OAI CU.
-- donor radio path: one donor DU attached to the shared CU and serving only the Quectel modem.
-- `serber-minipc`: minipc access DU with USRP B210 serial `8002816`.
-- Quectel RM500Q-GL: outside the cage, attached only to the donor-DU cell.
-- F1 from minipc access DU to CU: `wg-quectel-f1` over the Quectel PDU session.
-- F1 from donor DU to CU: independent of the Quectel-carried access-DU F1 path.
+## 2. Close the Jetson phone-service blocker
 
-Older combined-donor launch paths remain historical and are not evidence for
-the target. The new topology must fail closed until both DUs are proven against
-the same CU without creating a circular dependency.
+- refresh live attach state after the active xHCI IRQ fix;
+- separate PWS reception, 5G indication, PDU session, internet, and throughput;
+- compare with the earlier 6.5–7.3 Mb/s result without treating it as current.
 
-## Work In Progress
+## 3. Prove canonical Quectel backhaul
 
-- Security and repository audit: complete.
-- Ethernet rollback baseline: complete.
-- Quectel modem and network inventory: complete, refresh live values per run.
-- One-CU/two-DU launch flow: not yet validated; older TUI actions are legacy.
-- CU plus minipc access-DU WireGuard-F1 configs: available but require migration validation with the donor DU.
-- Packet-gated validation: must be extended to prove both F1 associations;
-  runtime PASS still requires live sanitized captures and caged phone traffic.
+- replace the monolithic-donor assumption with an independent donor DU;
+- attach donor and access DUs to the same CU;
+- prove inner F1 and outer WireGuard packet paths;
+- rerun phone-visible service and Ethernet rollback.
 
-## Later Objectives
+## 4. Revalidate alternatives
 
-- Compare Ethernet, Wi-Fi GRE, and Quectel/WireGuard performance.
-- Migrate and validate lightweight DU hardware only after the Quectel path is stable.
-- Develop a portable or drone-carried DU architecture with local access radio and wireless backhaul.
+- Pi Ethernet, then Wi-Fi GRE;
+- X310 only after proving transport above 1 Gb/s for the 106-PRB branch;
+- compare performance and power only after each scenario reaches the same
+  acceptance boundary.
