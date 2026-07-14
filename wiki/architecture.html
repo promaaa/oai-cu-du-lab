@@ -1,127 +1,16 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Architecture - OAI CU/DU Lab</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <header>
-    <div class="wrap">
-      <div class="header-main">
-        <div>
-          <h1><a href="index.html">OAI CU/DU Split Lab</a></h1>
-          <p class="summary">System architecture and design overview.</p>
-        </div>
-        <div class="page-title-badge">Architecture</div>
-      </div>
-      <nav>
-        <a href="index.html" class="">Home</a>
-        <a href="architecture.html" class="active">Architecture</a>
-        <a href="workflows.html" class="">Workflows</a>
-        <a href="hardware.html" class="">Hardware</a>
-        <a href="commands.html" class="">Commands</a>
-        <a href="project.html" class="">Project Info</a>
-      </nav>
-    </div>
-  </header>
-  <div class="wrap">
-    <main>
-      <aside class="side">
-        <div class="side-group">
-          <h2 class="side-group-title">Sections</h2>
-          <ul class="side-links">
-            <li><a href="#overview">Overview</a></li>
-            <li><a href="#cu-du">CU/DU Split</a></li>
-            <li><a href="#f1">F1 Interface</a></li>
-            <li><a href="#pws">PWS/SIB8</a></li>
-            <li><a href="#topology">Lab Topology</a></li>
-          </ul>
-        </div>
-        <div class="side-group">
-          <h2 class="side-group-title">Related</h2>
-          <ul class="side-links">
-            <li><a href="workflows.html">Workflows</a></li>
-            <li><a href="hardware.html">Hardware</a></li>
-            <li><a href="commands.html">Commands &amp; Operations</a></li>
-            <li><a href="project.html">Project Info</a></li>
-          </ul>
-        </div>
-      </aside>
-      <article>
-        <section id="overview">
-          <h2>Architecture Overview</h2>
-          <p>The OAI CU/DU Lab implements a 5G NR testbed based on OpenAirInterface. The backhaul target uses one shared CU and two distinct DUs: a donor DU for the Quectel serving cell and an access DU on <code>serber-minipc</code> for the local radio path.</p>
-        </section>
-
-        <section id="cu-du">
-          <h2>CU/DU Split Architecture</h2>
-          <p>The architecture separates higher-layer control from two radio-facing roles:</p>
-          <h3>Central Unit (CU)</h3>
-          <ul>
-            <li>Radio Resource Control (RRC)</li>
-            <li>Packet Data Convergence Protocol (PDCP)</li>
-            <li>Service Data Adaptation Protocol (SDAP)</li>
-            <li>F1 termination point</li>
-            <li>PWS/SIB8 coordination</li>
-          </ul>
-          <h3>Donor DU</h3>
-          <ul>
-            <li>Connects to the shared CU over its own F1 path</li>
-            <li>Provides the independent donor cell used by the Quectel modem</li>
-            <li>Must remain independent of the access cell to avoid a circular backhaul dependency</li>
-          </ul>
-          <h3>Access DU on serber-minipc</h3>
-          <ul>
-            <li>Radio Link Control (RLC)</li>
-            <li>Medium Access Control (MAC)</li>
-            <li>Physical Layer (PHY)</li>
-            <li>Scheduler</li>
-            <li>USRP B210 local access radio</li>
-            <li>F1 carried through WireGuard over the Quectel PDU session in the target backhaul path</li>
-          </ul>
-        </section>
-
-        <section id="f1">
-          <h2>F1 Interface</h2>
-          <p>The F1 interface connects the CU and DU over IP-based transport. Key characteristics:</p>
-          <ul>
-            <li>Logical interface defined by 3GPP TS 38.470</li>
-            <li>Supports F1-C (control plane) and F1-U (user plane)</li>
-            <li>Transport options: Ethernet rollback baseline, verified Wi-Fi GRE, and experimental Quectel wireless backhaul</li>
-            <li>Enables flexible deployment across multiple physical machines</li>
-          </ul>
-        </section>
-
-        <section id="pws">
-          <h2>PWS/SIB8 Broadcast</h2>
-          <p>Public Warning System implementation using SIB8:</p>
-          <ul>
-            <li>SIB8 carries Earthquake and Tsunami Warning System (ETWS) information</li>
-            <li>Primary Notification: Immediate safety alert</li>
-            <li>Secondary Notification: Additional safety information</li>
-            <li>Broadcast over NR radio to connected UEs</li>
-          </ul>
-        </section>
-
-        <section id="topology">
-          <h2>Lab Topology</h2>
-          <p>The target Quectel deployment includes:</p>
-          <ul>
-            <li><strong>serber-firecell</strong>: Hosts the 5GC and the single shared CU</li>
-            <li><strong>Donor DU</strong>: Runs the independent donor radio for the Quectel modem and connects to the shared CU</li>
-            <li><strong>serber-minipc</strong>: Hosts the access DU and USRP B210 local access radio</li>
-            <li><strong>USRP B210</strong>: SDR platform for RF transmission (n78 band)</li>
-            <li><strong>Quectel RM500Q-GL</strong>: Attaches to the donor-DU cell and carries the access-DU F1 overlay</li>
-            <li><strong>Commercial UE</strong>: Nothing Phone for attach and service testing</li>
-          </ul>
-          <pre><code>5GC + one CU (serber-firecell)
-  ├── F1 ── donor DU ── RF ── Quectel modem
-  └── F1 over WireGuard/Quectel ── access DU (serber-minipc) ── B210 ── phone</code></pre>
-        </section>
-      </article>
-    </main>
-  </div>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Architecture — OAI CU/DU Lab</title><link rel="stylesheet" href="style.css"></head>
+<body><header class="site-header"><div class="site-header-inner"><p class="site-title"><a href="index.html">OAI CU/DU Lab</a></p><span class="site-tagline">Operator wiki</span></div></header>
+<div class="page"><aside class="sidebar"><h2>Navigation</h2><ul><li><a href="index.html">Main page</a></li><li><a aria-current="page" href="architecture.html">Architecture</a></li><li><a href="commands.html">Getting started</a></li><li><a href="workflows.html">Transport modes</a></li><li><a href="validation.html">Validation</a></li><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="hardware.html">Hardware and network</a></li><li><a href="recovery.html">Recovery</a></li></ul></aside>
+<main><h1>Architecture</h1><p class="from">From OAI CU/DU Lab</p>
+<h2>Canonical target</h2><p>Firecell hosts one OAI 5GC and one shared CU. An independent donor DU provides the donor cell used only by the Quectel modem. A separate access DU provides the local cell used by the commercial phone.</p>
+<pre><code>Firecell: OAI 5GC + shared CU
+  ├─ F1 → donor DU → donor cell → Quectel modem
+  └─ F1 → access DU → B210 access cell → Nothing Phone
+             ↑
+      F1 carried through WireGuard over Quectel</code></pre>
+<div class="warning"><strong>Warning:</strong> the older caged flow starts a monolithic donor gNB. It has no donor-DU F1 association and cannot prove this target.</div>
+<h2>SIB8/PWS</h2><p>The CU handles warning content and the F1AP request. The DU schedules the resulting system information. Network logs and phone-visible warning reception are different acceptance gates.</p>
+<h2>Rollback baseline</h2><p>MiniPC Ethernet CU/DU with SIB8 is the canonical rollback. The monolithic deployment remains a separate reference.</p>
+<p class="source">Canonical detail: <a href="https://github.com/promaaa/oai-cu-du-lab/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>.</p></main></div>
+<footer>OAI CU/DU Lab operator wiki</footer></body></html>
