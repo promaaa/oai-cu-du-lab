@@ -3,13 +3,15 @@
 ## Operator interface
 
 ```bash
-./scripts/oai-lab-tui
-./scripts/oai-lab-tui --help
+./oai-lab
+./oai-lab --help
+./oai-lab --doctor
 ```
 
 The TUI selects the DU and F1 transport, performs fail-closed preflight,
 starts and stops supported scenarios, and records private runtime evidence.
-`--verify` contacts the configured lab hosts.
+`--doctor` checks only the local Mac and private environment file. `--verify`
+contacts the configured lab hosts.
 
 Run the dependency-free static suite without contacting the lab:
 

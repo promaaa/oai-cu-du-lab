@@ -3,7 +3,7 @@
 import { exec } from 'child_process';
 import { createInterface } from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { accessSync, constants as fsConstants, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,48 +13,142 @@ const __dirname = path.dirname(__filename);
 const REPO = path.resolve(__dirname, '..');
 const QUECTEL_SCRIPT_DIR = path.join(REPO, 'scripts', 'quectel-f1-backhaul');
 const ISOLATED_TEST_MODE = process.env.OAI_TUI_ISOLATED_TEST === '1';
+
+function requestedEnvPath() {
+  const envArg = process.argv.slice(2).find(arg => arg.startsWith('--env='));
+  const requested = envArg?.slice('--env='.length) || process.env.OAI_LAB_ENV;
+  if (requested) return path.resolve(requested);
+  const candidates = [
+    path.join(REPO, 'conf', 'local', 'lab.env'),
+    path.join(REPO, '.env'),
+  ];
+  return candidates.find(candidate => {
+    try {
+      accessSync(candidate, fsConstants.R_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }) || candidates[0];
+}
+
+function stripUnquotedComment(value) {
+  let quote = '';
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i];
+    if ((char === '"' || char === "'") && (!quote || quote === char)) {
+      quote = quote ? '' : char;
+    } else if (char === '#' && !quote && (i === 0 || /\s/.test(value[i - 1]))) {
+      return value.slice(0, i).trim();
+    }
+  }
+  return value.trim();
+}
+
+function parseEnvFile(content) {
+  const parsed = {};
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const cleanLine = trimmed.replace(/^export\s+/, '');
+    const idx = cleanLine.indexOf('=');
+    if (idx < 1) continue;
+    const key = cleanLine.slice(0, idx).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    let value = stripUnquotedComment(cleanLine.slice(idx + 1));
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    parsed[key] = value;
+  }
+  return parsed;
+}
+
+const ENV_PATH = requestedEnvPath();
+let ENV_FILE_LOADED = false;
+try {
+  const parsed = parseEnvFile(readFileSync(ENV_PATH, 'utf8'));
+  for (const [key, value] of Object.entries(parsed)) {
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+  ENV_FILE_LOADED = true;
+} catch {
+  // The doctor/interactive preflight reports a missing environment file.
+}
+
 const STATE_ROOT = process.env.OAI_LAB_STATE_DIR
   ? path.resolve(process.env.OAI_LAB_STATE_DIR)
   : path.join(homedir(), '.local', 'state', 'oai-cu-du-lab');
+const OPERATOR_LOCK_DIR = path.join(STATE_ROOT, 'operator.lock');
+let operatorLockHeld = false;
 
-// Load environment variables from conf/local/lab.env if it exists
-try {
-  const envPath = path.resolve(REPO, 'conf', 'local', 'lab.env');
-  const content = readFileSync(envPath, 'utf8');
-  content.split(/\r?\n/).forEach(line => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) return;
-    // Strip inline comments
-    let cleanLine = trimmed;
-    const commentIdx = trimmed.indexOf('#');
-    if (commentIdx >= 0) {
-      cleanLine = trimmed.slice(0, commentIdx).trim();
-    }
-    const idx = cleanLine.indexOf('=');
-    if (idx > 0) {
-      const key = cleanLine.slice(0, idx).trim();
-      let val = cleanLine.slice(idx + 1).trim();
-      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-        val = val.slice(1, -1);
-      }
-      // Trim quotes/spaces again in case of inline comment separation
-      val = val.trim();
-      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-        val = val.slice(1, -1);
-      }
-      process.env[key] = val;
-    }
-  });
-} catch (err) {
-  // ignore if file does not exist or cannot be read
+function processIsAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err?.code === 'EPERM';
+  }
 }
 
-const DEFAULT_FIRECELL_HOST = 'serber@10.76.170.38';
-const DEFAULT_MINIPC_HOST = 'serber@10.76.170.40';
-const DEFAULT_PI_HOST = 'serber@10.76.170.18';
-const DEFAULT_PI_IP = '10.76.170.18';
-const DEFAULT_JETSON_HOST = 'serber@10.76.170.8';
-const DEFAULT_JETSON_IP = '10.76.170.8';
+function readOperatorLockOwner() {
+  try {
+    return JSON.parse(readFileSync(path.join(OPERATOR_LOCK_DIR, 'owner.json'), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function releaseOperatorLock() {
+  if (!operatorLockHeld) return;
+  const owner = readOperatorLockOwner();
+  if (owner.pid === process.pid) rmSync(OPERATOR_LOCK_DIR, { recursive: true, force: true });
+  operatorLockHeld = false;
+}
+
+function acquireOperatorLock() {
+  mkdirSync(STATE_ROOT, { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      mkdirSync(OPERATOR_LOCK_DIR);
+      operatorLockHeld = true;
+      const argv = process.argv.slice(2).map(arg => arg.startsWith('--env=') ? '--env=<private-path>' : arg);
+      writeFileSync(path.join(OPERATOR_LOCK_DIR, 'owner.json'), `${JSON.stringify({
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+        argv,
+      }, null, 2)}\n`, { mode: 0o600 });
+      process.once('exit', releaseOperatorLock);
+      return;
+    } catch (err) {
+      if (err?.code !== 'EEXIST') throw err;
+      const owner = readOperatorLockOwner();
+      if (processIsAlive(Number(owner.pid))) {
+        const command = Array.isArray(owner.argv) && owner.argv.length ? owner.argv.join(' ') : 'interactive menu';
+        throw new Error(
+          `Another OAI lab operator console is active (PID ${owner.pid}, started ${owner.startedAt || 'at an unknown time'}, command: ${command}). ` +
+          'Close it before starting, stopping, or reconfiguring the lab.'
+        );
+      }
+      rmSync(OPERATOR_LOCK_DIR, { recursive: true, force: true });
+    }
+  }
+  throw new Error('Could not acquire exclusive OAI lab operator ownership.');
+}
+
+const DEFAULT_FIRECELL_HOST = process.env.CU_HOST || 'serber@10.76.170.38';
+const DEFAULT_MINIPC_HOST = process.env.MINIPC_HOST ||
+  (process.env.DU_LABEL === 'serber-minipc' ? process.env.DU_HOST : '') ||
+  'serber@10.76.170.40';
+const DEFAULT_PI_HOST = process.env.PI_HOST ||
+  (process.env.DU_LABEL === 'serber-pi' ? process.env.DU_HOST : '') ||
+  'serber@10.76.170.18';
+const DEFAULT_PI_IP = DEFAULT_PI_HOST.split('@').pop();
+const DEFAULT_JETSON_HOST = process.env.JETSON_HOST ||
+  (process.env.DU_LABEL === 'serber-jetson' ? process.env.DU_HOST : '') ||
+  'serber@10.76.170.8';
+const DEFAULT_JETSON_IP = DEFAULT_JETSON_HOST.split('@').pop();
 const BACKHAUL_PROFILES = {
   ethernet: {
     label: 'Ethernet F1',
@@ -123,6 +217,17 @@ function cuRuntimeConfForDu(runtimeStem, profileKey) {
   return `/tmp/oai-tui-gnb-cu-${runtimeStem}-${runtimeSuffixForBackhaul(profileKey)}-runtime.conf`;
 }
 
+function selectedDuEnvPrefix(duLabel = activeLabConfig?.duLabel || process.env.DU_LABEL || 'serber-minipc') {
+  return duLabel.replace(/^serber-/, '').toUpperCase();
+}
+
+function duPathOverride(kind, duLabel = activeLabConfig?.duLabel || process.env.DU_LABEL || 'serber-minipc') {
+  const specific = process.env[`${selectedDuEnvPrefix(duLabel)}_${kind}`];
+  if (specific) return specific;
+  if (!process.env.DU_LABEL || process.env.DU_LABEL === duLabel) return process.env[kind] || '';
+  return '';
+}
+
 function buildLabConfigForDu(duKey, profileKey = 'ethernet', overrides = {}) {
   const du = KNOWN_DU_CONFIGS[duKey];
   if (!du) throw new Error(`Unknown DU config: ${duKey}`);
@@ -172,36 +277,36 @@ let activeLabConfig = {
 let FIRECELL = activeLabConfig.firecellHost;
 let MINIPC = activeLabConfig.duHost;
 let PI = process.env.PI_HOST || DEFAULT_PI_HOST;
-const OAI_PC = 'oai-pc';
-const OAI_PC_IP = '10.76.170.90';
+const OAI_PC = process.env.OAI_PC_HOST || 'oai-pc';
+const OAI_PC_IP = process.env.OAI_PC_IP || '10.76.170.90';
 
-const CU_CN_DIR = '/home/serber/cu-du-minipc/oai-cn5g-minipc';
-const CU_CN_COMPOSE = 'docker-compose-minipc.yaml';
-const CU_OAI = '/home/serber/cu-du-minipc-backhaul/source/openairinterface5g';
-const DU_OAI = '/home/serber/cu-du/source/openairinterface5g';
-const CU_CONF = `${CU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu-minipc.conf`;
+const CU_CN_DIR = process.env.CU_CN_DIR || '/home/serber/cu-du-minipc/oai-cn5g-minipc';
+const CU_CN_COMPOSE = process.env.CU_CN_COMPOSE || 'docker-compose-minipc.yaml';
+const CU_OAI = process.env.CU_OAI_DIR || '/home/serber/cu-du-minipc-backhaul/source/openairinterface5g';
+const DU_OAI = process.env.DU_OAI_DIR || '/home/serber/cu-du/source/openairinterface5g';
+const CU_CONF = process.env.CU_ETH_CONF || `${CU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu-minipc.conf`;
 let CU_RUNTIME_CONF = activeLabConfig.cuRuntimeConf;
-let DU_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${activeLabConfig.duConfName}`;
+let DU_CONF = duPathOverride('DU_ETH_CONF') || `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${activeLabConfig.duConfName}`;
 let DU_ETHERNET_RUNTIME_CONF = activeLabConfig.duRuntimeConf;
-const CU_SIB8 = `${CU_OAI}/sib8.conf`;
-const DU_SIB8 = `${DU_OAI}/sib8.conf`;
-const CU_LOG = '/tmp/oai-cu-ethernet.log';
-const DU_LOG = '/tmp/oai-du-ethernet.log';
-const WG_IF = 'wg-quectel-f1';
-const WG_CU_IP = '10.250.0.1';
-const WG_DU_IP = '10.250.0.2';
-const WG_PORT = '51821';
-const FIRECELL_WG_ENDPOINT_IP = '192.168.71.129';
-const OAI_CN5G_BRIDGE_IF = 'oai-cn5g-minipc';
-const OAI_UPF_IP = '192.168.71.134';
-const FIRECELL_DONOR_PROD_CONF = '/home/serber/monolithic/openairinterface5g/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-firecell-donor-single-core-51prb.conf';
-const FIRECELL_DONOR_GNB_RUNTIME_CONF = '/tmp/oai-tui-firecell-donor-monolithic-runtime.conf';
-const FIRECELL_DONOR_GNB_LOG = '/tmp/oai-firecell-donor-monolithic.log';
-const FIRECELL_DONOR_DU_CONF = `${CU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du-firecell-donor-local-f1.conf`;
-const FIRECELL_DONOR_DU_LOG = '/tmp/oai-du-firecell-donor-local-f1.log';
-const FIRECELL_SEED_SUBSCRIBER = '/home/serber/cu-du-minipc-backhaul/roles/cn/seed-subscriber.sh';
-const CU_QUECTEL_CONF = `${CU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu-minipc-quectel-backhaul.conf`;
-let DU_QUECTEL_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-minipc-quectel-backhaul.conf`;
+const CU_SIB8 = process.env.CU_SIB8_CONF || `${CU_OAI}/sib8.conf`;
+const DU_SIB8 = process.env.DU_SIB8_CONF || `${DU_OAI}/sib8.conf`;
+const CU_LOG = process.env.CU_LOG || '/tmp/oai-cu-ethernet.log';
+const DU_LOG = process.env.DU_LOG || '/tmp/oai-du-ethernet.log';
+const WG_IF = process.env.WG_IF || 'wg-quectel-f1';
+const WG_CU_IP = process.env.WG_CU_IP || '10.250.0.1';
+const WG_DU_IP = process.env.WG_DU_IP || '10.250.0.2';
+const WG_PORT = process.env.WG_PORT || '51821';
+const FIRECELL_WG_ENDPOINT_IP = process.env.FIRECELL_WG_ENDPOINT_IP || '192.168.71.129';
+const OAI_CN5G_BRIDGE_IF = process.env.OAI_CN5G_BRIDGE_IF || 'oai-cn5g-minipc';
+const OAI_UPF_IP = process.env.OAI_UPF_IP || '192.168.71.134';
+const FIRECELL_DONOR_PROD_CONF = process.env.FIRECELL_DONOR_PROD_CONF || '/home/serber/monolithic/openairinterface5g/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-firecell-donor-single-core-51prb.conf';
+const FIRECELL_DONOR_GNB_RUNTIME_CONF = process.env.FIRECELL_DONOR_GNB_RUNTIME_CONF || '/tmp/oai-tui-firecell-donor-monolithic-runtime.conf';
+const FIRECELL_DONOR_GNB_LOG = process.env.FIRECELL_DONOR_GNB_LOG || '/tmp/oai-firecell-donor-monolithic.log';
+const FIRECELL_DONOR_DU_CONF = process.env.FIRECELL_DONOR_DU_CONF || `${CU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du-firecell-donor-local-f1.conf`;
+const FIRECELL_DONOR_DU_LOG = process.env.FIRECELL_DONOR_DU_LOG || '/tmp/oai-du-firecell-donor-local-f1.log';
+const FIRECELL_SEED_SUBSCRIBER = process.env.FIRECELL_SEED_SUBSCRIBER || '/home/serber/cu-du-minipc-backhaul/roles/cn/seed-subscriber.sh';
+const CU_QUECTEL_CONF = process.env.CU_QUECTEL_CONF || `${CU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu-minipc-quectel-backhaul.conf`;
+let DU_QUECTEL_CONF = duPathOverride('DU_QUECTEL_CONF') || `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-minipc-quectel-backhaul.conf`;
 const CU_QUECTEL_LOG = process.env.CU_QUECTEL_LOG || '/tmp/oai-cu-quectel.log';
 const DU_QUECTEL_LOG = process.env.DU_QUECTEL_LOG || '/tmp/oai-du-quectel.log';
 const EXPERIMENTAL_B210_LOG = process.env.EXPERIMENTAL_B210_LOG || '/tmp/oai-experimental-b210-rf-backhaul.log';
@@ -209,22 +314,23 @@ const EXPERIMENTAL_B210_RUNTIME_CONF = process.env.EXPERIMENTAL_B210_RUNTIME_CON
 const LOCAL_DONOR_F1_CU_IP = '127.0.0.1';
 const LOCAL_DONOR_F1_DU_IP = '127.0.0.2';
 const ACCESS_B210_SERIAL = process.env.ACCESS_B210_SERIAL || '8002816';
-const DONOR_DU_ID = '0xe11';
-const DONOR_GNB_ID = '0xe10';
-const DONOR_NR_CELL_ID = '22345678';
-const ACCESS_DU_ID = '0xe01';
-const ACCESS_GNB_ID = '0xe00';
-const ACCESS_NR_CELL_ID = '12345678';
+const DONOR_DU_ID = process.env.DONOR_DU_ID || '0xe11';
+const DONOR_GNB_ID = process.env.DONOR_GNB_ID || '0xe10';
+const DONOR_NR_CELL_ID = process.env.DONOR_NR_CELL_ID || '22345678';
+const ACCESS_DU_ID = process.env.ACCESS_DU_ID || '0xe01';
+const ACCESS_GNB_ID = process.env.ACCESS_GNB_ID || '0xe00';
+const ACCESS_NR_CELL_ID = process.env.ACCESS_NR_CELL_ID || '12345678';
 const LAB_PHONE_IMSI_SUFFIX = process.env.LAB_PHONE_IMSI_SUFFIX || '9449';
 const LAB_QUECTEL_IMSI_SUFFIX = process.env.LAB_QUECTEL_IMSI_SUFFIX || '9451';
 const FIRECELL_DONOR_ATT_TX = process.env.FIRECELL_DONOR_ATT_TX || '24';
 
-const MONO_CN = '/home/serber/monolithic/oai-cn5g';
-const MONO_OAI = '/home/serber/monolithic/openairinterface5g';
+const MONO_CN = process.env.MONO_CN_DIR || '/home/serber/monolithic/oai-cn5g';
+const MONO_OAI = process.env.MONO_OAI_DIR || '/home/serber/monolithic/openairinterface5g';
 let MONO_HOST = FIRECELL;
-const MONO_CONF = `${MONO_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.usrpb210.conf`;
-const MONO_SIB8 = `${MONO_OAI}/sib8.conf`;
-const MONO_LOG = '/tmp/oai-mono-gnb.log';
+const MONO_CONF = process.env.MONO_GNB_CONF || `${MONO_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.usrpb210.conf`;
+const MONO_SIB8 = process.env.MONO_SIB8_CONF || `${MONO_OAI}/sib8.conf`;
+const MONO_LOG = process.env.MONO_LOG || '/tmp/oai-mono-gnb.log';
+const SSH_OPTIONS = process.env.LAB_SSH_OPTS || '-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8';
 
 const RESET = '\x1b[0m';
 const BOLD = '\x1b[1m';
@@ -326,9 +432,9 @@ function applyLabConfig(config) {
   if (activeLabConfig.duLabel === 'serber-pi') PI = activeLabConfig.duHost;
   MONO_HOST = FIRECELL;
   CU_RUNTIME_CONF = activeLabConfig.cuRuntimeConf || '/tmp/oai-tui-gnb-cu-ethernet-runtime.conf';
-  DU_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${activeLabConfig.duConfName}`;
+  DU_CONF = duPathOverride('DU_ETH_CONF', activeLabConfig.duLabel) || `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${activeLabConfig.duConfName}`;
   DU_ETHERNET_RUNTIME_CONF = activeLabConfig.duRuntimeConf;
-  DU_QUECTEL_CONF = `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${
+  DU_QUECTEL_CONF = duPathOverride('DU_QUECTEL_CONF', activeLabConfig.duLabel) || `${DU_OAI}/targets/PROJECTS/GENERIC-NR-5GC/CONF/${
     activeLabConfig.duLabel === 'serber-pi' ? 'gnb-pi-quectel-backhaul.conf' :
     activeLabConfig.duLabel === 'serber-jetson' ? 'gnb-jetson-quectel-backhaul.conf' :
     'gnb-minipc-quectel-backhaul.conf'
@@ -394,7 +500,7 @@ function execLocal(cmd, timeout = 60000) {
 }
 
 async function ssh(host, cmd, timeout = 60000) {
-  const full = `ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 ${host} ${quoteForSsh(cmd)}`;
+  const full = `ssh ${SSH_OPTIONS} ${host} ${quoteForSsh(cmd)}`;
   const res = await execLocal(full, timeout);
   if (!res.ok) throw new Error(res.combined || `command failed rc=${res.code}`);
   return res.combined;
@@ -409,7 +515,7 @@ async function sshChecked(host, cmd, timeout = 60000) {
 }
 
 async function sshLoose(host, cmd, timeout = 60000) {
-  const full = `ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 ${host} ${quoteForSsh(cmd)}`;
+  const full = `ssh ${SSH_OPTIONS} ${host} ${quoteForSsh(cmd)}`;
   return await execLocal(full, timeout);
 }
 
@@ -1171,7 +1277,43 @@ async function ensureWireGuard(minipcHost, quectel = null, options = {}) {
 
 async function prepareCagedSplitConfigs(minipcHost) {
   printInfo('Generating configs via 05_generate_quectel_f1_configs.sh...');
-  const envPrefix = `CU_HOST=${shellQuote(FIRECELL)} DU_HOST=${shellQuote(minipcHost)}`;
+  const accessAttRx = activeLabConfig.duLabel === 'serber-jetson'
+    ? (process.env.JETSON_ATT_RX || '0')
+    : (process.env.ACCESS_ATT_RX || '12');
+  const accessAttTx = activeLabConfig.duLabel === 'serber-jetson'
+    ? (process.env.JETSON_ATT_TX || '3')
+    : (process.env.ACCESS_ATT_TX || '3');
+  const selectedRuntimeProfile = activeLabConfig.duLabel === 'serber-jetson' ? [
+    `ACCESS_SDR_ADDRS=${shellQuote(`serial=${ACCESS_B210_SERIAL},num_recv_frames=64,num_send_frames=64`)}`,
+    'FORCE_MCS=1',
+    'DL_MIN_MCS=10',
+    'DL_MAX_MCS=28',
+    'UL_MIN_MCS=5',
+    'UL_MAX_MCS=28',
+    'DL_BLER_TARGET_UPPER=0.65',
+    'DL_BLER_TARGET_LOWER=0.45',
+    'UL_BLER_TARGET_UPPER=0.45',
+    'UL_BLER_TARGET_LOWER=0.25',
+    'PUSCH_TARGET_SNR_X10=170',
+    'PUCCH_TARGET_SNR_X10=240',
+    'PUSCH_P0_NOMINAL=-86',
+    'PUCCH_P0_NOMINAL=-86',
+    'PRACH_DTX_THRESHOLD=180',
+    'PUCCH0_DTX_THRESHOLD=140',
+    'MAX_PDSCH_REFERENCE_SIGNAL_POWER=-20',
+  ] : [];
+  const envPrefix = [
+    'OAI_TUI_SELECTED_CONFIG=1',
+    `CU_HOST=${shellQuote(FIRECELL)}`,
+    `DU_HOST=${shellQuote(minipcHost)}`,
+    `CU_PROD_CONF=${shellQuote(CU_CONF)}`,
+    `DU_PROD_CONF=${shellQuote(DU_CONF)}`,
+    `CU_QUECTEL_CONF=${shellQuote(CU_QUECTEL_CONF)}`,
+    `DU_QUECTEL_CONF=${shellQuote(DU_QUECTEL_CONF)}`,
+    `ACCESS_ATT_TX=${shellQuote(accessAttTx)}`,
+    `ACCESS_ATT_RX=${shellQuote(accessAttRx)}`,
+    ...selectedRuntimeProfile,
+  ].join(' ');
   const res = await execLocal(`${envPrefix} bash ${shellQuote(path.join(QUECTEL_SCRIPT_DIR, '05_generate_quectel_f1_configs.sh'))}`, 40000);
   if (!res.ok) throw new Error(`Config generation script failed: ${res.combined}`);
   const firecell = await sshChecked(FIRECELL, `grep -En 'gNB_ID|gNB_DU_ID|gNB_name|tracking_area_code|physCellId|nr_cellid|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name' ${CU_QUECTEL_CONF} | head -80 || true`, 20000);
@@ -1213,20 +1355,29 @@ async function validateMonolithicDonorInService(dir) {
 }
 
 async function validateCagedPacketPlacement(dir, minipcHost, quectel) {
+  const f1Socket = await sshChecked(
+    minipcHost,
+    `ss -nape | grep -E 'sctp.*ESTAB.*${WG_DU_IP}.*${WG_CU_IP}' || true`,
+    10000
+  );
   const minipcMgmtIfaces = await discoverMgmtInterfaces(minipcHost, [quectel.iface, WG_IF]);
   const firecellMgmtIfaces = await discoverMgmtInterfaces(FIRECELL, [WG_IF]);
   const mgmtJobs = [
     ...minipcMgmtIfaces.map(iface => ({ host: minipcHost, label: 'minipc', iface })),
     ...firecellMgmtIfaces.map(iface => ({ host: FIRECELL, label: 'firecell', iface })),
   ];
-  const [wgF1c, outer, ...mgmtCaps] = await Promise.all([
-    capturePacketGate(minipcHost, WG_IF, 'sctp', 45, 30),
+  const [wgF1c, outer, ...captureResults] = await Promise.all([
+    capturePacketGate(minipcHost, WG_IF, 'sctp or icmp', 45, 30),
     capturePacketGate(minipcHost, quectel.iface, `udp port ${WG_PORT} or udp port 40016`, 25, 20),
     ...mgmtJobs.map(item => capturePacketGate(item.host, item.iface, 'sctp or udp port 2153', 12, 5)),
+    sshLoose(minipcHost, `sleep 2; ping -c 4 -W 2 ${WG_CU_IP} >/dev/null`, 20000),
+    sshLoose(FIRECELL, `sleep 2; ping -c 4 -W 2 ${WG_DU_IP} >/dev/null`, 20000),
   ]);
+  const mgmtCaps = captureResults.slice(0, mgmtJobs.length);
   const mgmtCaptures = mgmtJobs.map((item, idx) => ({ ...item, cap: mgmtCaps[idx] || '' }));
   appendEvidence(dir, 'measurements/packet-validation.txt', [
-    '=== wg F1-C ===', wgF1c,
+    '=== established F1-C socket ===', f1Socket || '<not established>',
+    '=== wg F1-C/tunnel traffic ===', wgF1c,
     '=== Quectel outer WireGuard ===', outer,
     '=== management no-F1 captures ===',
     ...mgmtCaptures.map(item => `--- ${item.label} ${item.iface} ---\n${item.cap || '<no packets>'}`),
@@ -1235,7 +1386,7 @@ async function validateCagedPacketPlacement(dir, minipcHost, quectel) {
   await showLines(wgF1c || '<no packets>');
   console.log(`\n  ${BOLD}Quectel outer UDP${RESET}`);
   await showLines(outer || '<no packets>');
-  const f1cOk = hasPacketLines(wgF1c) && /sctp/i.test(wgF1c);
+  const f1cOk = /sctp\s+ESTAB/i.test(f1Socket) && hasPacketLines(wgF1c);
   const outerOk = hasPacketLines(outer) && /udp/i.test(outer);
   const mgmtOk = mgmtCaptures.every(item => !hasPacketLines(item.cap));
   if (!f1cOk || !outerOk || !mgmtOk) throw new Error('Packet gate failed: required F1/WireGuard placement was not proven');
@@ -1418,7 +1569,12 @@ async function prepareEthernetDuConfig(minipc) {
   const defaultUlMinMcs = activeLabConfig.forceMcs ? '8' : (process.env.SPLIT_UL_MIN_MCS || '5');
   const dlMinMcs = process.env.DL_MIN_MCS || defaultDlMinMcs;
   const ulMinMcs = process.env.UL_MIN_MCS || defaultUlMinMcs;
-  const dlMaxMcs = process.env.DL_MAX_MCS || process.env.SPLIT_DL_MAX_MCS || '18';
+  // The Jetson 106-PRB access path needs the full downlink MCS range on both
+  // Ethernet and Quectel F1.  Leaving Ethernet at 18 reproduced the low
+  // throughput state even though the radio/CPU/IRQ profile matched the
+  // working Jetson configuration.
+  const defaultDlMaxMcs = activeLabConfig.duLabel === 'serber-jetson' ? '28' : '18';
+  const dlMaxMcs = process.env.DL_MAX_MCS || process.env.SPLIT_DL_MAX_MCS || defaultDlMaxMcs;
   const ulMaxMcs = process.env.UL_MAX_MCS || '28';
   for (const [name, val] of [['DL_MIN_MCS', dlMinMcs], ['UL_MIN_MCS', ulMinMcs], ['DL_MAX_MCS', dlMaxMcs], ['UL_MAX_MCS', ulMaxMcs]]) {
     const num = Number(val);
@@ -1432,6 +1588,7 @@ async function prepareEthernetDuConfig(minipc) {
   const pucchP0 = process.env.UL_PUCCH_P0_NOMINAL || '-86';
   const pucchDtx = process.env.PUCCH0_DTX_THRESHOLD || '140';
   const prachDtx = process.env.PRACH_DTX_THRESHOLD || '180';
+  const jetsonAttRx = process.env.JETSON_ATT_RX || '0';
   for (const [name, val, min, max] of [
     ['UL_PUSCH_TARGET_SNR_X10', puschTargetSnr, 0, 400],
     ['UL_PUCCH_TARGET_SNR_X10', pucchTargetSnr, 0, 400],
@@ -1439,6 +1596,7 @@ async function prepareEthernetDuConfig(minipc) {
     ['UL_PUCCH_P0_NOMINAL', pucchP0, -120, -60],
     ['PUCCH0_DTX_THRESHOLD', pucchDtx, 0, 300],
     ['PRACH_DTX_THRESHOLD', prachDtx, 0, 300],
+    ['JETSON_ATT_RX', jetsonAttRx, 0, 31],
   ]) {
     const num = Number(val);
     if (!Number.isInteger(num) || num < min || num > max) {
@@ -1473,6 +1631,9 @@ async function prepareEthernetDuConfig(minipc) {
     perlRule += ` s/(p0_nominal\\s*=\\s*)-?\\d+/\${1}${pucchP0}/;`;
     perlRule += ` s/(pucch0_dtx_threshold\\s*=\\s*)\\d+/\${1}${pucchDtx}/;`;
     perlRule += ` s/(prach_dtx_threshold\\s*=\\s*)\\d+/\${1}${prachDtx}/;`;
+    // The stock 12 dB RX attenuation caused repeated UE/RLC re-establishment
+    // on the Jetson access cell even while F1 and external-DN ping were clean.
+    perlRule += ` s/(att_rx\\s*=\\s*)\\d+/\${1}${jetsonAttRx}/;`;
   }
   // Keep DL ambitious while leaving UL more robust for control/ACK traffic.
   // The phone-side 10 Mbps plateau showed repeated PUSCH DTX when UL was
@@ -1611,8 +1772,42 @@ async function configureWifiGreBackhaul(minipc, dir) {
   return { firecell, du, iface: greName, cuInner, duInner, duOuter };
 }
 
+async function ensureQuectelWireGuardPrerequisites(duHost, dir) {
+  const duCmd = [
+    'set -euo pipefail',
+    'for tool in qmicli socat wg wg-quick tcpdump; do command -v "$tool" >/dev/null || { echo "missing_tool=$tool"; exit 40; }; done',
+    'sudo -n systemctl stop ModemManager.service 2>/dev/null || true',
+    'for module in cdc_wdm qmi_wwan wireguard; do sudo -n modprobe "$module" || { echo "missing_module=$module"; exit 41; }; done',
+    'test -e /dev/cdc-wdm0 || { echo "missing_device=/dev/cdc-wdm0"; exit 42; }',
+    `sudo -n test -s /etc/wireguard/${WG_IF}.key || { echo "missing_wireguard_key=${WG_IF}"; exit 43; }`,
+    `sudo -n test -s /etc/wireguard/${WG_IF}.conf || { echo "missing_wireguard_config=${WG_IF}"; exit 44; }`,
+    'echo "quectel_tools=ready"',
+    'echo "quectel_modules=ready"',
+    'echo "modemmanager=stopped"',
+    `echo "wireguard_identity=${WG_IF}"`,
+  ].join('\n');
+  const firecellCmd = [
+    'set -euo pipefail',
+    'for tool in wg wg-quick; do command -v "$tool" >/dev/null || { echo "missing_tool=$tool"; exit 45; }; done',
+    'sudo -n modprobe wireguard',
+    `sudo -n test -s /etc/wireguard/${WG_IF}.key || { echo "missing_wireguard_key=${WG_IF}"; exit 46; }`,
+    `sudo -n test -s /etc/wireguard/${WG_IF}.conf || { echo "missing_wireguard_config=${WG_IF}"; exit 47; }`,
+    'echo "wireguard_server=ready"',
+  ].join('\n');
+  const [du, firecell] = await Promise.all([
+    sshChecked(duHost, duCmd, 20000),
+    sshChecked(FIRECELL, firecellCmd, 20000),
+  ]);
+  const evidence = `=== ${activeLabConfig.duLabel} ===\n${du}\n\n=== serber-firecell ===\n${firecell}`;
+  appendEvidence(dir, 'system-status/quectel-wireguard-prerequisites.txt', evidence);
+  await showLines(evidence);
+  return evidence;
+}
+
 async function configureQuectelWireGuardBackhaul(minipc, dir) {
   const apn = process.env.QUECTEL_APN || await prompt('Quectel APN for selected DU', 'oai');
+  printInfo(`Checking Quectel and WireGuard prerequisites on ${activeLabConfig.duLabel}...`);
+  await ensureQuectelWireGuardPrerequisites(minipc.host, dir);
   printInfo('Starting split 5G Core before Quectel donor registration...');
   const coreStart = await sshChecked(FIRECELL, restartSplitCoreCmd(), 120000);
   appendEvidence(dir, 'logs/core-start-before-quectel.log', coreStart);
@@ -1944,6 +2139,44 @@ async function showSplitCoreHealth(dir) {
   }
 }
 
+async function checkPhoneAccessCell(dir) {
+  const cmd = [
+    'set -euo pipefail',
+    'container="$(docker ps --format "{{.Names}}" | grep -E "(^|-)amf(-|$)" | head -1)"',
+    'test -n "$container"',
+    'logs="$(docker logs --tail 3000 "$container" 2>&1)"',
+    `phone="$(printf '%s\\n' "$logs" | grep -F ${shellQuote(LAB_PHONE_IMSI_SUFFIX)} | tail -120 || true)"`,
+    `quectel="$(printf '%s\\n' "$logs" | grep -F ${shellQuote(LAB_QUECTEL_IMSI_SUFFIX)} | tail -120 || true)"`,
+    `echo "phone_suffix=${LAB_PHONE_IMSI_SUFFIX}"`,
+    'if [ -n "$phone" ]; then echo "phone_seen=1"; else echo "phone_seen=0"; fi',
+    `if printf '%s\\n' "$phone" | grep -Eiq '${ACCESS_NR_CELL_ID}|0000e014e|"tac":"?1"?'; then echo "phone_access_cell=1"; else echo "phone_access_cell=0"; fi`,
+    `if printf '%s\\n' "$phone" | grep -Eiq '${DONOR_NR_CELL_ID}|0000e17ce|"tac":"?2"?'; then echo "phone_donor_cell=1"; else echo "phone_donor_cell=0"; fi`,
+    `echo "quectel_suffix=${LAB_QUECTEL_IMSI_SUFFIX}"`,
+    'if [ -n "$quectel" ]; then echo "quectel_seen=1"; else echo "quectel_seen=0"; fi',
+    `if printf '%s\\n' "$quectel" | grep -Eiq '${DONOR_NR_CELL_ID}|0000e17ce|"tac":"?2"?'; then echo "quectel_donor_cell=1"; else echo "quectel_donor_cell=0"; fi`,
+  ].join('\n');
+  const evidence = await sshChecked(FIRECELL, cmd, 20000);
+  appendEvidence(dir, 'system-status/phone-access-cell.txt', evidence);
+  await showLines(evidence);
+  const phoneSeen = /phone_seen=1/.test(evidence);
+  const phoneAccess = /phone_access_cell=1/.test(evidence);
+  const phoneDonor = /phone_donor_cell=1/.test(evidence);
+  const quectelDonor = /quectel_donor_cell=1/.test(evidence);
+  if (phoneAccess && quectelDonor) {
+    printSuccess('Topology gate passed: phone is on the access CU/DU cell and Quectel is on the donor cell');
+    return true;
+  }
+  if (phoneDonor) {
+    printWarn('Topology gate failed: the phone selected the donor cell, so its throughput cannot be attributed to the selected access DU');
+  } else if (!phoneSeen) {
+    printWarn(`Topology gate pending: phone ending ${LAB_PHONE_IMSI_SUFFIX} was not visible in the AMF log window`);
+  } else {
+    printWarn('Topology gate pending: the phone was visible, but the expected access cell identity was not proven');
+  }
+  if (!quectelDonor) printWarn('Topology gate pending: the Quectel donor-cell identity was not proven in the AMF log window');
+  return false;
+}
+
 async function preflightSelectedDuRadio(minipc, dir) {
   const cmd = [
     'set -euo pipefail',
@@ -2218,8 +2451,12 @@ async function startEthernetRollback() {
     console.log('\n    Bring the Nothing Phone near the demo area.');
     console.log('    Confirm the phone APN/DNN is "oai".');
     console.log('    Toggle airplane mode, wait for 5G, then observe PWS/SIB8 and run throughput.');
+    if (input.isTTY) await prompt('Press Enter once the phone shows 5G and traffic is running');
     await showSplitCoreHealth(dir);
     gate.coreHealth = true;
+    if (activeLabConfig.backhaulProfile === 'quectelWg') {
+      gate.phoneAccessCell = await checkPhoneAccessCell(dir);
+    }
     appendEvidence(dir, 'measurements/gates.json', JSON.stringify(gate, null, 2));
     printSuccess(`${profile.label} CU/DU F1/RF gate passed: F1-C is on the selected path, DU radio sync is present, and no F1 leakage was seen on other paths`);
     printWarn('No phone-service PASS claimed here. Full PASS still requires phone-visible internet/user-plane evidence and fresh PWS reception or a documented reason PWS was not re-triggered.');
@@ -2700,6 +2937,7 @@ async function launchSingleCuQuectelBackhaul() {
       'ip -br link',
       'ip -4 -br addr',
       'ls -l /dev/cdc-wdm* /dev/ttyUSB* 2>/dev/null || true',
+      'if command -v tcpdump >/dev/null; then echo "tcpdump=ready"; else echo "tcpdump=missing"; fi',
       `if pgrep -x nr-softmodem >/dev/null; then echo "USRP check skipped: nr-softmodem owns the radio"; else uhd_find_devices --args serial=${ACCESS_B210_SERIAL} 2>&1 || sudo -n uhd_find_devices --args serial=${ACCESS_B210_SERIAL} 2>&1 || true; fi`,
       'pgrep -a nr-softmodem || true',
     ].join('\n'), 30000);
@@ -2707,6 +2945,8 @@ async function launchSingleCuQuectelBackhaul() {
     appendEvidence(dir, 'system-status/hardware-preflight.txt', hw);
     if (!/\/dev\/cdc-wdm|\/dev\/ttyUSB/i.test(hw)) throw new Error('Quectel control devices were not visible on minipc');
     if (!/B210|USRP check skipped/i.test(hw)) throw new Error(`B210 serial ${ACCESS_B210_SERIAL} was not visible and no running softmodem explained radio ownership`);
+    if (!/tcpdump=ready/.test(hw)) throw new Error(`${activeLabConfig.duLabel} is missing tcpdump, which is required for the F1/WireGuard packet evidence gate`);
+    await tuneSelectedDuForB210HighRate(minipc, dir);
     const imsiEvidence = [
       `configured_imsi_present=${/^[0-9]{14,16}$/.test(configuredQuectelImsi || '')}`,
     ];
@@ -2852,11 +3092,22 @@ async function launchSingleCuQuectelBackhaul() {
     if (!cuHasSctp || !cuHasGtpu) throw new Error('CU log did not show both F1 SCTP and GTP-U binding evidence on the WireGuard CU side');
     gate.cu = true;
 
-    printStep(12, 14, 'Start minipc access DU over wg-quectel-f1');
+    printStep(12, 14, `Start ${activeLabConfig.duLabel} access DU over wg-quectel-f1`);
+    const duExtraArgs = [
+      selectedDuStartExtraArgs(),
+      activeLabConfig.duLabel === 'serber-jetson' ? '' : '--continuous-tx',
+    ].filter(Boolean).join(' ');
     const duStart = await sshChecked(minipc.host, [
       `test -f ${DU_QUECTEL_CONF}`,
       stopSoftmodemByConfigCmd(DU_QUECTEL_CONF),
-      startSoftmodemCmd(`${DU_OAI}/cmake_targets/ran_build/build`, DU_QUECTEL_CONF, DU_QUECTEL_LOG, '--log_config.global_log_level info -E --continuous-tx'),
+      `: > ${DU_QUECTEL_LOG}`,
+      startSoftmodemCmd(
+        `${DU_OAI}/cmake_targets/ran_build/build`,
+        DU_QUECTEL_CONF,
+        DU_QUECTEL_LOG,
+        duExtraArgs,
+        selectedDuLauncher()
+      ),
       'pgrep -a nr-softmodem || true',
     ].join('\n'), 60000);
     const duMilestones = await waitForRemoteLogMilestones(
@@ -3372,6 +3623,7 @@ async function mainMenu() {
 }
 
 const CLI_ACTION_FLAGS = [
+  '--doctor',
   '--verify',
   '--start-ethernet',
   '--start-wifi-gre',
@@ -3394,11 +3646,12 @@ const CLI_EXACT_FLAGS = new Set([
 ]);
 
 function cliHelp() {
-  return `Usage: ./scripts/oai-lab-tui [configuration] [action]
+  return `Usage: ./oai-lab [configuration] [action]
 
 Without arguments, opens the interactive operator menu.
 
 Configuration:
+  --env=/path/to/lab.env
   --du=serber-minipc|serber-pi|serber-jetson
   --backhaul=ethernet|wifi-gre|quectel-wg
   --pi-ethernet | --pi-wifi-gre | --pi-quectel-wg
@@ -3407,6 +3660,7 @@ Configuration:
   --no-jumbo-frames  --no-clamp-mss  --force-mcs
 
 Read-only actions:
+  --doctor             Check this Mac and environment file; no lab contact
   --status             Show live host, process, and core status
   --logs               Show recent OAI logs and milestones
   --verify             Check SSH/discovery only; contacts configured lab hosts
@@ -3423,11 +3677,73 @@ for machine-side F1/RF, phone PWS, registration, PDU session, internet, and thro
 }
 
 function validateCliArgs(args) {
-  const unknown = args.filter(arg => !CLI_EXACT_FLAGS.has(arg) && !arg.startsWith('--du=') && !arg.startsWith('--backhaul='));
+  const unknown = args.filter(arg => !CLI_EXACT_FLAGS.has(arg) && !arg.startsWith('--env=') && !arg.startsWith('--du=') && !arg.startsWith('--backhaul='));
   if (unknown.length) throw new Error(`Unsupported option: ${unknown[0]}. Use --help for supported options.`);
   const actions = CLI_ACTION_FLAGS.filter(flag => args.includes(flag));
   if (actions.length > 1) throw new Error(`Choose exactly one action flag; received: ${actions.join(', ')}`);
   return actions[0] || '';
+}
+
+async function doctor() {
+  printHeader('OAI Lab Local Doctor');
+  let ok = true;
+  const nodeMajor = Number(process.versions.node.split('.')[0]);
+  if (nodeMajor >= 18) printSuccess(`Node.js ${process.versions.node}`);
+  else {
+    printError(`Node.js 18 or newer is required; found ${process.versions.node}`);
+    ok = false;
+  }
+  const sshCheck = await execLocal('command -v ssh && ssh -V', 5000);
+  if (sshCheck.ok) printSuccess(`OpenSSH available: ${sshCheck.combined.split('\n').at(-1)}`);
+  else {
+    printError('OpenSSH client not found');
+    ok = false;
+  }
+  if (ENV_FILE_LOADED) {
+    printSuccess(`Environment loaded from ${ENV_PATH}`);
+    try {
+      const mode = statSync(ENV_PATH).mode & 0o777;
+      if ((mode & 0o077) !== 0) printWarn(`Environment file permissions are ${mode.toString(8)}; run: chmod 600 ${shellQuote(ENV_PATH)}`);
+      else printSuccess(`Environment file permissions are private (${mode.toString(8)})`);
+    } catch {
+      printWarn('Could not inspect environment file permissions');
+    }
+  } else {
+    printError(`Environment file not found or unreadable: ${ENV_PATH}`);
+    printInfo('Copy your private file to conf/local/lab.env, .env, or pass --env=/path/to/lab.env');
+    ok = false;
+  }
+  try {
+    mkdirSync(STATE_ROOT, { recursive: true });
+    accessSync(STATE_ROOT, fsConstants.W_OK);
+    printSuccess(`Private run state is writable: ${STATE_ROOT}`);
+  } catch {
+    printError(`Private run state is not writable: ${STATE_ROOT}`);
+    ok = false;
+  }
+  for (const [name, value] of [
+    ['CU_HOST', FIRECELL],
+    ['DU_HOST', MINIPC],
+    ['CU_OAI_DIR', CU_OAI],
+    ['DU_OAI_DIR', DU_OAI],
+  ]) {
+    if (value) printSuccess(`${name} is configured`);
+    else {
+      printError(`${name} is empty`);
+      ok = false;
+    }
+  }
+  for (const [name, fallback] of [
+    ['MINIPC_HOST', DEFAULT_MINIPC_HOST],
+    ['PI_HOST', DEFAULT_PI_HOST],
+    ['JETSON_HOST', DEFAULT_JETSON_HOST],
+  ]) {
+    if (process.env[name]) continue;
+    printWarn(`${name} is not set; configuration switching will use the documented fallback ${fallback}`);
+  }
+  console.log(`\n  Selected configuration:\n    ${formatLabConfig()}`);
+  printInfo('No SSH connection or lab mutation was attempted.');
+  return ok;
 }
 
 async function cli() {
@@ -3509,6 +3825,12 @@ async function cli() {
     }
     process.exit(0);
   }
+  if (process.argv.includes('--doctor')) {
+    process.exit(await doctor() ? 0 : 1);
+  }
+  if (!ENV_FILE_LOADED) {
+    throw new Error(`Private environment file is required. Copy it to conf/local/lab.env, .env, or pass --env=/path/to/lab.env. Checked: ${ENV_PATH}`);
+  }
   if (process.argv.includes('--verify')) {
     console.clear();
     printHeader('OAI Lab TUI Verification');
@@ -3517,6 +3839,15 @@ async function cli() {
     printSuccess(`${activeLabConfig.duLabel}: ${minipc.host}${minipc.mgmtIface ? ` (${minipc.mgmtIface} ${minipc.mgmtIp})` : ''}`);
     process.exit(0);
   }
+  if (process.argv.includes('--status')) {
+    await statusView();
+    process.exit(0);
+  }
+  if (process.argv.includes('--logs')) {
+    await logsView();
+    process.exit(0);
+  }
+  if (!ISOLATED_TEST_MODE) acquireOperatorLock();
   if (process.argv.includes('--start-ethernet')) {
     setActiveBackhaulProfile('ethernet');
     process.exit(await startEthernetRollback() ? 0 : 1);
@@ -3542,14 +3873,6 @@ async function cli() {
     await stopAllConfigs();
     process.exit(0);
   }
-  if (process.argv.includes('--status')) {
-    await statusView();
-    process.exit(0);
-  }
-  if (process.argv.includes('--logs')) {
-    await logsView();
-    process.exit(0);
-  }
   await configureLabBeforeMenu();
   await mainMenu();
   rl.close();
@@ -3563,6 +3886,7 @@ export const tuiTestApi = {
   cliHelp,
   close: () => rl.close(),
   maskIpv4ToPrefix,
+  parseEnvFile,
   parseQmiSettings,
   parseRouteDevSrc,
   runtimeSuffixForBackhaul,

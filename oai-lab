@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+find_node() {
+  if command -v node >/dev/null 2>&1; then
+    command -v node
+    return 0
+  fi
+  for candidate in /opt/homebrew/bin/node /usr/local/bin/node; do
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+node_bin=$(find_node || true)
+if [ -z "$node_bin" ]; then
+  printf '%s\n' "Node.js 18 or newer is required to run the lab console." >&2
+  if command -v brew >/dev/null 2>&1; then
+    printf '%s\n' "Install it with: brew install node" >&2
+  else
+    printf '%s\n' "Install Node.js LTS from https://nodejs.org/ or install Homebrew first." >&2
+  fi
+  exit 127
+fi
+
+node_major=$("$node_bin" -p 'Number(process.versions.node.split(".")[0])')
+if [ "$node_major" -lt 18 ]; then
+  printf '%s\n' "Node.js 18 or newer is required; found $("$node_bin" --version)." >&2
+  exit 1
+fi
+
+exec "$node_bin" "$repo_dir/scripts/oai-lab-tui" "$@"

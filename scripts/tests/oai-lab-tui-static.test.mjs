@@ -85,7 +85,7 @@ try {
   test('help is complete and does not contact external commands', () => {
     const result = run(['--help']);
     assert.equal(result.status, 0, combined(result));
-    for (const flag of ['--du=', '--backhaul=', '--status', '--logs', '--verify', '--start-ethernet', '--rollback-caged-quectel']) {
+    for (const flag of ['--env=', '--du=', '--backhaul=', '--doctor', '--status', '--logs', '--verify', '--start-ethernet', '--rollback-caged-quectel']) {
       assert.match(result.stdout, new RegExp(flag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     }
   });
@@ -105,7 +105,7 @@ try {
 
   test('all CLI action paths dispatch through the isolated mock adapter', () => {
     for (const flag of [
-      '--verify', '--start-ethernet', '--start-wifi-gre', '--start-quectel-wg',
+      '--doctor', '--verify', '--start-ethernet', '--start-wifi-gre', '--start-quectel-wg',
       '--start-mono', '--start-caged-quectel', '--validate-caged-quectel',
       '--rollback-caged-quectel', '--status', '--logs',
     ]) {
@@ -156,6 +156,73 @@ try {
     assert.doesNotMatch(source, /printSuccess\(['"`]PASS:/);
     assert.match(source, /phone-visible PWS, registration, PDU session, internet, and throughput/);
     assert.match(source, /No phone-service PASS claimed/);
+  });
+
+  test('portable environment overrides cover hosts, paths, logs, and SSH options', () => {
+    for (const marker of [
+      'process.env.MINIPC_HOST', 'process.env.JETSON_HOST', 'process.env.CU_CN_DIR',
+      'process.env.CU_OAI_DIR', 'process.env.DU_OAI_DIR', 'process.env.CU_ETH_CONF',
+      "duPathOverride('DU_ETH_CONF'", 'process.env.MONO_OAI_DIR', 'process.env.LAB_SSH_OPTS',
+    ]) assert.ok(source.includes(marker), `missing environment override: ${marker}`);
+    assert.match(source, /process\.env\[key\] === undefined/);
+    assert.match(source, /Private environment file is required/);
+    assert.deepEqual(api.parseEnvFile([
+      'export CU_HOST=professor@cu.example',
+      'QUECTEL_APN="lab#private"',
+      'DU_HOST=professor@du.example # local note',
+    ].join('\n')), {
+      CU_HOST: 'professor@cu.example',
+      QUECTEL_APN: 'lab#private',
+      DU_HOST: 'professor@du.example',
+    });
+  });
+
+  test('Every Jetson transport keeps the validated downlink MCS ceiling', () => {
+    assert.match(source, /duLabel === 'serber-jetson' \? '28' : '18'/);
+  });
+
+  test('Jetson access radio removes the receive attenuation that caused UE churn', () => {
+    assert.match(source, /JETSON_ATT_RX \|\| '0'/);
+    assert.match(source, /s\/\(att_rx/);
+  });
+
+  test('caged Quectel generation receives the selected DU paths and Jetson RF profile', () => {
+    for (const marker of [
+      'OAI_TUI_SELECTED_CONFIG=1', 'DU_PROD_CONF=', 'DU_QUECTEL_CONF=',
+      'ACCESS_ATT_TX=', 'ACCESS_ATT_RX=', "process.env.JETSON_ATT_TX || '3'",
+      "process.env.JETSON_ATT_RX || '0'", 'num_recv_frames=64,num_send_frames=64',
+      "'DL_MAX_MCS=28'", "'UL_MIN_MCS=5'",
+    ]) assert.ok(source.includes(marker), `missing selected Quectel generator marker: ${marker}`);
+  });
+
+  test('Jetson Quectel launch applies high-rate USB tuning and pinned DU execution', () => {
+    assert.match(source, /await tuneSelectedDuForB210HighRate\(minipc, dir\)/);
+    assert.match(source, /selectedDuLauncher\(\)/);
+    assert.match(source, /selectedDuStartExtraArgs\(\)/);
+    assert.match(source, /duLabel === 'serber-jetson' \? '' : '--continuous-tx'/);
+    assert.match(source, /ping -c 4 -W 2 \$\{WG_CU_IP\}/);
+  });
+
+  test('mutating operator sessions are protected by an exclusive stale-safe lock', () => {
+    for (const marker of [
+      'OPERATOR_LOCK_DIR', 'acquireOperatorLock', 'releaseOperatorLock',
+      'Another OAI lab operator console is active', 'processIsAlive',
+    ]) assert.ok(source.includes(marker), `missing operator lock marker: ${marker}`);
+    assert.match(source, /if \(process\.argv\.includes\('--logs'\)\)[\s\S]+acquireOperatorLock\(\);[\s\S]+--start-ethernet/);
+  });
+
+  test('Quectel launch restores kernel modules and excludes ModemManager', () => {
+    assert.match(source, /ensureQuectelWireGuardPrerequisites/);
+    for (const marker of ['cdc_wdm', 'qmi_wwan', 'wireguard', 'ModemManager.service', 'qmicli', 'socat', 'tcpdump']) {
+      assert.ok(source.includes(marker), `missing Quectel prerequisite marker: ${marker}`);
+    }
+  });
+
+  test('Quectel phone throughput is guarded by donor/access cell identity', () => {
+    assert.match(source, /checkPhoneAccessCell/);
+    for (const marker of ['phone_access_cell', 'phone_donor_cell', 'quectel_donor_cell', 'throughput cannot be attributed']) {
+      assert.ok(source.includes(marker), `missing topology gate marker: ${marker}`);
+    }
   });
 
   test('isolated suite made no external-process or network contact', () => {
