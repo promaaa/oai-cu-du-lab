@@ -124,5 +124,5 @@ visible on Ethernet/WiFi.
 - `conf/quectel-f1-backhaul/wireguard-template.conf` — WireGuard config template
 - `conf/quectel-f1-backhaul/cu-quectel-f1-template.conf` — CU OAI config template
 - `conf/quectel-f1-backhaul/du-quectel-f1-template.conf` — DU OAI config template
-- `docs/QUECTEL_BACKHAUL.md` — Canonical topology, proof requirements, and current limitation
-- `docs/TROUBLESHOOTING.md` — Recovery and symptom-based diagnosis
+- `wiki/workflows.html` — Topology, transport requirements, and limitations
+- `wiki/troubleshooting.html` — Recovery and symptom-based diagnosis

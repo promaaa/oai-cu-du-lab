@@ -41,5 +41,5 @@ logs, captures, generated configs, credentials, or subscriber data into Git.
 ## Quectel helpers
 
 The scripts under `quectel-f1-backhaul/` remain diagnostic building blocks.
-The current monolithic-donor path is legacy and cannot prove the canonical
-one-CU/two-DU target. See `docs/QUECTEL_BACKHAUL.md`.
+The TUI supports the working MiniPC, Raspberry Pi, and Jetson
+Quectel/WireGuard configurations. See `wiki/workflows.html`.

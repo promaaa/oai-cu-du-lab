@@ -4,10 +4,11 @@
 <div class="page"><aside class="sidebar"><h2>Navigation</h2><ul><li><a href="index.html">Main page</a></li><li><a href="architecture.html">Architecture</a></li><li><a aria-current="page" href="commands.html">Getting started</a></li><li><a href="workflows.html">Transport modes</a></li><li><a href="validation.html">Validation</a></li><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="hardware.html">Hardware and network</a></li><li><a href="recovery.html">Recovery</a></li></ul></aside>
 <main><h1>Getting started</h1><p class="from">From OAI CU/DU Lab</p>
 <h2>Before launch</h2><ol><li>Read <a href="validation.html">current status</a>.</li><li>Obtain sole ownership of the core, CU, DU, routes, tunnels, radios, modem, and phone.</li><li>Discover the physical location and UHD visibility of B210 <code>8002816</code>.</li><li>Record the actual repository and external OAI commits.</li></ol>
-<h2>Operator interface</h2><pre><code>./scripts/oai-lab-tui
-./scripts/oai-lab-tui --help</code></pre>
+<h2>Operator interface</h2><pre><code>./oai-lab --doctor
+./oai-lab
+./oai-lab --help</code></pre>
 <p><code>--verify</code> contacts configured hosts. The local static suite does not:</p><pre><code>node scripts/tests/oai-lab-tui-static.test.mjs</code></pre>
 <h2>Evidence location</h2><p>Run records are written outside the repository:</p><pre><code>~/.local/state/oai-cu-du-lab/runs/</code></pre><p>Set <code>OAI_LAB_STATE_DIR</code> to choose another private location.</p>
 <div class="note"><strong>Note:</strong> do not copy raw logs, packet captures, credentials, subscriber data, or generated configurations into Git.</div>
-<p class="source">Canonical procedure: <a href="https://github.com/promaaa/oai-cu-du-lab/blob/main/docs/OPERATOR_GUIDE.md">docs/OPERATOR_GUIDE.md</a>.</p></main></div>
+<p class="source">Full deployment procedure: <a href="https://github.com/promaaa/oai-cu-du-lab/blob/main/README.md">README.md</a>.</p></main></div>
 <footer>OAI CU/DU Lab operator wiki</footer></body></html>

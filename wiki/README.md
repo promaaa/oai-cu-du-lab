@@ -9,6 +9,6 @@ Preview locally:
 python3 -m http.server 8000 --directory wiki
 ```
 
-The wiki is a concise view of the canonical files under `docs/`. Update those
-documents first. Never publish raw logs, captures, generated configuration,
-credentials, private keys, or subscriber data.
+The wiki is the tracked operator reference. Keep it aligned with `README.md`
+and the current TUI behavior. Never publish raw logs, captures, generated
+configuration, credentials, private keys, or subscriber data.
