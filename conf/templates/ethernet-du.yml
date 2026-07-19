@@ -18,7 +18,7 @@ du:
 radio:
   device: usrp_b210
   host_role: local_access_cell
-  serial: 8002816
+  serial: discover_live
   band: 78
   prb: 106
   scs_khz: 30

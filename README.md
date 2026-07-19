@@ -28,8 +28,7 @@ cd oai-cu-du-lab
 mkdir -p conf/local
 cp /path/to/lab.env conf/local/lab.env
 chmod 600 conf/local/lab.env
-./oai-lab --doctor
-./oai-lab --du=serber-minipc --backhaul=ethernet --verify
+./oai-lab --check-local-setup
 ./oai-lab
 ```
 
@@ -41,17 +40,15 @@ outside the repository:
 ```
 
 See [conf/lab.env.example](conf/lab.env.example) for all available settings.
+Use the [clean-clone redeployment test](REDEPLOYMENT.md) for a staged
+`oai-pc` and macOS handover rehearsal.
 
 ## Useful commands
 
 ```bash
-./oai-lab --doctor
+./oai-lab --check-local-setup
 ./oai-lab --status
 ./oai-lab --logs
-
-./oai-lab --du=serber-minipc --backhaul=ethernet --verify
-./oai-lab --du=serber-pi --backhaul=wifi-gre --verify
-./oai-lab --du=serber-jetson --backhaul=quectel-wg --verify
 
 ./oai-lab --minipc-ethernet --start-ethernet
 ./oai-lab --pi-wifi-gre --start-wifi-gre
@@ -65,7 +62,8 @@ status, logs, and clean stop/rollback actions.
 ## Notes
 
 - Obtain exclusive lab ownership before launching or stopping a scenario.
-- Confirm which host physically owns B210 serial `8002816`.
+- Confirm that the required B210 is physically connected to each radio host;
+  the TUI discovers its serial live and generates the runtime config accordingly.
 - Use MiniPC Ethernet CU/DU as the rollback configuration.
 - Do not commit the private env file, credentials, subscriber data, keys,
   generated configs, raw logs, or packet captures.

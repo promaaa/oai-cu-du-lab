@@ -3,8 +3,8 @@
 <body><header class="site-header"><div class="site-header-inner"><p class="site-title"><a href="index.html">OAI CU/DU Lab</a></p><span class="site-tagline">Operator wiki</span></div></header>
 <div class="page"><aside class="sidebar"><h2>Navigation</h2><ul><li><a href="index.html">Main page</a></li><li><a href="architecture.html">Architecture</a></li><li><a aria-current="page" href="commands.html">Getting started</a></li><li><a href="workflows.html">Transport modes</a></li><li><a href="validation.html">Validation</a></li><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="hardware.html">Hardware and network</a></li><li><a href="recovery.html">Recovery</a></li></ul></aside>
 <main><h1>Getting started</h1><p class="from">From OAI CU/DU Lab</p>
-<h2>Before launch</h2><ol><li>Read <a href="validation.html">current status</a>.</li><li>Obtain sole ownership of the core, CU, DU, routes, tunnels, radios, modem, and phone.</li><li>Discover the physical location and UHD visibility of B210 <code>8002816</code>.</li><li>Record the actual repository and external OAI commits.</li></ol>
-<h2>Operator interface</h2><pre><code>./oai-lab --doctor
+<h2>Before launch</h2><ol><li>Read <a href="validation.html">current status</a>.</li><li>Obtain sole ownership of the core, CU, DU, routes, tunnels, radios, modem, and phone.</li><li>Discover the physical location and UHD visibility of the required B210 on each selected radio host.</li><li>Record the actual repository and external OAI commits.</li></ol>
+<h2>Operator interface</h2><pre><code>./oai-lab --check-local-setup
 ./oai-lab
 ./oai-lab --help</code></pre>
 <p><code>--verify</code> contacts configured hosts. The local static suite does not:</p><pre><code>node scripts/tests/oai-lab-tui-static.test.mjs</code></pre>

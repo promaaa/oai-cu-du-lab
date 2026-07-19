@@ -5,13 +5,13 @@
 ```bash
 ./oai-lab
 ./oai-lab --help
-./oai-lab --doctor
+./oai-lab --check-local-setup
 ```
 
 The TUI selects the DU and F1 transport, performs fail-closed preflight,
 starts and stops supported scenarios, and records private runtime evidence.
-`--doctor` checks only the local Mac and private environment file. `--verify`
-contacts the configured lab hosts.
+`--check-local-setup` checks only the local operator workstation and private
+environment file. `--verify` contacts the configured lab hosts.
 
 Run the dependency-free static suite without contacting the lab:
 

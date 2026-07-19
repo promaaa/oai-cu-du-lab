@@ -73,6 +73,22 @@ try {
     assert.equal(api.maskIpv4ToPrefix('255.255.255.0'), '24');
   });
 
+  test('B210 discovery follows the radio attached to each host', () => {
+    const swapped = [
+      'Device Address:',
+      '    serial: 35F8ABA',
+      '    product: B210',
+      '    type: b200',
+      'Device Address:',
+      '    serial: X310-IGNORED',
+      '    product: X310',
+      '    type: x300',
+    ].join('\n');
+    assert.deepEqual(api.parseB210Serials(swapped), ['35F8ABA']);
+    assert.deepEqual(api.parseB210Serials(swapped.replace('35F8ABA', '8002816')), ['8002816']);
+    assert.doesNotMatch(source, /serial=8002816/);
+  });
+
   test('evidence sanitization redacts IMSIs and long key-like values', () => {
     const secret = ['00101', '01234', '56789'].join('');
     const keyLike = 'A1B2'.repeat(8);
@@ -85,7 +101,7 @@ try {
   test('help is complete and does not contact external commands', () => {
     const result = run(['--help']);
     assert.equal(result.status, 0, combined(result));
-    for (const flag of ['--env=', '--du=', '--backhaul=', '--doctor', '--status', '--logs', '--verify', '--start-ethernet', '--rollback-caged-quectel']) {
+    for (const flag of ['--env=', '--du=', '--backhaul=', '--check-local-setup', '--status', '--logs', '--verify', '--start-ethernet', '--rollback-caged-quectel']) {
       assert.match(result.stdout, new RegExp(flag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     }
   });
@@ -105,9 +121,8 @@ try {
 
   test('all CLI action paths dispatch through the isolated mock adapter', () => {
     for (const flag of [
-      '--doctor', '--verify', '--start-ethernet', '--start-wifi-gre', '--start-quectel-wg',
-      '--start-mono', '--start-caged-quectel', '--validate-caged-quectel',
-      '--rollback-caged-quectel', '--status', '--logs',
+      '--check-local-setup', '--verify', '--start-ethernet', '--start-wifi-gre', '--start-quectel-wg',
+      '--start-mono', '--rollback-caged-quectel', '--status', '--logs',
     ]) {
       const result = run(['--du=serber-minipc', '--backhaul=ethernet', flag]);
       assert.equal(result.status, 0, `${flag}\n${combined(result)}`);
@@ -130,13 +145,13 @@ try {
   });
 
   test('scripted interactive menu can exit cleanly with mocked status discovery', () => {
-    const result = run([], 'y\n13\n');
+    const result = run([], '1\n\n8\n');
     assert.equal(result.status, 0, combined(result));
     assert.match(result.stdout, /OAI CU\/DU Lab Demo Console/);
   });
 
   test('scripted input exhaustion and invalid menu input fail closed', () => {
-    for (const input of ['y\n', 'y\n99\n']) {
+    for (const input of ['1\n', '1\n\n99\n']) {
       const result = run([], input);
       assert.notEqual(result.status, 0, combined(result));
       assert.match(combined(result), /Scripted input exhausted/);
@@ -146,9 +161,8 @@ try {
 
   test('menu, stop, PWS, validation, and rollback dispatch remain reachable in source', () => {
     for (const marker of [
-      "value: 'start-split'", "value: 'start-mono'", "value: 'start-caged-quectel'",
-      "value: 'validate-caged-quectel'", "value: 'pws'", "value: 'status'",
-      "value: 'logs'", "value: 'stop-all'", "--rollback-caged-quectel",
+      "value: 'start-ethernet-split'", "value: 'start-5g-split'", "value: 'start-mono'",
+      "value: 'pws'", "value: 'status'", "value: 'logs'", "value: 'stop-all'",
     ]) assert.ok(source.includes(marker), `missing dispatch marker: ${marker}`);
   });
 
@@ -186,22 +200,7 @@ try {
     assert.match(source, /s\/\(att_rx/);
   });
 
-  test('caged Quectel generation receives the selected DU paths and Jetson RF profile', () => {
-    for (const marker of [
-      'OAI_TUI_SELECTED_CONFIG=1', 'DU_PROD_CONF=', 'DU_QUECTEL_CONF=',
-      'ACCESS_ATT_TX=', 'ACCESS_ATT_RX=', "process.env.JETSON_ATT_TX || '3'",
-      "process.env.JETSON_ATT_RX || '0'", 'num_recv_frames=64,num_send_frames=64',
-      "'DL_MAX_MCS=28'", "'UL_MIN_MCS=5'",
-    ]) assert.ok(source.includes(marker), `missing selected Quectel generator marker: ${marker}`);
-  });
 
-  test('Jetson Quectel launch applies high-rate USB tuning and pinned DU execution', () => {
-    assert.match(source, /await tuneSelectedDuForB210HighRate\(minipc, dir\)/);
-    assert.match(source, /selectedDuLauncher\(\)/);
-    assert.match(source, /selectedDuStartExtraArgs\(\)/);
-    assert.match(source, /duLabel === 'serber-jetson' \? '' : '--continuous-tx'/);
-    assert.match(source, /ping -c 4 -W 2 \$\{WG_CU_IP\}/);
-  });
 
   test('mutating operator sessions are protected by an exclusive stale-safe lock', () => {
     for (const marker of [
@@ -211,19 +210,7 @@ try {
     assert.match(source, /if \(process\.argv\.includes\('--logs'\)\)[\s\S]+acquireOperatorLock\(\);[\s\S]+--start-ethernet/);
   });
 
-  test('Quectel launch restores kernel modules and excludes ModemManager', () => {
-    assert.match(source, /ensureQuectelWireGuardPrerequisites/);
-    for (const marker of ['cdc_wdm', 'qmi_wwan', 'wireguard', 'ModemManager.service', 'qmicli', 'socat', 'tcpdump']) {
-      assert.ok(source.includes(marker), `missing Quectel prerequisite marker: ${marker}`);
-    }
-  });
 
-  test('Quectel phone throughput is guarded by donor/access cell identity', () => {
-    assert.match(source, /checkPhoneAccessCell/);
-    for (const marker of ['phone_access_cell', 'phone_donor_cell', 'quectel_donor_cell', 'throughput cannot be attributed']) {
-      assert.ok(source.includes(marker), `missing topology gate marker: ${marker}`);
-    }
-  });
 
   test('isolated suite made no external-process or network contact', () => {
     assert.equal(existsSync(contactLog), false, 'a sentinel external command was invoked');

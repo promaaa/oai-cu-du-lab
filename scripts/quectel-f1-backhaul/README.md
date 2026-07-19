@@ -11,7 +11,7 @@ RM500Q-GL + WireGuard overlay path, while preserving:
 - One OAI 5GC and one OAI CU on `serber-firecell`.
 - A monolithic firecell donor gNB on `serber-firecell` for the outside Quectel modem.
 - A minipc access DU on `serber-minipc` for the Nothing Phone.
-- USRP B210 serial `8002816` for the minipc access cell only.
+- The B210 discovered live on the selected DU host for the access cell only.
 - Management SSH connectivity on Ethernet/WiFi.
 - Clean rollback to Ethernet F1 at any time.
 
@@ -20,7 +20,7 @@ RM500Q-GL + WireGuard overlay path, while preserving:
 ```
 Nothing Phone
     |
-    | n78, minipc USRP B210 serial 8002816
+    | n78, selected-host USRP B210 discovered live
     v
 serber-minipc (access DU)
   ├─ USRP B210 → access cell only (PCI 0, TAC 1, DU ID 0xe01)
