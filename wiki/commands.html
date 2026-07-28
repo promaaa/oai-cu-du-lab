@@ -7,8 +7,17 @@
 <h2>Operator interface</h2><pre><code>./oai-lab --check-local-setup
 ./oai-lab
 ./oai-lab --help</code></pre>
-<p><code>--verify</code> contacts configured hosts. The local static suite does not:</p><pre><code>node scripts/tests/oai-lab-tui-static.test.mjs</code></pre>
+<h2>Read-only checks</h2><pre><code>./oai-lab --status
+./oai-lab --logs
+./oai-lab --minipc-ethernet --verify
+node scripts/tests/oai-lab-tui-static.test.mjs</code></pre>
+<p><code>--verify</code>, <code>--status</code>, and <code>--logs</code> contact configured hosts. <code>--check-local-setup</code> and the static suite do not.</p>
+<h2>Direct launch examples</h2><pre><code>./oai-lab --minipc-ethernet --start-ethernet
+./oai-lab --pi-wifi-gre --start-wifi-gre
+./oai-lab --jetson-quectel-wg --start-quectel-wg
+./oai-lab --start-mono</code></pre>
+<div class="warning"><strong>Mutating actions:</strong> launch, PWS update, stop, and rollback require exclusive lab ownership. Use the interactive console to stop the current configuration and check the resulting state.</div>
 <h2>Evidence location</h2><p>Run records are written outside the repository:</p><pre><code>~/.local/state/oai-cu-du-lab/runs/</code></pre><p>Set <code>OAI_LAB_STATE_DIR</code> to choose another private location.</p>
 <div class="note"><strong>Note:</strong> do not copy raw logs, packet captures, credentials, subscriber data, or generated configurations into Git.</div>
-<p class="source">Full deployment procedure: <a href="https://github.com/promaaa/oai-cu-du-lab/blob/main/README.md">README.md</a>.</p></main></div>
+<p class="source">Deployment: <a href="https://github.com/promaaa/oai-cu-du-lab/blob/main/README.md">README.md</a>. Staged handover rehearsal: <a href="https://github.com/promaaa/oai-cu-du-lab/blob/main/REDEPLOYMENT.md">clean-clone redeployment test</a>. Reconciled 2026-07-28.</p></main></div>
 <footer>OAI CU/DU Lab operator wiki</footer></body></html>
