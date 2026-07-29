@@ -1,19 +1,13 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Architecture — OAI CU/DU Lab</title><link rel="stylesheet" href="style.css"></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Architecture | OAI CU/DU Lab</title><link rel="stylesheet" href="style.css"></head>
 <body><header class="site-header"><div class="site-header-inner"><p class="site-title"><a href="index.html">OAI CU/DU Lab</a></p><span class="site-tagline">Operator wiki</span></div></header>
 <div class="page"><aside class="sidebar"><h2>Navigation</h2><ul><li><a href="index.html">Main page</a></li><li><a aria-current="page" href="architecture.html">Architecture</a></li><li><a href="commands.html">Getting started</a></li><li><a href="workflows.html">Transport modes</a></li><li><a href="validation.html">Validation</a></li><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="hardware.html">Hardware and network</a></li><li><a href="recovery.html">Recovery</a></li></ul></aside>
 <main><h1>Architecture</h1><p class="from">From OAI CU/DU Lab</p>
 <h2>Supported split</h2><p>Firecell hosts the OAI 5GC, the CU for the access DU, and a separate monolithic donor gNB. The donor cell serves only the Quectel modem. The selected MiniPC, Raspberry Pi, or Jetson access DU serves the commercial phone, with its F1 carried over the selected transport.</p>
-<pre><code>Firecell
-  ├─ OAI 5GC + CU
-  │       ↑
-  │       └─ access-DU F1 over Ethernet, Wi-Fi GRE,
-  │          or WireGuard over the Quectel data session
-  └─ monolithic donor gNB + B210
-                ↕ donor NR cell
-Selected access-DU host
-  ├─ Quectel modem → wwan0 → WireGuard (Quectel mode)
-  └─ access DU + B210 ↔ commercial phone</code></pre>
+<figure class="architecture-diagram">
+  <img src="assets/images/schema-architecture.png" width="1672" height="660" alt="OAI CU/DU lab topology: Firecell OAI 5GC and CU connect to a donor DU and B210 serving a Quectel 5G modem; the access DU in the Faraday cage connects through a second B210 to the test phone.">
+  <figcaption>Quectel wireless F1 backhaul and access-radio topology.</figcaption>
+</figure>
 <div class="warning"><strong>Unsupported path:</strong> the deprecated donor-DU-over-local-F1 experiment is not the maintained Quectel workflow. The supported donor gNB is monolithic and has no F1 association.</div>
 <h2>Monolithic reference</h2><p>The standalone Firecell core-plus-gNB mode remains the reference for checking core, RF, subscriber, PWS, and user-plane behavior independently of the split.</p>
 <h2>SIB8/PWS</h2><p>The CU handles warning content and the F1AP request. The DU schedules the resulting system information. Network logs and phone-visible warning reception are different acceptance gates.</p>

@@ -46,6 +46,10 @@ code { padding: .1rem .25rem; background: #eee; border: 1px solid #ddd; font-fam
 pre { overflow-x: auto; padding: .85rem 1rem; background: #f3f3f3; border: 1px solid #ccc; line-height: 1.4; }
 pre code { padding: 0; background: transparent; border: 0; }
 
+.architecture-diagram { width: 100%; margin: 1rem 0 1.25rem; }
+.architecture-diagram img { display: block; width: 100%; max-width: 100%; height: auto; }
+.architecture-diagram figcaption { margin-top: .35rem; color: var(--muted); font-size: .82rem; text-align: center; }
+
 table { width: 100%; margin: .8rem 0 1.2rem; border-collapse: collapse; font-size: .92rem; }
 th, td { padding: .45rem .55rem; border: 1px solid #aaa; text-align: left; vertical-align: top; }
 th { background: #e8e8e8; }
