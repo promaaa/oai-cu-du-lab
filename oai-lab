@@ -34,4 +34,4 @@ if [ "$node_major" -lt 18 ]; then
   exit 1
 fi
 
-exec "$node_bin" "$repo_dir/scripts/oai-lab-tui" "$@"
+exec "$node_bin" "$repo_dir/scripts/lib/oai-lab-console.mjs" "$@"

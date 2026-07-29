@@ -5,7 +5,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/profile-oai-config-power.sh --du=<serber-minipc|serber-pi|serber-jetson> --backhaul=<ethernet|wifi-gre|quectel-wg> [options]
 
-Launch a normal OAI CU/DU configuration through scripts/oai-lab-tui, wait for it
+Launch a normal OAI CU/DU configuration through ./oai-lab, wait for it
 to settle, then collect software-only power telemetry while the configuration is
 running.
 
@@ -13,9 +13,9 @@ Options:
   --duration=N       Power collection window in seconds (default: 120)
   --settle=N         Seconds to wait after launch before collecting (default: 30)
   --no-stop          Leave the OAI configuration running after collection
-  --force-mcs        Pass --force-mcs to scripts/oai-lab-tui
-  --no-jumbo-frames  Pass --no-jumbo-frames to scripts/oai-lab-tui
-  --no-clamp-mss     Pass --no-clamp-mss to scripts/oai-lab-tui
+  --force-mcs        Pass --force-mcs to ./oai-lab
+  --no-jumbo-frames  Pass --no-jumbo-frames to ./oai-lab
+  --no-clamp-mss     Pass --no-clamp-mss to ./oai-lab
 
 Examples:
   scripts/profile-oai-config-power.sh --du=serber-jetson --backhaul=ethernet --duration=180
@@ -108,11 +108,11 @@ STATE_ROOT="${OAI_LAB_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/oai-cu-du
 OUT_DIR="$STATE_ROOT/runs/${STAMP}_oai_power_profile"
 mkdir -p "$OUT_DIR"/{launch,power}
 
-START_CMD=("$REPO_ROOT/scripts/oai-lab-tui" "--du=$DU" "--backhaul=$BACKHAUL" "--start-$BACKHAUL")
+START_CMD=("$REPO_ROOT/oai-lab" "--du=$DU" "--backhaul=$BACKHAUL" "--start-$BACKHAUL")
 if (( ${#TUI_FLAGS[@]} > 0 )); then
   START_CMD+=("${TUI_FLAGS[@]}")
 fi
-STOP_CMD=("$REPO_ROOT/scripts/oai-lab-tui" "--du=$DU" "--backhaul=$BACKHAUL" "--rollback-caged-quectel")
+STOP_CMD=("$REPO_ROOT/oai-lab" "--du=$DU" "--backhaul=$BACKHAUL" "--rollback-caged-quectel")
 CLEANED_UP=0
 
 cleanup_after_failure() {
@@ -150,7 +150,7 @@ Duration: ${DURATION}s
 Settle: ${SETTLE}s
 Stop after collection: $STOP_AFTER
 
-This run starts the normal OAI configuration through \`scripts/oai-lab-tui\`,
+This run starts the normal OAI configuration through \`./oai-lab\`,
 waits for the configuration to settle, then collects software-only telemetry.
 The resulting watts are for the running scenario, not idle-only.
 

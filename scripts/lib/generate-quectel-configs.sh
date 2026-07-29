@@ -1,32 +1,40 @@
 #!/usr/bin/env bash
-# 05_generate_quectel_f1_configs.sh - Generate OAI CU/access-DU configs for
-# the monolithic-donor Quectel backhaul architecture.
+# Internal config generator used only by ./oai-lab.
 #
 # The firecell donor is a monolithic gNB and keeps its own generated/runtime
 # config outside this repository. This script only prepares the CU that serves
-# the minipc access DU and the minipc access DU config whose F1 path is
+# the selected access DU and its config whose F1 path is
 # wg-quectel-f1 over the Quectel PDU session.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/common.sh" ]; then
-  # shellcheck source=common.sh
-  source "$SCRIPT_DIR/common.sh"
-else
-  echo "[!] common.sh not found"
-  exit 1
+if [ "${OAI_TUI_SELECTED_CONFIG:-0}" != "1" ]; then
+  echo "[!] This is an internal helper. Use ./oai-lab instead." >&2
+  exit 2
 fi
 
-PRE_DU_HOST="${DU_HOST:-}"
-PRE_CU_HOST="${CU_HOST:-}"
-if [ "${OAI_TUI_SELECTED_CONFIG:-0}" != "1" ] && [ -f "$REPO_BASE/conf/local/lab.env" ]; then
-  # shellcheck source=conf/local/lab.env
-  set +e
-  source "$REPO_BASE/conf/local/lab.env" 2>/dev/null
-  set -e
-fi
-[ -n "$PRE_DU_HOST" ] && DU_HOST="$PRE_DU_HOST"
-[ -n "$PRE_CU_HOST" ] && CU_HOST="$PRE_CU_HOST"
+CU_HOST="${CU_HOST:?CU_HOST is required}"
+DU_HOST="${DU_HOST:?DU_HOST is required}"
+CU_PROD_CONF="${CU_PROD_CONF:?CU_PROD_CONF is required}"
+DU_PROD_CONF="${DU_PROD_CONF:?DU_PROD_CONF is required}"
+CU_QUECTEL_CONF="${CU_QUECTEL_CONF:?CU_QUECTEL_CONF is required}"
+DU_QUECTEL_CONF="${DU_QUECTEL_CONF:?DU_QUECTEL_CONF is required}"
+FIRECELL_DONOR_PROD_CONF="${FIRECELL_DONOR_PROD_CONF:-/home/serber/monolithic/openairinterface5g/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-firecell-donor-single-core-51prb.conf}"
+WG_CU_IP="${WG_CU_IP:-10.250.0.1}"
+WG_DU_IP="${WG_DU_IP:-10.250.0.2}"
+WG_IF="${WG_IF:-wg-quectel-f1}"
+
+log() {
+  printf '[*] %s\n' "$*"
+}
+
+ssh_host() {
+  local host="$1"
+  shift
+  local -a ssh_opts
+  # shellcheck disable=SC2206
+  ssh_opts=(${LAB_SSH_OPTS:--o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8})
+  ssh "${ssh_opts[@]}" "$host" "$@"
+}
 
 # Fixed caged-lab access cell. Keep these aligned with the verified Ethernet
 # access-radio baseline so stale local overrides cannot weaken the phone cell.
@@ -35,7 +43,7 @@ ACCESS_GNB_ID="${ACCESS_GNB_ID:-0xe00}"
 ACCESS_NR_CELL_ID="${ACCESS_NR_CELL_ID:-12345678}"
 ACCESS_PCI="${ACCESS_PCI:-0}"
 ACCESS_TAC="${ACCESS_TAC:-1}"
-ACCESS_B210_SERIAL="${ACCESS_B210_SERIAL:-8002816}"
+ACCESS_B210_SERIAL="${ACCESS_B210_SERIAL:?ACCESS_B210_SERIAL is required}"
 if [[ "$ACCESS_B210_SERIAL" == *"="* ]]; then ACCESS_SDR_ADDRS="${ACCESS_SDR_ADDRS:-$ACCESS_B210_SERIAL}"; else ACCESS_SDR_ADDRS="${ACCESS_SDR_ADDRS:-serial=$ACCESS_B210_SERIAL}"; fi
 ACCESS_ATT_TX="${ACCESS_ATT_TX:-3}"
 ACCESS_ATT_RX="${ACCESS_ATT_RX:-12}"
@@ -189,4 +197,4 @@ log "  selected access DU: $DU_HOST:$DU_QUECTEL_CONF"
 log "Monolithic donor gNB config remains external:"
 log "  $CU_HOST:$FIRECELL_DONOR_PROD_CONF"
 log ""
-log "Next: 05_start_core.sh, start the monolithic donor gNB, establish QMI/WireGuard, then 06_start_cu_quectel.sh and 07_start_du_quectel.sh"
+log "The generated configs are ready for the current ./oai-lab launch."

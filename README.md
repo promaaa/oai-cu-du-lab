@@ -68,5 +68,7 @@ status, logs, and clean stop/rollback actions.
 - Do not commit the private env file, credentials, subscriber data, keys,
   generated configs, raw logs, or packet captures.
 - Runtime evidence is stored under `~/.local/state/oai-cu-du-lab/runs/`.
-- Run local checks with `node scripts/tests/oai-lab-tui-static.test.mjs`.
+- `./oai-lab` is the only supported operator entry point; files under
+  `scripts/lib/` are internal implementation details.
+- Run local checks with `node scripts/tests/oai-lab-static.test.mjs`.
 - Additional operator information is available in the [wiki](wiki/index.html).

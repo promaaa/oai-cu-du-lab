@@ -10,8 +10,9 @@
 <h2>Read-only checks</h2><pre><code>./oai-lab --status
 ./oai-lab --logs
 ./oai-lab --minipc-ethernet --verify
-node scripts/tests/oai-lab-tui-static.test.mjs</code></pre>
+node scripts/tests/oai-lab-static.test.mjs</code></pre>
 <p><code>--verify</code>, <code>--status</code>, and <code>--logs</code> contact configured hosts. <code>--check-local-setup</code> and the static suite do not.</p>
+<div class="note"><strong>Single entry point:</strong> always use <code>./oai-lab</code>. Files under <code>scripts/lib/</code> are internal and must not be launched directly.</div>
 <h2>Direct launch examples</h2><pre><code>./oai-lab --minipc-ethernet --start-ethernet
 ./oai-lab --pi-wifi-gre --start-wifi-gre
 ./oai-lab --jetson-quectel-wg --start-quectel-wg

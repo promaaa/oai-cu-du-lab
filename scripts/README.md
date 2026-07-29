@@ -8,15 +8,18 @@
 ./oai-lab --check-local-setup
 ```
 
-The TUI selects the DU and F1 transport, performs fail-closed preflight,
-starts and stops supported scenarios, and records private runtime evidence.
+`./oai-lab` is the only supported operator entry point. It selects the DU and
+F1 transport, performs fail-closed preflight, starts and stops supported
+scenarios, and records private runtime evidence. Files under `scripts/lib/`
+are internal implementation details and must not be launched directly.
+
 `--check-local-setup` checks only the local operator workstation and private
 environment file. `--verify` contacts the configured lab hosts.
 
 Run the dependency-free static suite without contacting the lab:
 
 ```bash
-node scripts/tests/oai-lab-tui-static.test.mjs
+node scripts/tests/oai-lab-static.test.mjs
 ```
 
 Static tests prove CLI/menu dispatch and external-command blocking only. They
@@ -37,9 +40,3 @@ All run output is stored outside the repository at:
 
 Set `OAI_LAB_STATE_DIR` to select another private location. Do not copy raw
 logs, captures, generated configs, credentials, or subscriber data into Git.
-
-## Quectel helpers
-
-The scripts under `quectel-f1-backhaul/` remain diagnostic building blocks.
-The TUI supports the working MiniPC, Raspberry Pi, and Jetson
-Quectel/WireGuard configurations. See `wiki/workflows.html`.

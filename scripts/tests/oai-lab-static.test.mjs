@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -9,13 +9,27 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..', '..');
-const tui = path.join(repo, 'scripts', 'oai-lab-tui');
-const source = readFileSync(tui, 'utf8');
-const temp = mkdtempSync(path.join(tmpdir(), 'oai-tui-static-'));
+const consoleModule = path.join(repo, 'scripts', 'lib', 'oai-lab-console.mjs');
+const launcher = path.join(repo, 'oai-lab');
+const configGenerator = path.join(repo, 'scripts', 'lib', 'generate-quectel-configs.sh');
+const source = readFileSync(consoleModule, 'utf8');
+const launcherSource = readFileSync(launcher, 'utf8');
+const generatorSource = readFileSync(configGenerator, 'utf8');
+const temp = mkdtempSync(path.join(tmpdir(), 'oai-lab-static-'));
 const mockBin = path.join(temp, 'bin');
 const contactLog = path.join(temp, 'external-contact.log');
+const testEnv = path.join(temp, 'lab.env');
 
-await import('node:fs').then(({ mkdirSync }) => mkdirSync(mockBin));
+mkdirSync(mockBin);
+writeFileSync(testEnv, [
+  'CU_HOST=operator@192.0.2.10',
+  'DU_HOST=operator@192.0.2.20',
+  'MINIPC_HOST=operator@192.0.2.20',
+  'PI_HOST=operator@192.0.2.30',
+  'JETSON_HOST=operator@192.0.2.40',
+  'CU_OAI_DIR=/opt/oai-cu',
+  'DU_OAI_DIR=/opt/oai-du',
+].join('\n'));
 for (const name of ['ssh', 'scp', 'sudo', 'sleep', 'bash']) {
   const file = path.join(mockBin, name);
   writeFileSync(file, `#!/bin/sh\nprintf '%s\\n' '${name}' >> "$OAI_TUI_CONTACT_LOG"\nexit 99\n`);
@@ -26,11 +40,12 @@ const baseEnv = {
   ...process.env,
   OAI_TUI_ISOLATED_TEST: '1',
   OAI_TUI_CONTACT_LOG: contactLog,
+  OAI_LAB_ENV: testEnv,
   PATH: `${mockBin}:${process.env.PATH || ''}`,
 };
 
 function run(args = [], input = '') {
-  return spawnSync(process.execPath, [tui, ...args], {
+  return spawnSync(process.execPath, [consoleModule, ...args], {
     cwd: repo,
     env: baseEnv,
     input,
@@ -51,7 +66,7 @@ function test(name, fn) {
 }
 
 try {
-  const imported = await import(pathToFileURL(tui));
+  const imported = await import(pathToFileURL(consoleModule));
   const api = imported.tuiTestApi;
 
   test('DU and backhaul builders cover every supported combination', () => {
@@ -106,6 +121,13 @@ try {
     }
   });
 
+  test('the root launcher is the only public operator entry point', () => {
+    assert.match(launcherSource, /scripts\/lib\/oai-lab-console\.mjs/);
+    assert.match(generatorSource, /This is an internal helper\. Use \.\/oai-lab instead\./);
+    assert.equal(existsSync(path.join(repo, 'scripts', 'oai-lab-tui')), false);
+    assert.equal(existsSync(path.join(repo, 'scripts', 'quectel-f1-backhaul')), false);
+  });
+
   test('invalid DU, backhaul, unknown flags, and multiple actions return non-zero', () => {
     for (const args of [
       ['--du=invalid'],
@@ -133,7 +155,7 @@ try {
   });
 
   test('mocked prerequisite failure is non-zero and cannot print PASS', () => {
-    const result = spawnSync(process.execPath, [tui, '--start-quectel-wg'], {
+    const result = spawnSync(process.execPath, [consoleModule, '--start-quectel-wg'], {
       cwd: repo,
       env: { ...baseEnv, OAI_TUI_TEST_FAIL_ACTION: '1' },
       encoding: 'utf8',
@@ -200,8 +222,6 @@ try {
     assert.match(source, /s\/\(att_rx/);
   });
 
-
-
   test('mutating operator sessions are protected by an exclusive stale-safe lock', () => {
     for (const marker of [
       'OPERATOR_LOCK_DIR', 'acquireOperatorLock', 'releaseOperatorLock',
@@ -209,8 +229,6 @@ try {
     ]) assert.ok(source.includes(marker), `missing operator lock marker: ${marker}`);
     assert.match(source, /if \(process\.argv\.includes\('--logs'\)\)[\s\S]+acquireOperatorLock\(\);[\s\S]+--start-ethernet/);
   });
-
-
 
   test('isolated suite made no external-process or network contact', () => {
     assert.equal(existsSync(contactLog), false, 'a sentinel external command was invoked');

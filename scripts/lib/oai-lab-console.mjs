@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { exec } from 'child_process';
 import { createInterface } from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
@@ -10,8 +8,8 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const REPO = path.resolve(__dirname, '..');
-const QUECTEL_SCRIPT_DIR = path.join(REPO, 'scripts', 'quectel-f1-backhaul');
+const REPO = path.resolve(__dirname, '..', '..');
+const QUECTEL_CONFIG_GENERATOR = path.join(REPO, 'scripts', 'lib', 'generate-quectel-configs.sh');
 const ISOLATED_TEST_MODE = process.env.OAI_TUI_ISOLATED_TEST === '1';
 
 function requestedEnvPath() {
@@ -1319,7 +1317,7 @@ async function ensureWireGuard(minipcHost, quectel = null, options = {}) {
 
 async function prepareCagedSplitConfigs(minipcHost, accessB210Serial) {
   if (!accessB210Serial) throw new Error('Live access-DU B210 serial is required for config generation');
-  printInfo('Generating configs via 05_generate_quectel_f1_configs.sh...');
+  printInfo('Generating Quectel CU/DU runtime configs...');
   const accessAttRx = activeLabConfig.duLabel === 'serber-jetson'
     ? (process.env.JETSON_ATT_RX || '0')
     : (process.env.ACCESS_ATT_RX || '12');
@@ -1358,7 +1356,7 @@ async function prepareCagedSplitConfigs(minipcHost, accessB210Serial) {
     `ACCESS_ATT_RX=${shellQuote(accessAttRx)}`,
     ...selectedRuntimeProfile,
   ].join(' ');
-  const res = await execLocal(`${envPrefix} bash ${shellQuote(path.join(QUECTEL_SCRIPT_DIR, '05_generate_quectel_f1_configs.sh'))}`, 40000);
+  const res = await execLocal(`${envPrefix} bash ${shellQuote(QUECTEL_CONFIG_GENERATOR)}`, 40000);
   if (!res.ok) throw new Error(`Config generation script failed: ${res.combined}`);
   const firecell = await sshChecked(FIRECELL, `grep -En 'gNB_ID|gNB_DU_ID|gNB_name|tracking_area_code|physCellId|nr_cellid|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name' ${CU_QUECTEL_CONF} | head -80 || true`, 20000);
   const minipc = await sshChecked(minipcHost, `grep -En 'gNB_ID|gNB_DU_ID|tracking_area_code|physCellId|nr_cellid|sdr_addrs|att_tx|att_rx|absoluteFrequencySSB|dl_absoluteFrequencyPointA|local_s_address|remote_s_address|local_n_address|remote_n_address|local_n_if_name' ${DU_QUECTEL_CONF} | head -80 || true`, 20000);

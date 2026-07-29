@@ -86,7 +86,7 @@ configuration explicitly requires them.
 Run the dependency-free test before contacting the lab:
 
 ```bash
-node scripts/tests/oai-lab-tui-static.test.mjs
+node scripts/tests/oai-lab-static.test.mjs
 ```
 
 Then prove SSH discovery for the rollback profile:
@@ -164,7 +164,7 @@ cd "$HOME/oai-cu-du-lab-redeploy-test"
 mkdir -p conf/local
 install -m 600 conf/lab.env.example conf/local/lab.env
 ./oai-lab --check-local-setup
-node scripts/tests/oai-lab-tui-static.test.mjs
+node scripts/tests/oai-lab-static.test.mjs
 ./oai-lab --minipc-ethernet --verify
 ./oai-lab
 ```
