@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repo_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 
 find_node() {
   if command -v node >/dev/null 2>&1; then

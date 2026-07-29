@@ -36,12 +36,8 @@ oai-cn5g/
 
 # Local maintainer context
 AGENTS.md
-docs/*
-!docs/BASELINES.md
-!docs/NETWORK.md
-!docs/REPRODUCIBILITY.md
-!docs/SECURITY.md
-!docs/STATUS.md
+docs/
+patches/
 
 # OS/editor
 .DS_Store
