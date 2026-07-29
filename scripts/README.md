@@ -25,14 +25,7 @@ node scripts/tests/oai-lab-static.test.mjs
 Static tests prove CLI/menu dispatch and external-command blocking only. They
 are not radio or phone evidence.
 
-## Evidence collection
-
-```bash
-./scripts/collect-split-performance-window.sh 60
-./scripts/collect-software-power-profile.sh 60
-```
-
-All run output is stored outside the repository at:
+The TUI records its run output outside the repository at:
 
 ```text
 ~/.local/state/oai-cu-du-lab/runs/

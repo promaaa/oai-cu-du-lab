@@ -124,8 +124,13 @@ try {
   test('the root launcher is the only public operator entry point', () => {
     assert.match(launcherSource, /scripts\/lib\/oai-lab-console\.mjs/);
     assert.match(generatorSource, /This is an internal helper\. Use \.\/oai-lab instead\./);
-    assert.equal(existsSync(path.join(repo, 'scripts', 'oai-lab-tui')), false);
-    assert.equal(existsSync(path.join(repo, 'scripts', 'quectel-f1-backhaul')), false);
+    for (const obsoleteScript of [
+      'scripts/oai-lab-tui',
+      'scripts/quectel-f1-backhaul',
+      'scripts/collect-software-power-profile.sh',
+      'scripts/collect-split-performance-window.sh',
+      'scripts/profile-oai-config-power.sh',
+    ]) assert.equal(existsSync(path.join(repo, obsoleteScript)), false, `${obsoleteScript} should not exist`);
   });
 
   test('invalid DU, backhaul, unknown flags, and multiple actions return non-zero', () => {
