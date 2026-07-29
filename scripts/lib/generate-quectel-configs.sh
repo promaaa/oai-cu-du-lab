@@ -33,6 +33,8 @@ ssh_host() {
   local -a ssh_opts
   # shellcheck disable=SC2206
   ssh_opts=(${LAB_SSH_OPTS:--o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8})
+  # Arguments are intentionally expanded on the operator host before SSH.
+  # shellcheck disable=SC2029
   ssh "${ssh_opts[@]}" "$host" "$@"
 }
 

@@ -1,0 +1,62 @@
+name: Reproducibility checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repository:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up pinned Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+
+      - name: Run isolated operator tests
+        run: node scripts/tests/oai-lab-static.test.mjs
+
+      - name: Run reproducibility checks
+        run: node scripts/tests/reproducibility.test.mjs
+
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Check shell scripts
+        run: shellcheck oai-lab scripts/lib/generate-quectel-configs.sh
+
+      - name: Scan Git history for secrets
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  oai-patches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Fetch pinned OAI source
+        run: |
+          git init /tmp/openairinterface5g
+          git -C /tmp/openairinterface5g remote add origin \
+            https://gitlab.eurecom.fr/oai/openairinterface5g.git
+          git -C /tmp/openairinterface5g fetch --depth 1 origin \
+            102965a669b9444857c27843ec8ce62780bf9d37
+          git -C /tmp/openairinterface5g checkout --detach FETCH_HEAD
+
+      - name: Verify patches independently
+        run: |
+          for patch in patches/*/*.patch; do
+            git -C /tmp/openairinterface5g apply --check "$GITHUB_WORKSPACE/$patch"
+          done

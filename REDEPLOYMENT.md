@@ -67,8 +67,10 @@ git status --short --branch
 git rev-parse HEAD
 ```
 
-The repository is private. If Git requests authentication, use the approved
-GitHub credential flow; do not paste or store a token in a tracked file.
+The repository is public. A clean clone must not require GitHub credentials.
+Never add private lab material on the assumption that repository visibility
+will protect it. If Git unexpectedly requests authentication, diagnose the
+remote or network path without pasting a token into the clone.
 
 Create the ignored local configuration from the tracked template:
 
@@ -87,6 +89,7 @@ Run the dependency-free test before contacting the lab:
 
 ```bash
 node scripts/tests/oai-lab-static.test.mjs
+node scripts/tests/reproducibility.test.mjs
 ```
 
 Then prove SSH discovery for the rollback profile:
@@ -165,6 +168,7 @@ mkdir -p conf/local
 install -m 600 conf/lab.env.example conf/local/lab.env
 ./oai-lab --check-local-setup
 node scripts/tests/oai-lab-static.test.mjs
+node scripts/tests/reproducibility.test.mjs
 ./oai-lab --minipc-ethernet --verify
 ./oai-lab
 ```
