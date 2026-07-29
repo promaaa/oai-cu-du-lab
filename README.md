@@ -1,29 +1,35 @@
 # OAI CU/DU Lab
 
-Operator repository for an OpenAirInterface 5G NR CU/DU split lab with
+Operator tooling for an OpenAirInterface 5G NR CU/DU split lab with
 SIB8/Public Warning System support.
 
-`./oai-lab` runs MiniPC, Raspberry Pi, and Jetson access DUs over Ethernet,
-Wi-Fi/GRE, or Quectel/WireGuard F1. It also provides a monolithic reference,
-status and log inspection, PWS updates, and Ethernet rollback.
+## At a glance
 
-Lab results are scenario-specific. A successful machine-side launch is not a
-full PASS without fresh phone-visible PWS, registration, data, throughput, and
-rollback evidence.
+| Category | Configuration |
+|---|---|
+| Access DUs | MiniPC, Raspberry Pi, Jetson |
+| F1 transports | Ethernet, Wi-Fi/GRE, Quectel/WireGuard |
+| Access radio | USRP B210 |
+| Workflows | Split CU/DU, monolithic reference, PWS updates, validation, rollback |
+| Operator interface | `./oai-lab` |
 
-## Related repositories
+> [!NOTE]
+> A machine-side launch is not a full PASS. Each result requires fresh evidence
+> for phone-visible PWS, registration, data, throughput, and rollback.
 
-- [`promaaa/jetson-kernel-sctp`](https://github.com/promaaa/jetson-kernel-sctp)
-  provides the SCTP-enabled kernel required by the Jetson DU.
-- [`promaaa/kaust-5G-research`](https://github.com/promaaa/kaust-5G-research)
-  contains research reports, figures, and historical experiment context.
+## Companion projects
 
-This repository remains the operational source of truth. OpenAirInterface
-source is kept external and pinned for each deployment.
+| Repository | Role |
+|---|---|
+| [`promaaa/jetson-kernel-sctp`](https://github.com/promaaa/jetson-kernel-sctp) | SCTP-enabled kernel provisioning for the Jetson DU |
+| [`promaaa/kaust-5G-research`](https://github.com/promaaa/kaust-5G-research) | Research reports, figures, and historical experiment context |
+
+This repository is the operational source of truth. OpenAirInterface source
+remains external and is pinned for each deployment.
 
 ## Quick start
 
-Requires Node.js 18+, OpenSSH, lab network access, SSH keys, and a private
+Requirements: Node.js 18+, OpenSSH, lab network access, SSH keys, and a private
 `lab.env` based on [`conf/lab.env.example`](conf/lab.env.example).
 
 ```bash
@@ -36,35 +42,38 @@ install -m 600 /path/to/lab.env conf/local/lab.env
 ./oai-lab
 ```
 
-The environment file may remain outside the repository:
+To keep the environment file outside the clone:
 
 ```bash
 ./oai-lab --env=/absolute/private/path/lab.env
 ```
 
-## Common commands
+## Operator commands
+
+| Task | Command |
+|---|---|
+| Local preflight | `./oai-lab --check-local-setup` |
+| Lab connectivity | `./oai-lab --verify` |
+| Current state | `./oai-lab --status` |
+| Recent logs | `./oai-lab --logs` |
+| Interactive console | `./oai-lab` |
+
+Example non-interactive launch:
 
 ```bash
-./oai-lab --verify
-./oai-lab --status
-./oai-lab --logs
-
 ./oai-lab --minipc-ethernet --start-ethernet
-./oai-lab --pi-wifi-gre --start-wifi-gre
-./oai-lab --jetson-quectel-wg --start-quectel-wg
-./oai-lab --start-mono
 ```
 
-Run `./oai-lab --help` for all options.
+Run `./oai-lab --help` for every DU, transport, and action.
 
-## Operating rules
+## Operational safeguards
 
 - Obtain exclusive lab ownership before starting, stopping, or rolling back.
-- Confirm the required USRP B210 is connected to the selected radio host.
+- Confirm the required B210 is connected to the selected radio host.
 - Keep MiniPC Ethernet CU/DU available as the rollback baseline.
 - Never commit credentials, subscriber data, keys, generated configs, raw
   logs, or packet captures.
 - Store runtime evidence under `~/.local/state/oai-cu-du-lab/runs/`.
 
-See [REDEPLOYMENT.md](REDEPLOYMENT.md) for clean-clone setup and the
-[operator wiki](wiki/index.html) for detailed procedures.
+For detailed procedures, see the [redeployment guide](REDEPLOYMENT.md) and
+[operator wiki](wiki/index.html).
