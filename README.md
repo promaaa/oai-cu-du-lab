@@ -13,10 +13,6 @@ SIB8/Public Warning System support.
 | Workflows | Split CU/DU, monolithic reference, PWS updates, validation, rollback |
 | Operator interface | `./oai-lab` |
 
-> [!NOTE]
-> A machine-side launch is not a full PASS. Each result requires fresh evidence
-> for phone-visible PWS, registration, data, throughput, and rollback.
-
 ## Companion projects
 
 | Repository | Role |
