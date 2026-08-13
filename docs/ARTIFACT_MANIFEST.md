@@ -17,6 +17,8 @@ Last reconciled: 2026-08-13.
 | `docs/SECURITY.md` | secret and publication policy |
 | `docs/evidence/PWS-F1.md` | sanitized proof for PWS/SIB8 over F1 |
 | `docs/evidence/BENCHMARKS.md` | reconciled throughput chronology |
+| `docs/evidence/RESOURCE_PROFILE.md` | sanitized compute, thermal, and power-bound evidence |
+| `docs/prompts/PWS_REPOSITORY_STRENGTHENING.md` | agent prompt for the next standards-scoped PWS increment |
 | `conf/pws-sib8.example` | safe, test-only PWS values used by the single-segment record |
 | `patches/sib8/` | PWS/SIB8-over-F1 implementation |
 | `patches/performance/` | scheduler instrumentation and transport notes |
@@ -34,7 +36,7 @@ Last reconciled: 2026-08-13.
 | `patches/rpi-du/oai-b210-106prb-61p44msps.patch` | `67e9a432a678bffed6c412d32f310bca3e1fb4fdad5b73e45bc1230d6525c5b8` |
 
 Submission PDF SHA-256:
-`b48d94480184547294397f77a9f59acee30228d78a7548256ce244f0caed88ee`.
+`a2fb67db6e0317627f63b68de2e6fbd3b1f798b05416abd2918718d118014529`.
 
 Verify a patch before use with `shasum -a 256 <patch>`, then apply it only to
 an external checkout at the pinned OAI commit. Generated configurations, raw

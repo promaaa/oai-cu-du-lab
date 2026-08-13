@@ -32,10 +32,16 @@ remains external and is pinned for each deployment.
 - [`conf/pws-sib8.example`](conf/pws-sib8.example) provides the public,
   test-only warning profile without subscriber or infrastructure data.
 - [`docs/evidence/BENCHMARKS.md`](docs/evidence/BENCHMARKS.md) reconciles the
-  intermediate 40-44 Mb/s and final 68 Mb/s Jetson results.
+  repeated end-to-end trial campaign with the intermediate 40-44 Mb/s and
+  final 68 Mb/s Jetson results.
+- [`docs/evidence/RESOURCE_PROFILE.md`](docs/evidence/RESOURCE_PROFILE.md)
+  publishes sanitized Raspberry Pi CPU, memory, thermal, and runtime-stability
+  observations and separates them from component-based power estimates.
 - [`docs/BASELINES.md`](docs/BASELINES.md) preserves the Ethernet rollback and
-  separates the directly observed BLER-driven MCS mechanism from the
-  concurrent MSS guardrail and its causal limit.
+  records the directly observed BLER-driven MCS mechanism.
+- [`docs/prompts/PWS_REPOSITORY_STRENGTHENING.md`](docs/prompts/PWS_REPOSITORY_STRENGTHENING.md)
+  is a ready-to-use agent prompt for extending the canonical PWS artifact
+  without importing unsafe legacy material.
 - [`docs/PDFs/research-paper.tex`](docs/PDFs/research-paper.tex) is the WCNC
   Track 4 paper source; the verified six-page PDF is
   [`docs/PDFs/research-paper.pdf`](docs/PDFs/research-paper.pdf).

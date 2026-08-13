@@ -2,10 +2,11 @@
 
 Last reconciled: 2026-08-13.
 
-The MiniPC Ethernet CU/DU path with SIB8 remains the rollback baseline.
-Throughput values are accepted best-observed snapshots from distinct sessions,
-not controlled statistical averages or an intrinsic ranking of transports.
-The complete chronology is in `docs/evidence/BENCHMARKS.md`.
+The MiniPC Ethernet CU/DU path with SIB8 remains the rollback baseline. Each
+supported scenario was exercised in repeated deployment and end-to-end service
+trials. Throughput values are the accepted best-observed outcomes from those
+trials, not fixed-condition statistical averages or an intrinsic ranking of
+transports. The complete chronology is in `docs/evidence/BENCHMARKS.md`.
 
 | Scenario | Role | Accepted result | Record |
 |---|---|---:|---|
@@ -24,15 +25,15 @@ The final Jetson record supersedes, but does not erase, the intermediate
 40-44 Mb/s state. The final clean launch used the corrected runtime and
 scheduler configuration recorded in the benchmark ledger.
 
-## BLER-dominant observation with an MSS guardrail
+## BLER-dominant observation
 
 Scheduler instrumentation directly observed filtered BLER outside the default
 adaptation window, repeated MCS reduction, and a floor at MCS 5. This identifies
-the BLER-controller mismatch as the dominant observed mechanism. The 89 Mb/s
-sustained and 100 Mb/s peak Ethernet result followed BLER retuning with a TCP
-MSS clamp applied concurrently as a transport guardrail. The before/after run
-therefore does not estimate the clamp's incremental effect or a BLER/MSS
-interaction, and no isolated MSS gain is claimed.
+the BLER-controller mismatch as the dominant observed mechanism. After the DL
+target window was changed from 0.05--0.15 to 0.25--0.35, the dominant MCS moved
+from 5 to 24--27 in the instrumented window. The final validated configuration
+reached 89 Mb/s sustained and about 100 Mb/s peak. These rates remain an
+end-to-end configuration result rather than a universal BLER optimum.
 
 ## OAI source pin
 

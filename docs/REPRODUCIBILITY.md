@@ -52,12 +52,19 @@ Do not publish raw logs, packet captures, generated configurations, subscriber
 identifiers, credentials, or keys. Only reviewed conclusions belong in
 `STATUS.md`, `BASELINES.md`, or a feature patch README.
 
-The public execution summaries are `docs/evidence/PWS-F1.md` and
-`docs/evidence/BENCHMARKS.md`. They bind claims to pins, patch identities,
-acceptance gates, and rollback without publishing sensitive raw material.
+The public execution summaries are `docs/evidence/PWS-F1.md`,
+`docs/evidence/BENCHMARKS.md`, and `docs/evidence/RESOURCE_PROFILE.md`. They
+bind claims to pins, patch identities, acceptance gates, and rollback without
+publishing sensitive raw material.
 The PWS record additionally publishes the tested values, safe log
 fingerprints, RF-containment boundary, and standards features that remain out
 of scope.
+
+Operational repetition and statistical comparability are separate claims. The
+campaign repeatedly exercised supported scenarios through end-to-end gates,
+but the retained throughput values came from evolving software, hosts, and RF
+conditions. They are therefore published as best outcomes, not means or an
+intrinsic bearer ranking.
 
 ## Updating a dependency
 

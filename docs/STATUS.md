@@ -15,10 +15,16 @@ session, internet connectivity, throughput validation, clean stop, and MiniPC
 Ethernet rollback are also working. The PWS code-to-execution mapping is
 published in `docs/evidence/PWS-F1.md`.
 
-The reconciled throughput chronology, including the intermediate 40-44 Mb/s
-and final 68 Mb/s Jetson records, is published in
-`docs/evidence/BENCHMARKS.md`. These are best-observed snapshots, not
-fixed-condition repeated-run means.
+The supported scenarios were exercised in repeated end-to-end trials. The
+reconciled throughput chronology, including the intermediate 40-44 Mb/s and
+final 68 Mb/s Jetson records, is published in
+`docs/evidence/BENCHMARKS.md`. Because the software, host, and RF state evolved
+during the campaign, the retained rates are the best documented outcomes, not
+fixed-condition statistical means.
+
+Sanitized Raspberry Pi CPU, memory, temperature, and stability observations
+are published in `docs/evidence/RESOURCE_PROFILE.md`. Full-payload electrical
+power remains an engineering estimate rather than a synchronized measurement.
 
 Continue recording machine-side and phone-side gates separately for every new
 run. Physical B210 ownership and exclusive lab ownership must still be checked
