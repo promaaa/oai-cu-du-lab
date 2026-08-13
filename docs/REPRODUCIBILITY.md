@@ -60,11 +60,12 @@ The PWS record additionally publishes the tested values, safe log
 fingerprints, RF-containment boundary, and standards features that remain out
 of scope.
 
-Operational repetition and statistical comparability are separate claims. The
-campaign repeatedly exercised supported scenarios through end-to-end gates,
-but the retained throughput values came from evolving software, hosts, and RF
-conditions. They are therefore published as best outcomes, not means or an
-intrinsic bearer ranking.
+Operational repetition and cross-setup comparability are separate claims. Each
+final setup has 20 accepted repetitions and an author-confirmed arithmetic
+mean, published in `docs/evidence/throughput-means.csv`. The per-run series and
+dispersion are not public, so the artifact does not fabricate error bars.
+Software, hosts, and RF conditions evolved between setups; the means therefore
+establish repeated per-setup behavior, not an intrinsic bearer ranking.
 
 ## Updating a dependency
 

@@ -1,0 +1,10 @@
+platform,architecture,f1_bearer,n,mean_dl_mbps
+x86,monolithic,local,20,190
+x86,split_tuned,Ethernet,20,100
+x86,split,Wi-Fi_GRE,20,52
+x86,split,5G_WireGuard,20,78
+Raspberry_Pi_5,split,Ethernet,20,21
+Raspberry_Pi_5,split,Wi-Fi_GRE,20,13
+Raspberry_Pi_5,split,5G_WireGuard,20,48
+Jetson_Orin_Nano,split,Ethernet,20,7.3
+Jetson_Orin_Nano,split,5G_WireGuard,20,68

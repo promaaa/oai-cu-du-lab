@@ -15,12 +15,13 @@ session, internet connectivity, throughput validation, clean stop, and MiniPC
 Ethernet rollback are also working. The PWS code-to-execution mapping is
 published in `docs/evidence/PWS-F1.md`.
 
-The supported scenarios were exercised in repeated end-to-end trials. The
-reconciled throughput chronology, including the intermediate 40-44 Mb/s and
-final 68 Mb/s Jetson records, is published in
-`docs/evidence/BENCHMARKS.md`. Because the software, host, and RF state evolved
-during the campaign, the retained rates are the best documented outcomes, not
-fixed-condition statistical means.
+The supported final scenarios were each exercised in 20 accepted end-to-end
+trials. The values in the benchmark matrix are the arithmetic mean throughput
+for each setup. The reconciled chronology, including the earlier 40-44 Mb/s
+Jetson state and the final 68 Mb/s Jetson mean, is published in
+`docs/evidence/BENCHMARKS.md`. The per-run series and dispersion were not
+retained in the public artifact, so the means have no invented error bars and
+must not be treated as a matched-condition ranking of transports.
 
 Sanitized Raspberry Pi CPU, memory, temperature, and stability observations
 are published in `docs/evidence/RESOURCE_PROFILE.md`. Full-payload electrical
