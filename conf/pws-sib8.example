@@ -1,0 +1,6 @@
+messageIdentifier = 1112
+serialNumber = FF00
+dataCodingScheme = 48
+warningType = 0000
+text = "Hello this is a test warning message."
+mode = 0

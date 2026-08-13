@@ -18,10 +18,27 @@ SIB8/Public Warning System support.
 | Repository | Role |
 |---|---|
 | [`promaaa/jetson-kernel-sctp`](https://github.com/promaaa/jetson-kernel-sctp) | SCTP-enabled kernel provisioning for the Jetson DU |
-| [`promaaa/kaust-5G-research`](https://github.com/promaaa/kaust-5G-research) | Research reports, figures, and historical experiment context |
 
 This repository is the operational source of truth. OpenAirInterface source
 remains external and is pinned for each deployment.
+
+## Research artifact
+
+- [`docs/ARTIFACT_MANIFEST.md`](docs/ARTIFACT_MANIFEST.md) pins OAI and every
+  released patch.
+- [`docs/evidence/PWS-F1.md`](docs/evidence/PWS-F1.md) maps the PWS/SIB8 patch
+  to a sanitized CU-F1-DU-UE execution record, safe historical provenance,
+  tested values, and the exact standards scope.
+- [`conf/pws-sib8.example`](conf/pws-sib8.example) provides the public,
+  test-only warning profile without subscriber or infrastructure data.
+- [`docs/evidence/BENCHMARKS.md`](docs/evidence/BENCHMARKS.md) reconciles the
+  intermediate 40-44 Mb/s and final 68 Mb/s Jetson results.
+- [`docs/BASELINES.md`](docs/BASELINES.md) preserves the Ethernet rollback and
+  separates the directly observed BLER-driven MCS mechanism from the
+  concurrent MSS guardrail and its causal limit.
+- [`docs/PDFs/research-paper.tex`](docs/PDFs/research-paper.tex) is the WCNC
+  Track 4 paper source; the verified six-page PDF is
+  [`docs/PDFs/research-paper.pdf`](docs/PDFs/research-paper.pdf).
 
 ## Quick start
 
