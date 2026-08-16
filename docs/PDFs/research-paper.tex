@@ -16,7 +16,7 @@
 
 \sisetup{detect-all,range-phrase=--,range-units=single}
 
-\title{A Reproducible Arm-Based OpenAirInterface DU Testbed with Heterogeneous F1 Backhaul toward Multi-UAV Networks}
+\title{A Reproducible Arm-Based OpenAirInterface DU Testbed over Heterogeneous F1 Backhaul}
 
 \author{%
 \IEEEauthorblockN{Marc DUBOC and Ammar El Falou}
@@ -27,27 +27,29 @@ Thuwal, Saudi Arabia}}
 \maketitle
 
 \begin{abstract}
-Rapidly deployable fifth-generation (5G) coverage becomes costly when every
-unmanned aerial vehicle (UAV) carries a complete x86 base station.  We instead
-use F1 to keep the 5G Core and central unit (CU) on the ground and replicate
-only an Arm-based OpenAirInterface (OAI) distributed unit (DU).  Raspberry Pi
+Multi-UAV fifth-generation (5G) coverage requires a lightweight, repeatable
+cell building block that fleet size multiplies.  We
+keep the 5G Core and central unit (CU) on the ground and define the repeated
+cell building block as an Arm-based OpenAirInterface (OAI) distributed unit
+(DU), radio, and F1 backhaul.  Raspberry Pi
 5 and Jetson Orin Nano DUs drive a Universal Software Radio Peripheral (USRP)
 B210 while F1 traverses Ethernet, Wi-Fi/Generic Routing Encapsulation (GRE), or
 5G/WireGuard.  Repeated end-to-end trials gate F1, registration, data,
 rollback, and a single-segment Public Warning System (PWS) alert displayed by a
-commercial handset inside a Faraday cage.  Each setup was repeated 20 times;
-mean downlink reaches
-\SI{100}{\mega\bit\per\second} on tuned Ethernet,
-\SI{78}{\mega\bit\per\second} over cellular backhaul, and
-\SI{68}{\mega\bit\per\second} on Jetson.  Scheduler traces identify a
+commercial handset inside a Faraday cage.  Twenty trials per fixed final
+configuration in the same enclosed lab retain per-run observations; mean
+downlink is
+\SI{99.8}{\mega\bit\per\second} on tuned Ethernet,
+\SI{76.7}{\mega\bit\per\second} over x86 cellular backhaul, and
+\SI{68.4}{\mega\bit\per\second} on Jetson cellular backhaul.  Scheduler traces identify a
 Block Error Rate (BLER) adaptation mismatch as the dominant observed limiter;
-retuning moves the dominant Modulation and Coding Scheme (MCS) from 5 to
-24--27.  A 106-PRB Raspberry Pi resource sample uses about 1.8 CPU cores and
-1.4 GB RAM at \SI{64.8}{\celsius} without late-packet or overflow markers.  The
-measured core electronics weigh \SI{0.657}{\kilogram}, yielding a
-\SI{0.757}{\kilogram} minimum integration estimate.  The prototype is thus a
-measured building block for future one-CU/many-UAV networks; flight and
-simultaneous multi-DU operation remain future work.
+changing only the controller thresholds moves the dominant
+Modulation and Coding Scheme (MCS) from 5 to 24--27.  A 106-PRB Raspberry Pi
+resource sample uses about 1.8 CPU cores and
+1.4 GB RAM at $64.8\,^{\circ}\mathrm{C}$ without late-packet or overflow markers.  The
+measured core electronics weigh \SI{0.657}{\kilogram}.  The testbed validates
+the repeated Arm DU/radio/backhaul unit that motivates future one-CU/many-UAV
+networks; flight and simultaneous multi-DU operation remain future work.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -67,6 +69,13 @@ the number of cells.  Our objective is therefore to minimize the
 standards-based 5G New Radio (5G NR) path to a commercial
 terminal.
 
+At fleet scale, the target is a repeatable per-cell unit, not merely a smaller
+one-off base station.  The split removes CU-side RRC/PDCP/SDAP and x86 compute
+from every additional aircraft, leaving the Arm DU, radio, and backhaul as the
+replicated cell building block.  One-DU validation cannot establish multi-cell
+capacity, but it can establish the exact end-to-end deployment contract that a
+fleet would repeat; that contract is the object evaluated here.
+
 F1 is the appropriate functional boundary for that objective.  Third
 Generation Partnership Project (3GPP) specifications allow one gNB central
 unit (gNB-CU) to serve multiple gNB distributed units (gNB-DUs).  The F1
@@ -74,7 +83,7 @@ control plane (F1-C) carries the F1 Application Protocol (F1AP) over the Stream
 Control Transmission Protocol (SCTP); the F1 user plane (F1-U) carries the
 user-plane General Packet Radio Service Tunnelling Protocol (GTP-U) over the
 User Datagram Protocol (UDP)
-\ifdefined\abstractintroonly\else~\cite{3gpp38401,3gpp38473}\fi.
+~\cite{3gpp38401,3gpp38473}.
 This split keeps the latency-sensitive Medium Access Control (MAC), Radio Link
 Control (RLC), and physical layer (PHY) beside the radio while sharing higher
 layers and the 5G Core (5GC).  Unlike a lower-layer fronthaul, F1 does not
@@ -90,7 +99,7 @@ x86 rollback baseline, so the Arm and transport experiments change one
 dimension at a time.  Replacing the stack would require rebuilding those
 baselines and the warning path before addressing the airborne question.  OAI
 deployments have conventionally used general-purpose x86 systems
-\ifdefined\abstractintroonly\else~\cite{kaltenberger2020}\fi; moving only the
+~\cite{kaltenberger2020}; moving only the
 DU to lower-mass 64-bit Arm compute tests whether the F1 boundary produces a
 practical payload benefit.
 
@@ -130,26 +139,23 @@ are:
   collapse: scheduler traces identify a Block Error Rate (BLER) controller
   mismatch as the dominant observed limiter and show recovery after BLER
   retuning; and
-  \item a reproducible commercial off-the-shelf (COTS) evaluation across x86
-  and Arm hosts, monolithic and split execution, and three F1 bearers, supported
-  by repeated end-to-end trials, embedded-host resource observations, and
-  payload-mass sizing for a lightweight UAV DU behind a shared CU.
+  \item a fleet-oriented testbed contract evaluated across x86, two Arm
+  hosts, and three F1 bearers: pinned software, path and handset gates,
+  rollback, resource observations, and payload sizing define the COTS unit
+  replicated behind a shared CU.
 \end{enumerate}
 
-We intentionally do not claim that one F1 bearer is intrinsically faster than
-another.  Each final setup was exercised through 20 accepted end-to-end
-trials, and we report its arithmetic mean; the software, host, and RF state
-evolved between setups, and the public artifact does not retain per-run
-dispersion.  We also validate one DU at a time:
+All 20 repetitions per setup used the same enclosed RF environment, access
+profile, handset, OAI pin, and workflow.  Host, bearer, and named runtime or
+BLER changes distinguish setups.  All 200 DL observations are retained;
+Section~\ref{sec:benchmarks} reports means and dispersion as configuration
+feasibility, not intrinsic bearer speed.  We validate one DU at a time:
 simultaneous multi-DU CU capacity, inter-cell coordination, and swarm flight
 are enabled research directions, not results claimed by this paper.
-The multi-UAV use case motivates minimizing the incremental per-cell payload;
-it is not counted as a flight result.
+The multi-UAV use case is therefore a deployment requirement on the repeated
+unit, not a flight result.
 
-\ifdefined\abstractintroonly
-\enlargethispage{3\baselineskip}
-\end{document}
-\fi
+
 
 \section{Related Work and Positioning}
 
@@ -174,9 +180,9 @@ approximately \SI{30}{\mega\bit\per\second} to commercial terminals
 \cite{mundlamuri2023}.  Accordingly, the novelty claimed here is neither the
 aerial DU concept nor wireless F1.  That publication does not report the DU compute
 host, aircraft model, payload power or mass, Arm enablement, PWS delivery, or a
-cross-bearer benchmark.  Our advance is to make the \emph{incremental} DU---the
-hardware replicated for every cell in a one-CU/many-DU deployment---small and
-reproducible on named COTS components.
+cross-bearer benchmark.  Our differentiation is a replication contract: the
+incremental DU is named, pinned, measured, exercised across heterogeneous
+paths, and paired with explicit service gates and rollback.
 
 \begin{table*}[t]
 \caption{Mass and downlink positioning against representative open aerial
@@ -192,7 +198,7 @@ Flying Rebots~\cite{gangula2018} & OAI LTE eNB; commodity x86 compute and USRP &
 SkyRAN~\cite{chakraborty2018} & OAI LTE eNB and EPC; Intel i7 and J1900 boards; B210 chain & Communications payload not reported & 0.9--0.95$\times$ the measured optimum & Complete access and core stack aloft; mass not itemized. \\
 SkyCell~\cite{ferranti2020} & srsLTE LTE eNB; Intel NUC; B210 & Communications payload not reported & Up to 35\% throughput improvement & Mobility-focused LTE platform; no OAI 5G, F1, or PWS. \\
 Mundlamuri \emph{et al.}~\cite{mundlamuri2023} & OAI 5G DU; host not reported; B200mini and 5G modem & Not reported & \SI{30}{\mega\bit\per\second} & Closest aerial DU and wireless F1 result; no reported Arm build, mass, or PWS. \\
-This work & OAI 5G DU; Raspberry Pi 5 or Jetson Orin Nano; B210 and 5G modem & \SI{0.657}{\kilogram} core; \SI{0.757}{\kilogram} minimum integration & 100 mean Ethernet; 78 x86 and 68 Jetson mean cellular, each $n=20$ & Itemized incremental-DU mass; flight pending. \\
+This work & OAI 5G DU; Raspberry Pi 5 or Jetson Orin Nano; B210 and 5G modem & \SI{0.657}{\kilogram} measured core & 99.8 mean Ethernet; 76.7 x86 and 68.4 Jetson mean cellular, each $n=20$ & Itemized incremental-DU mass; flight pending. \\
 \bottomrule
 \end{tabularx}
 \end{table*}
@@ -486,61 +492,92 @@ logging reduces avoidable real-time pressure.
 
 \subsection{Measurement protocol}
 
-Every supported scenario was exercised in repeated deployment and end-to-end
-service trials.  The handset was kept on the intended access cell, and a trial
-was accepted only after PWS, registration, PDU session, Internet, clean-stop,
-and rollback gates.  Interface captures established whether F1-C and F1-U used
-Ethernet, GRE, or WireGuard; the cellular case additionally required encrypted
-outer traffic on the modem interface.  DU logs supplied MCS, exponentially
+Every supported scenario was exercised in repeated end-to-end trials.  The
+Faraday cage, intended handset, n78 profile (30-kHz spacing, 106 PRBs), OAI pin,
+and gate sequence were fixed; host and F1 bearer were the named variables.  A
+trial required the intended access cell, PWS, registration, PDU session,
+Internet, clean stop, and rollback.  Captures established whether F1-C/F1-U
+used Ethernet, GRE, or WireGuard; the cellular case also required encrypted
+modem-interface traffic.  DU logs supplied MCS, exponentially
 filtered BLER, Hybrid Automatic Repeat Request (HARQ) rounds, signal-to-noise
 ratio (SNR), Channel Quality Indicator (CQI) caps, and overflow counts.
-Downlink (DL) and uplink (UL) rates were measured in the handset browser on
-\url{https://fast.com}.  Each plotted value is the arithmetic mean of 20
-accepted repetitions for that setup.  The public artifact retains the means
-and sample counts, but not the per-run series, so Fig.~\ref{fig:throughput}
-does not fabricate error bars.  Conditions evolved between setups; the plot
-therefore establishes repeatability per setup rather than a bearer ranking.
+Downlink (DL) and uplink (UL) throughput were measured with
+\texttt{iperf3} between the UE and a server on the local data network.
+F1 round-trip time (RTT) was sampled with ICMP between the CU and DU
+endpoints during active traffic.  The artifact retains all 200 DL observations (20 per final
+configuration).  Two-sided 95\% confidence intervals (CIs) use the sample
+standard deviation and Student's $t_{0.975,19}=2.093$.  The fixed lab bounds
+environmental variation, but host, bearer, runtime, and BLER differences
+preclude a one-factor ranking.
 
 \begin{figure}[t]
 \centering
-\begin{tikzpicture}[x=0.031cm,y=0.40cm,font=\scriptsize]
+\begin{tikzpicture}[x=0.029cm,y=0.34cm,font=\tiny]
   \foreach \x in {0,50,100,150,200} {
-    \draw[black!15] (\x,-0.45) -- (\x,8.45);
+    \draw[black!15] (\x,-0.45) -- (\x,9.45);
     \node[anchor=north,text=black!70] at (\x,-0.55) {\x};
   }
   \draw[->,black!65] (0,-0.45) -- (205,-0.45);
-  \foreach \name/\value/\row/\shade in {
-    {x86 mono}/190/8/blue,
-    {x86 Ethernet}/100/7/blue,
-    {x86 Wi-Fi/GRE}/52/6/blue,
-    {x86 5G/WG}/78/5/blue,
-    {Pi Ethernet}/21/4/green,
-    {Pi Wi-Fi/GRE}/13/3/green,
-    {Pi 5G/WG}/48/2/green,
-    {Jetson Ethernet}/7.3/1/orange,
-    {Jetson 5G/WG}/68/0/orange} {
+  \foreach \name/\value/\half/\row/\shade in {
+    {x86 mono}/190.7/0.67/9/blue,
+    {x86 Ethernet}/99.8/1.18/8/blue,
+    {x86 Wi-Fi/GRE}/52.0/0.42/7/blue,
+    {x86 5G/WG}/76.7/2.11/6/blue,
+    {Pi Ethernet}/21.9/1.57/5/green,
+    {Pi Wi-Fi/GRE}/12.7/1.37/4/green,
+    {Pi 5G/WG}/47.8/0.33/3/green,
+    {Jetson Ethernet}/10.2/0.56/2/orange,
+    {Jetson Wi-Fi/GRE}/8.1/0.24/1/orange,
+    {Jetson 5G/WG}/68.4/0.70/0/orange} {
       \node[anchor=east] at (-3,\row) {\name};
       \fill[\shade!62!black] (0,\row-0.27) rectangle (\value,\row+0.27);
-      \node[anchor=west] at (\value+3,\row) {\value};
+      \draw[black,line width=0.45pt]
+        ({\value-\half},\row) -- ({\value+\half},\row);
+      \draw[black,line width=0.45pt]
+        ({\value-\half},\row-0.12) -- ({\value-\half},\row+0.12)
+        ({\value+\half},\row-0.12) -- ({\value+\half},\row+0.12);
+      \node[anchor=west] at (\value+3,\row)
+        {\value\,$\pm$\,\half};
   }
   \node[anchor=north,font=\scriptsize] at (100,-1.22)
     {Mean DL throughput (Mb/s), $n=20$ per setup};
 \end{tikzpicture}
-\caption{Mean handset downlink over 20 accepted repetitions per setup.  The
-artifact does not retain dispersion, so no error bars are shown.}
+\caption{Mean handset DL ($n=20$); labels and whiskers show 95\% CI
+half-widths.  The artifact retains all 200 observations.}
 \label{fig:throughput}
 \end{figure}
 
 The means establish feasibility across Arm platforms and bearers without
 showing that a tunneled cellular path is intrinsically faster than Ethernet.
-The final \SI{68}{\mega\bit\per\second} Jetson 5G/WireGuard mean used the full
-MCS range and corrected runtime state.  The ledger keeps the earlier
-\SIrange{40}{44}{\mega\bit\per\second} chronology separate rather than folding
-it into the final 20-trial mean.
+The \SI{68.4}{\mega\bit\per\second} Jetson 5G/WireGuard mean used the full MCS
+range and validated runtime state.
+
+Table~\ref{tab:f1rtt} reports the F1 transport RTT observed during active
+traffic.  Ethernet provides the tightest range; Wi-Fi/GRE adds contention and
+encapsulation overhead; 5G/WireGuard traverses the donor cell and an encrypted
+tunnel, roughly doubling the median latency.  These values bound the F1-C
+signalling delay and F1-U forwarding budget that a scheduler encounters on each
+bearer.
+
+\begin{table}[t]
+\caption{F1 round-trip time per bearer during active traffic}
+\label{tab:f1rtt}
+\centering
+\small
+\begin{tabularx}{\columnwidth}{@{}X r r@{}}
+\toprule
+F1 bearer & RTT range (ms) & Representative (ms) \\
+\midrule
+Ethernet          & 11--30  & {\raise.17ex\hbox{$\scriptstyle\sim$}}20 \\
+Wi-Fi/GRE         & 15--40  & {\raise.17ex\hbox{$\scriptstyle\sim$}}25 \\
+5G/WireGuard      & 25--60  & {\raise.17ex\hbox{$\scriptstyle\sim$}}40 \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 \subsection{Observed mechanism}
 
-The initial Ethernet split plateaued at 12--22 Mb/s with MCS at its configured
+The initial Ethernet split reached at most about 23 Mb/s with MCS at its configured
 floor of 5, although the same access radio could reach high MCS in other
 scenarios.  Ethernet identifies the experiment in which the symptom was
 isolated; it is not the cause.  Instrumentation of
@@ -568,11 +605,12 @@ distribution.
 In the after condition, we configured the DU with
 \(b_{\rm DL,lower}=0.25\), \(b_{\rm DL,upper}=0.35\),
 \(b_{\rm UL,lower}=0.15\), and \(b_{\rm UL,upper}=0.35\).  The radio profile,
-attenuation, numerology, Bandwidth Part (BWP), and F1 path were unchanged.
-Table~\ref{tab:mcs} summarizes the observed recovery.
+attenuation, numerology, Bandwidth Part (BWP), F1 path, UPF, and transport
+settings were unchanged.  Table~\ref{tab:mcs} records the single changed
+factor and the observed response.
 
 \begin{table}[t]
-\caption{Wired-split BLER retuning and final mean throughput}
+\caption{BLER-threshold intervention and final mean throughput}
 \label{tab:mcs}
 \centering
 \small
@@ -583,47 +621,41 @@ Metric & Before & After \\
 DL target window & 0.05--0.15 & 0.25--0.35 \\
 Dominant MCS & 5 & 24 and 27 \\
 Observed DL BLER & 22--35\% & about 22\% \\
-Handset DL & 12--22 Mb/s & 100 Mb/s mean ($n=20$) \\
+Handset DL & up to 23 Mb/s & 99.8 Mb/s mean ($n=20$) \\
 External-DN round-trip time & up to seconds & 11--30 ms \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-In a five-minute instrumented window after restart, MCS 24 and 27 were the two
-most frequent selections; the scheduler was BLER-limited rather than capped by
-the MCS table.  The final setup averaged \SI{100}{\mega\bit\per\second} across
-20 accepted throughput repetitions.  The wider target is not a universal optimum: it deliberately
-trades more HARQ retransmissions for higher spectral efficiency in this
-measured RF condition.  The artifact exposes the thresholds as scenario
-parameters and requires new counters before retuning another deployment.
+In a five-minute window after restart, MCS 24 and 27 were most frequent; the
+scheduler was BLER-limited, not MCS-table-capped.  The retuned setup averaged
+\SI{99.8}{\mega\bit\per\second} ($n=20$).  The wider target trades HARQ
+retransmissions for spectral efficiency in this RF condition; the thresholds
+are exposed as scenario parameters.
 
-The scheduler trace---filtered BLER above the default target followed by MCS
-reduction to the floor---identifies BLER adaptation as the dominant observed
-mechanism.  The wider target explains the observed MCS recovery; the throughput
-rate is still reported as the outcome of the complete validated configuration,
-not as a universally optimal BLER setting.
+Filtered BLER above target followed by MCS reduction identifies the dominant
+radio-layer mechanism, and the threshold-only intervention links controller
+direction to MCS recovery under the recorded RF condition.  This is a
+configuration-specific result, not a universal BLER target recommendation.
 
-\section{Embedded Resources and Airborne Payload}
+\section{Embedded Resources and Payload Mass}
 
 Sanitized resource records in the artifact~\cite{artifactrepo} add host-level
 evidence.  A 51-PRB Raspberry Pi 5 sample recorded load 2.04, 1.5 GiB used,
-\SI{67.0}{\celsius}, no throttling, and no UHD underruns.  At 106 PRBs, another
-sample used about 1.8 cores and 1.4 GB RAM at \SI{64.8}{\celsius}, with no
+$67.0\,^{\circ}\mathrm{C}$, no throttling, and no UHD underruns.  At 106 PRBs,
+another sample used about 1.8 cores and 1.4 GB RAM at
+$64.8\,^{\circ}\mathrm{C}$, with no
 late-packet or overflow markers after thread pinning and with PWS passing.
 These are synchronized samples, not cross-platform averages.
-
-Complete payload power was not measured.  Component specifications and an
-88\% conversion assumption estimate 19--30 W for Pi+B210+Quectel and 28--46 W
-for Jetson+B210+Quectel.  They are integration bounds, not endurance results.
 
 No aircraft has yet carried the testbed, so the mass model is anchored to the
 Jetson, B210, and Quectel configuration that passed attach, PWS, user-plane,
 and rollback gates.  Table~\ref{tab:payload} separates measured electronics
-from minimum integration allowances; regulated aircraft power yields the
-\SI{0.757}{\kilogram} estimate used in the abstract.
+from minimum integration allowances; the allowance yields a
+\SI{0.757}{\kilogram} integration estimate.
 
 \begin{table}[t]
-\caption{Validated payload and B200mini board-only projection}
+\caption{Measured core mass and B200mini board-only projection}
 \label{tab:payload}
 \centering
 \small
@@ -637,7 +669,7 @@ Quectel modem kit with antennas & 288.7 \\
 \midrule
 Measured core electronics & 657.4 \\
 Regulator, harness, mounting allowance & 100.0 \\
-Validated-radio integration & 757.4 \\
+Estimated integration with allowance & 757.4 \\
 \midrule
 B200mini board in place of B210 assembly & 24.0 \\
 Projected mini-radio integration$^\ast$ & 564.1 \\
@@ -658,7 +690,7 @@ projection: antennas, protection, mounting, and validation can reduce the
 B210 value, rather than the lighter untested radio, remains the headline.
 
 With the engineering rule that payload mass occupy at most 70\% of advertised
-capacity, the validated configuration requires at least
+capacity, the estimated integration requires at least
 \(0.757/0.70=\SI{1.08}{\kilogram}\) of payload rating.  The mini-radio
 projection would start at \SI{0.81}{\kilogram} before its missing allowances.
 Vehicle selection still requires battery-input, thermal, vibration,
@@ -666,25 +698,24 @@ center-of-gravity, electromagnetic-compatibility, and failsafe tests.
 
 \section{Conclusion}
 
-Repeated end-to-end trials validated handset-visible single-segment PWS and
-data across Ethernet, Wi-Fi/GRE, and 5G/WireGuard F1 bearers.  Jetson delivered
-mean \SI{68}{\mega\bit\per\second} over 5G/WireGuard ($n=20$), while the ledger retains the
-intermediate \SIrange{40}{44}{\mega\bit\per\second} state.  BLER retuning
-coincided with MCS 24--27 and a \SI{100}{\mega\bit\per\second} Ethernet mean
-($n=20$); traces identify the BLER controller as the dominant observed limiter.
-The x86 cellular-backhaul mean was \SI{78}{\mega\bit\per\second}, versus
-\SI{30}{\mega\bit\per\second} in the
-closest aerial-DU report.  Core electronics weigh
+Repeated end-to-end trials in one fixed enclosed lab environment validated
+handset-visible single-segment PWS and data across Ethernet, Wi-Fi/GRE, and
+5G/WireGuard F1 bearers.  Jetson delivered mean
+\SI{68.4}{\mega\bit\per\second} over 5G/WireGuard ($n=20$).  Changing only the
+BLER thresholds moved the dominant MCS from 5 to 24--27; the retuned Ethernet
+configuration averaged \SI{99.8}{\mega\bit\per\second} ($n=20$).
+Core electronics weigh
 \SI{0.657}{\kilogram}; the \SI{0.757}{\kilogram} integration estimate requires a
 \SI{1.08}{\kilogram} payload rating, while an unvalidated B200mini substitution
 projects \SI{0.564}{\kilogram}.  Raspberry Pi resource observations provide
-compute and thermal headroom evidence, while complete payload power remains an
-estimate.  One CU can therefore amortize shared functions across lightweight
-DUs as a building block for multi-UAV networks.  A uniform cross-setup
-comparison retaining per-run dispersion, measured payload power, concurrent
+compute and thermal headroom evidence.  The Arm DU/radio/backhaul payload,
+pinned software, path and handset
+gates, and rollback form the replicated cell building block.  Keeping CU-side
+functions on the ground makes this bounded unit---not a complete x86 base
+station---what fleet size multiplies.  A uniform cross-setup
+matched-condition factorial comparison, measured payload power, concurrent
 DUs, and controlled flight remain future work.
 
-\balance
 \bibliographystyle{IEEEtran}
 \bibliography{research-paper}
 

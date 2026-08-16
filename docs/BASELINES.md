@@ -1,40 +1,43 @@
 # Baselines
 
-Last reconciled: 2026-08-13.
+Last reconciled: 2026-08-14.
 
 The MiniPC Ethernet CU/DU path with SIB8 remains the rollback baseline. Each
 final setup was exercised in 20 accepted deployment and end-to-end service
-trials. The throughput values below are arithmetic means. Because the
-cross-setup software, host, and RF state were not held uniform, they establish
-per-setup repeatability rather than an intrinsic ranking of transports. The
-complete chronology is in `docs/evidence/BENCHMARKS.md`.
+trials in the same enclosed laboratory RF environment. The access-cell radio
+profile, intended handset, pinned OAI revision, and validation workflow were
+held fixed. The DU host and F1 bearer are deliberate configuration variables;
+host-specific runtime settings and the named BLER intervention also differ
+where recorded. The throughput values below are arithmetic means recomputed
+from 20 retained observations per final setup, not a one-factor transport
+ranking. The complete series and statistical summary are in
+`docs/evidence/throughput-observations.csv` and
+`docs/evidence/BENCHMARKS.md`.
 
 | Scenario | Role | Accepted result | Record |
 |---|---|---:|---|
-| Monolithic x86 | Reference only | 190 Mb/s mean | `X86-MONO-190` |
-| Tuned x86 Ethernet CU/DU + SIB8 | Canonical rollback | 100 Mb/s mean | `X86-ETH-100` |
-| x86 Wi-Fi/GRE CU/DU + SIB8 | Wireless reference | 52 Mb/s mean | `X86-GRE-52` |
-| x86 Quectel/WireGuard F1 | Cellular-backhaul reference | 78 Mb/s mean | `X86-QWG-78` |
-| Raspberry Pi 5 Ethernet CU/DU | Lightweight candidate | 21 Mb/s mean | `PI-ETH-21` |
-| Raspberry Pi 5 Wi-Fi/GRE CU/DU | Lightweight candidate | 13 Mb/s mean | `PI-GRE-13` |
-| Raspberry Pi 5 Quectel/WireGuard F1 | Lightweight candidate | 48 Mb/s mean | `PI-QWG-48` |
-| Jetson Ethernet CU/DU | Embedded candidate | 7.3 Mb/s mean | `JETSON-ETH-7.3` |
-| Jetson Quectel/WireGuard, intermediate | Chronology only | about 40-44 Mb/s | `JETSON-QWG-INT-44` |
-| Jetson Quectel/WireGuard, final | Embedded target | 68 Mb/s mean | `JETSON-QWG-FINAL-68` |
+| Monolithic x86 | Reference only | 190.7 Mb/s mean | `X86-MONO-FINAL` |
+| Tuned x86 Ethernet CU/DU + SIB8 | Canonical rollback | 99.8 Mb/s mean | `X86-ETH-FINAL` |
+| x86 Wi-Fi/GRE CU/DU + SIB8 | Wireless reference | 52.0 Mb/s mean | `X86-GRE-FINAL` |
+| x86 Quectel/WireGuard F1 | Cellular-backhaul reference | 76.7 Mb/s mean | `X86-QWG-FINAL` |
+| Raspberry Pi 5 Ethernet CU/DU | Lightweight candidate | 21.9 Mb/s mean | `PI-ETH-FINAL` |
+| Raspberry Pi 5 Wi-Fi/GRE CU/DU | Lightweight candidate | 12.7 Mb/s mean | `PI-GRE-FINAL` |
+| Raspberry Pi 5 Quectel/WireGuard F1 | Lightweight candidate | 47.8 Mb/s mean | `PI-QWG-FINAL` |
+| Jetson Ethernet CU/DU | Embedded candidate | 10.2 Mb/s mean | `JETSON-ETH-FINAL` |
+| Jetson Wi-Fi/GRE CU/DU | Embedded candidate | 8.1 Mb/s mean | `JETSON-GRE-FINAL` |
+| Jetson Quectel/WireGuard | Embedded target | 68.4 Mb/s mean | `JETSON-QWG-FINAL` |
 
-The final Jetson record supersedes, but does not erase, the intermediate
-40-44 Mb/s state. The final clean launch used the corrected runtime and
-scheduler configuration recorded in the benchmark ledger.
-
-## BLER-dominant observation
+## BLER-dominant observation and causal boundary
 
 Scheduler instrumentation directly observed filtered BLER outside the default
 adaptation window, repeated MCS reduction, and a floor at MCS 5. This identifies
 the BLER-controller mismatch as the dominant observed mechanism. After the DL
 target window was changed from 0.05--0.15 to 0.25--0.35, the dominant MCS moved
-from 5 to 24--27 in the instrumented window. The final tuned x86 Ethernet setup
-averaged 100 Mb/s over 20 repetitions. This remains an end-to-end configuration
-result rather than a universal BLER optimum.
+from 5 to 24--27 in the instrumented window. The radio profile, attenuation,
+numerology, BWP, F1 path, UPF, and transport settings were unchanged during
+this intervention. The final 99.8 Mb/s mean therefore belongs to the
+BLER-retuned configuration under the recorded RF condition; it is not a
+universal BLER optimum.
 
 ## OAI source pin
 

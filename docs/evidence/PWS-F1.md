@@ -95,7 +95,7 @@ or substitutes for this canonical record:
 | [`promaaa/cu-du-5g-backhauling/README.md`](https://github.com/promaaa/cu-du-5g-backhauling/blob/11050ab74514a8ad26a3c9c62c53b0566a71b51e/README.md) | `11050ab74514a8ad26a3c9c62c53b0566a71b51e` | Earlier Quectel/WireGuard F1 gate with PWS, access-cell registration, and handset Internet |
 
 The legacy Quectel record reported about 5.5 Mb/s and is retained only as an
-early functional milestone. It is not the final 78 Mb/s x86 or 68 Mb/s Jetson
+early functional milestone. It is not the final 76.7 Mb/s x86 or 68.4 Mb/s Jetson
 benchmark reported in `docs/evidence/BENCHMARKS.md`.
 
 The historical repositories are not cited by the paper and must not be cloned

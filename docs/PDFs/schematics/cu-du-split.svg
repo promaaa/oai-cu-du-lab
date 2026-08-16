@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 240" width="100%" height="100%">
+  <defs>
+    <style>
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: bold; fill: #176B87; }
+      .label { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; font-weight: 600; fill: #2C3E50; }
+      .sublabel { font-family: system-ui, -apple-system, sans-serif; font-size: 10px; fill: #666666; }
+      .link-text { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; font-weight: bold; fill: #176B87; }
+      .badge { font-family: system-ui, -apple-system, sans-serif; font-size: 10px; font-weight: bold; fill: #FFFFFF; }
+      .box-host { fill: #EDF6F8; stroke: #176B87; stroke-width: 1.5; stroke-dasharray: 4,4; rx: 8px; }
+      .box-du-host { fill: #F4F6F7; stroke: #7F8C8D; stroke-width: 1.5; stroke-dasharray: 4,4; rx: 8px; }
+      .box-core { fill: #176B87; stroke: #0E4658; stroke-width: 1.5; rx: 6px; }
+      .box-cu { fill: #2980B9; stroke: #1B4F72; stroke-width: 1.5; rx: 6px; }
+      .box-du { fill: #8E44AD; stroke: #512E5F; stroke-width: 1.5; rx: 6px; }
+      .box-radio { fill: #FFF3E0; stroke: #E67E22; stroke-width: 1.5; rx: 6px; }
+      .box-ue { fill: #EAF6EE; stroke: #27AE60; stroke-width: 1.5; rx: 6px; }
+      .line-f1 { stroke: #2980B9; stroke-width: 2.5; }
+      .line-rf { stroke: #E67E22; stroke-width: 2; stroke-dasharray: 5,3; }
+      .line-bus { stroke: #176B87; stroke-width: 2; }
+    </style>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#2980B9" />
+    </marker>
+    <marker id="arrow-blue-rev" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto">
+      <path d="M8,0 L0,4 L8,8 Z" fill="#2980B9" />
+    </marker>
+    <marker id="arrow-orange" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#E67E22" />
+    </marker>
+    <marker id="arrow-orange-rev" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto">
+      <path d="M8,0 L0,4 L8,8 Z" fill="#E67E22" />
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.1" />
+    </filter>
+  </defs>
+
+  <!-- Firecell Host Box -->
+  <rect x="15" y="25" width="255" height="190" class="box-host" />
+  <text x="25" y="45" class="title">Firecell Host (CU Side)</text>
+
+  <g filter="url(#shadow)">
+    <rect x="30" y="60" width="105" height="135" class="box-core" />
+    <text x="82" y="120" class="label" fill="#FFFFFF" text-anchor="middle">OAI 5GC</text>
+    <text x="82" y="140" class="sublabel" fill="#D0E8F0" text-anchor="middle">AMF / SMF / UPF</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="150" y="60" width="105" height="135" class="box-cu" />
+    <text x="202" y="115" class="label" fill="#FFFFFF" text-anchor="middle">OAI CU</text>
+    <text x="202" y="135" class="sublabel" fill="#E1F5FE" text-anchor="middle">F1AP &amp; GTP-U</text>
+    <rect x="162" y="165" width="80" height="18" rx="3" fill="#1B4F72" />
+    <text x="202" y="178" class="badge" text-anchor="middle">CENTRAL UNIT</text>
+  </g>
+
+  <!-- F1 Network Path -->
+  <path d="M255 127 L385 127" class="line-f1" marker-start="url(#arrow-blue-rev)" marker-end="url(#arrow-blue)" />
+  <rect x="270" y="90" width="100" height="32" rx="4" fill="#E1F5FE" stroke="#2980B9" stroke-width="1" />
+  <text x="320" y="105" class="link-text" text-anchor="middle">F1-C (SCTP)</text>
+  <text x="320" y="117" class="link-text" text-anchor="middle">F1-U (GTP-U)</text>
+  <text x="320" y="145" class="sublabel" text-anchor="middle">Ethernet / Wi-Fi GRE</text>
+
+  <!-- Access DU Host Box -->
+  <rect x="385" y="25" width="265" height="190" class="box-du-host" />
+  <text x="395" y="45" class="title" fill="#512E5F">Access DU Host (MiniPC / Pi / Jetson)</text>
+
+  <g filter="url(#shadow)">
+    <rect x="400" y="60" width="105" height="135" class="box-du" />
+    <text x="452" y="115" class="label" fill="#FFFFFF" text-anchor="middle">OAI DU</text>
+    <text x="452" y="135" class="sublabel" fill="#F3E5F5" text-anchor="middle">RLC / MAC / PHY</text>
+    <rect x="412" y="165" width="80" height="18" rx="3" fill="#512E5F" />
+    <text x="452" y="178" class="badge" text-anchor="middle">DISTRIBUTED UNIT</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="520" y="60" width="115" height="135" class="box-radio" />
+    <text x="577" y="115" class="label" fill="#D35400" text-anchor="middle">USRP B210</text>
+    <text x="577" y="135" class="sublabel" fill="#E67E22" text-anchor="middle">Access Radio</text>
+    <rect x="537" y="165" width="80" height="18" rx="3" fill="#E67E22" />
+    <text x="577" y="178" class="badge" text-anchor="middle">ACCESS RF</text>
+  </g>
+
+  <!-- RF Air Link -->
+  <path d="M650 127 L695 127" class="line-rf" marker-start="url(#arrow-orange-rev)" marker-end="url(#arrow-orange)" />
+  <text x="672" y="115" class="link-text" fill="#D35400" text-anchor="middle">n78</text>
+
+  <!-- Phone Box -->
+  <g filter="url(#shadow)">
+    <rect x="695" y="60" width="95" height="135" class="box-ue" />
+    <text x="742" y="115" class="label" fill="#27AE60" text-anchor="middle">Phone</text>
+    <text x="742" y="135" class="sublabel" fill="#27AE60" text-anchor="middle">5G UE</text>
+  </g>
+</svg>

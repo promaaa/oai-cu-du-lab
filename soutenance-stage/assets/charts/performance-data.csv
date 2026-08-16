@@ -1,0 +1,6 @@
+configuration,platform,f1_transport,throughput_mbps,metric_type,source_status
+Split tuned,x86,Ethernet,89,sustained,validated snapshot
+Split tuned,x86,Ethernet,100,peak,validated snapshot
+Split,x86,Wi-Fi/GRE,52,maximum,validated snapshot
+Split,Raspberry Pi 5,5G/WireGuard,48,maximum,validated snapshot
+Split,Jetson Orin Nano,5G/WireGuard,68,maximum,validated final run

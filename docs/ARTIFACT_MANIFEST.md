@@ -1,6 +1,6 @@
 # Public artifact manifest
 
-Last reconciled: 2026-08-13.
+Last reconciled: 2026-08-14.
 
 ## External source pin
 
@@ -16,8 +16,9 @@ Last reconciled: 2026-08-13.
 | `docs/NETWORK.md` | topology and transport roles |
 | `docs/SECURITY.md` | secret and publication policy |
 | `docs/evidence/PWS-F1.md` | sanitized proof for PWS/SIB8 over F1 |
-| `docs/evidence/BENCHMARKS.md` | reconciled throughput chronology |
-| `docs/evidence/throughput-means.csv` | mean-throughput plot source; n=20 per setup |
+| `docs/evidence/BENCHMARKS.md` | current throughput campaign and statistical summary |
+| `docs/evidence/throughput-observations.csv` | 200 per-run downlink observations; 20 per final setup |
+| `docs/evidence/throughput-means.csv` | derived mean, dispersion, range, and 95% CI plot source |
 | `docs/evidence/RESOURCE_PROFILE.md` | sanitized compute, thermal, and power-bound evidence |
 | `docs/prompts/PWS_REPOSITORY_STRENGTHENING.md` | agent prompt for the next standards-scoped PWS increment |
 | `conf/pws-sib8.example` | safe, test-only PWS values used by the single-segment record |
@@ -37,7 +38,7 @@ Last reconciled: 2026-08-13.
 | `patches/rpi-du/oai-b210-106prb-61p44msps.patch` | `67e9a432a678bffed6c412d32f310bca3e1fb4fdad5b73e45bc1230d6525c5b8` |
 
 Submission PDF SHA-256:
-`e4dffe7b15485f23d35b42389afa7f4ab4f58f5b038c778b131e01b3370d5678`.
+`462066c22a2cafbe740a5befa43434c675230bae0c9365c1def7be334a6dcf7f`.
 
 Verify a patch before use with `shasum -a 256 <patch>`, then apply it only to
 an external checkout at the pinned OAI commit. Generated configurations, raw

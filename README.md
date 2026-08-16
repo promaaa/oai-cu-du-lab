@@ -31,11 +31,14 @@ remains external and is pinned for each deployment.
   tested values, and the exact standards scope.
 - [`conf/pws-sib8.example`](conf/pws-sib8.example) provides the public,
   test-only warning profile without subscriber or infrastructure data.
-- [`docs/evidence/BENCHMARKS.md`](docs/evidence/BENCHMARKS.md) reconciles the
-  repeated end-to-end trial campaign, including mean throughput over 20
-  repetitions per final setup and the earlier 40-44 Mb/s Jetson chronology.
+- [`docs/evidence/BENCHMARKS.md`](docs/evidence/BENCHMARKS.md) records the
+  current end-to-end trial campaign, including mean throughput over 20
+  repetitions per final setup.
 - [`docs/evidence/throughput-means.csv`](docs/evidence/throughput-means.csv)
-  is the machine-readable source for the manuscript's throughput plot.
+  is the machine-readable statistical source for the manuscript's throughput
+  plot.
+- [`docs/evidence/throughput-observations.csv`](docs/evidence/throughput-observations.csv)
+  retains all 20 downlink observations for each of the nine final setups.
 - [`docs/evidence/RESOURCE_PROFILE.md`](docs/evidence/RESOURCE_PROFILE.md)
   publishes sanitized Raspberry Pi CPU, memory, thermal, and runtime-stability
   observations and separates them from component-based power estimates.

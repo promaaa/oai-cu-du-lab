@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 220" width="100%" height="100%">
+  <defs>
+    <style>
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; font-weight: bold; fill: #176B87; }
+      .label { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; font-weight: 600; fill: #2C3E50; }
+      .sublabel { font-family: system-ui, -apple-system, sans-serif; font-size: 10px; fill: #666666; }
+      .link-text { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; font-weight: 600; fill: #176B87; }
+      .badge { font-family: system-ui, -apple-system, sans-serif; font-size: 10px; font-weight: bold; fill: #FFFFFF; }
+      .box-host { fill: #EDF6F8; stroke: #176B87; stroke-width: 1.5; stroke-dasharray: 4,4; rx: 8px; }
+      .box-core { fill: #176B87; stroke: #0E4658; stroke-width: 1.5; rx: 6px; }
+      .box-radio { fill: #FFF3E0; stroke: #E67E22; stroke-width: 1.5; rx: 6px; }
+      .box-ue { fill: #EAF6EE; stroke: #27AE60; stroke-width: 1.5; rx: 6px; }
+      .line-bus { stroke: #176B87; stroke-width: 2; }
+      .line-rf { stroke: #E67E22; stroke-width: 2; stroke-dasharray: 5,3; }
+    </style>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#176B87" />
+    </marker>
+    <marker id="arrow-orange" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#E67E22" />
+    </marker>
+    <marker id="arrow-orange-reverse" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto">
+      <path d="M8,0 L0,4 L8,8 Z" fill="#E67E22" />
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.1" />
+    </filter>
+  </defs>
+
+  <!-- Background container for Firecell Host -->
+  <rect x="20" y="25" width="340" height="170" class="box-host" />
+  <text x="35" y="45" class="title">Firecell Host (Monolithic Reference)</text>
+
+  <!-- OAI 5GC Core Box -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="65" width="120" height="100" class="box-core" />
+    <text x="100" y="110" class="label" fill="#FFFFFF" text-anchor="middle">OAI 5GC</text>
+    <text x="100" y="130" class="sublabel" fill="#D0E8F0" text-anchor="middle">AMF / SMF / UPF</text>
+  </g>
+
+  <!-- Internal Bus Arrow -->
+  <path d="M160 115 L220 115" class="line-bus" marker-end="url(#arrow-blue)" />
+  <text x="190" y="105" class="link-text" text-anchor="middle">N2 / N3</text>
+
+  <!-- OAI gNB Box inside Firecell -->
+  <g filter="url(#shadow)">
+    <rect x="220" y="65" width="120" height="100" class="box-core" />
+    <text x="280" y="110" class="label" fill="#FFFFFF" text-anchor="middle">OAI gNB</text>
+    <text x="280" y="130" class="sublabel" fill="#D0E8F0" text-anchor="middle">CU + DU Monolithic</text>
+  </g>
+
+  <!-- USB3 Link -->
+  <path d="M340 115 L430 115" class="line-bus" marker-end="url(#arrow-blue)" />
+  <text x="385" y="105" class="link-text" text-anchor="middle">USB 3.0</text>
+
+  <!-- USRP B210 Box -->
+  <g filter="url(#shadow)">
+    <rect x="430" y="65" width="130" height="100" class="box-radio" />
+    <text x="495" y="105" class="label" fill="#D35400" text-anchor="middle">USRP B210</text>
+    <text x="495" y="125" class="sublabel" fill="#E67E22" text-anchor="middle">Sub-6 GHz Radio</text>
+    <rect x="455" y="138" width="80" height="18" rx="3" fill="#E67E22" />
+    <text x="495" y="151" class="badge" text-anchor="middle">ACCESS RADIO</text>
+  </g>
+
+  <!-- RF Air Interface Link -->
+  <path d="M560 115 L620 115" class="line-rf" marker-start="url(#arrow-orange-reverse)" marker-end="url(#arrow-orange)" />
+  <text x="590" y="100" class="link-text" fill="#D35400" text-anchor="middle">NR n78</text>
+  <text x="590" y="135" class="sublabel" fill="#D35400" text-anchor="middle">3.5 GHz RF</text>
+
+  <!-- Commercial UE Box -->
+  <g filter="url(#shadow)">
+    <rect x="620" y="65" width="120" height="100" class="box-ue" />
+    <text x="680" y="105" class="label" fill="#27AE60" text-anchor="middle">Nothing Phone</text>
+    <text x="680" y="125" class="sublabel" fill="#27AE60" text-anchor="middle">Commercial 5G UE</text>
+    <rect x="640" y="138" width="80" height="18" rx="3" fill="#27AE60" />
+    <text x="680" y="151" class="badge" text-anchor="middle">5G SA CLIENT</text>
+  </g>
+</svg>

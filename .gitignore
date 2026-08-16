@@ -28,6 +28,8 @@ output/
 .cache/
 __pycache__/
 *.pyc
+node_modules/
+.build/
 
 # External source trees
 source/

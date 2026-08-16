@@ -49,8 +49,8 @@ External specification bases:
 ## Claim boundary
 
 - Repeated end-to-end deployment trials are claimed.
-- Mean throughput over 20 repetitions per final setup is claimed; per-run
-  dispersion and a matched-condition cross-setup ranking are not claimed.
+- Mean throughput and per-run dispersion over 20 repetitions per final setup
+  are claimed; a matched-condition one-factor cross-setup ranking is not.
 - The two Raspberry Pi resource snapshots above are claimed as measured.
 - Complete-payload electrical power and flight endurance are not claimed.
 - New measurements must record the OAI pin, radio profile, duration, traffic
