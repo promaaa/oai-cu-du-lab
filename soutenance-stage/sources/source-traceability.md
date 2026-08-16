@@ -20,8 +20,7 @@ Le support public ne doit contenir ni adresse réseau interne, ni nom d'hôte, n
 | `MISSION` | *KAUST_IMT_CellularSecurity_v2.pdf*, document officiel fourni le 5 août 2026 | Intitulé, contexte cybersécurité/UAV, objectifs et encadrement | Source de référence pour le titre et la mission officielle |
 | `LAB-README` | `README.md` du dépôt canonique | Architecture opérable, transports F1, plateformes DU, procédures de validation et de retour arrière | État fonctionnel consolidé ; ne suffit pas seul pour attester une mesure |
 | `LAB-HISTORY` | Historique Git du dépôt canonique | Dates de consolidation, outillage, correctifs, baselines et évolution des débits | Source de chronologie et de contributions ; les anciens documents de statut supprimés sont utilisés comme contexte historique, pas comme état courant |
-| `REPORTS` | `../kaust-5G-research/reports/report-2.md` à `report-22.md` | Journal chronologique d'avril à juillet 2026, succès, échecs, pivots et résultats | Source principale pour raconter la démarche et qualifier les résultats datés |
-| `RECAP` | `../kaust-5G-research/README.md` et `reports/french-project-presentation.md` | Synthèse des meilleurs résultats et trame de vulgarisation | Utile pour recouper ; les maxima de sessions différentes ne sont pas des moyennes comparables |
+| `LAB-EVIDENCE` | `docs/evidence/PWS-F1.md`, `BENCHMARKS.md`, `RESOURCE_PROFILE.md` et CSV associés | Preuves assainies du chemin PWS, des essais de service, des débits et des ressources | Source publique principale pour les résultats ; les données privées du laboratoire restent hors du corpus publié |
 | `PAPER-DRAFT` | `docs/PDFs/research-paper.tex` | Synthèse scientifique la plus récente, matrice de bancs, diagnostic MCS/BLER, dimensionnement de charge utile, limites | Brouillon local non versionné ; le résultat `68 Mbit/s` a ensuite été confirmé explicitement par l'étudiant le 5 août 2026 |
 | `OLD-SLIDES` | [Présentation Charlotte V2](https://docs.google.com/presentation/d/1PTyXXZYdgLUkJzEHDRDvrb-UP5atUvs2Kw81VID5y84/edit) et [Présentation stage](https://docs.google.com/presentation/d/1-PejsoKiz7iE7Y6ZO_rdnELiBxwlDJI5kkbP2ylJjug/edit) | Photos, premiers schémas, contributions, choix de drone et traces de l'évolution du discours | Référence visuelle uniquement ; chiffres anciens, captures internes et illustrations ambiguës écartés |
 | `RUNTIME-GATES` | Résumés privés et assainis des portes de validation de juillet 2026 | Prévol matériel, cœur, transport, CU, DU, F1 et retour arrière | Confirme la reproductibilité machine ; ne prouve pas à lui seul PWS, état du téléphone et débit dans le même run |
@@ -39,17 +38,17 @@ Le support public ne doit contenir ni adresse réseau interne, ni nom d'hôte, n
 
 | Période | Étape et décision d'ingénierie | Résultat ou apprentissage | Sources |
 |---|---|---|---|
-| 7–20 avril 2026 | État de l'art, émulation et déploiement du cœur 5G | Mise en place du socle ; SCTP identifié comme verrou initial sur Jetson | `REPORTS` 2–5 |
-| 21–30 avril | Banc x86, B210 et premier terminal commercial ; faisabilité Raspberry Pi à bande réduite | Cellule monolithique et alerte PWS observables ; première baseline radio | `REPORTS` 5–6 |
-| 1–10 mai | Passage en split CU/DU et adaptation du chemin SIB8/PWS sur F1 | Gestionnaire DU, mémoire du payload, décodage explicite et configuration corrigés ; PWS visible sur terminal | `REPORTS` 7–10 |
-| 11–17 mai | Diagnostic d'un terminal non attaché puis d'un débit radio faible | Séparation du plan de données sain et du problème BLER/MCS ; service utilisateur rétabli par profil radio | `REPORTS` 8–9 |
-| 18–19 mai | F1 sur Wi-Fi avec GRE et routage par politique | F1-C/F1-U empruntent le tunnel ; PWS validé ; premier débit encore limité | `REPORTS` 10 |
-| 20 mai–1er juin | Backhaul Quectel, QMI et WireGuard | Tunnel 5G prouvé ; l'architecture à une seule radio révèle une dépendance circulaire | `REPORTS` 11–12 |
-| 2–7 juin | Séparation de la cellule d'accès B210 et du modem donneur ; vérifications en cage | Pivot architectural : B210 pour l'accès, Quectel pour le backhaul ; identité de source et chemin paquet contrôlés | `REPORTS` 12–13 |
-| 8–21 juin | Automatisation, prévols, retour arrière, portage Pi et instrumentation BLER/MCS | La limite apparente de débit n'est pas résolue par un hôte plus puissant ; nécessité d'une analyse croisée transport/radio | `REPORTS` 14–17 |
-| 22–24 juin | Réglage MSS/MTU et fenêtre BLER du scheduler | MCS dominant de 5 vers 24–27 ; Ethernet mesuré à 89 Mbit/s soutenus et environ 100 Mbit/s en pic | `REPORTS` 18–19 |
-| 25 juin–2 juillet | Portage Jetson : noyau SCTP, chemin USB 3 et répartition CPU/IRQ | F1, PWS, enregistrement et Internet obtenus sur Jetson ; le chemin X310 à 106 PRB reste bloqué | `REPORTS` 19–20, `KERNEL` |
-| 3–16 juillet | Stabilisation des profils embarqués et backhaul 5G/WireGuard | Jetson documenté à 40–44 Mbit/s dans les rapports datés ; Pi et Jetson intégrés à la matrice | `REPORTS` 20–22 |
+| 7–20 avril 2026 | État de l'art, émulation et déploiement du cœur 5G | Mise en place du socle ; SCTP identifié comme verrou initial sur Jetson | `LAB-HISTORY` |
+| 21–30 avril | Banc x86, B210 et premier terminal commercial ; faisabilité Raspberry Pi à bande réduite | Cellule monolithique et alerte PWS observables ; première baseline radio | `LAB-HISTORY`, `LAB-EVIDENCE` |
+| 1–10 mai | Passage en split CU/DU et adaptation du chemin SIB8/PWS sur F1 | Gestionnaire DU, mémoire du payload, décodage explicite et configuration corrigés ; PWS visible sur terminal | `LAB-HISTORY`, `LAB-EVIDENCE` |
+| 11–17 mai | Diagnostic d'un terminal non attaché puis d'un débit radio faible | Séparation du plan de données sain et du problème BLER/MCS ; service utilisateur rétabli par profil radio | `LAB-HISTORY`, `LAB-EVIDENCE` |
+| 18–19 mai | F1 sur Wi-Fi avec GRE et routage par politique | F1-C/F1-U empruntent le tunnel ; PWS validé ; premier débit encore limité | `LAB-HISTORY`, `LAB-EVIDENCE` |
+| 20 mai–1er juin | Backhaul Quectel, QMI et WireGuard | Tunnel 5G prouvé ; l'architecture à une seule radio révèle une dépendance circulaire | `LAB-HISTORY`, `LAB-README` |
+| 2–7 juin | Séparation de la cellule d'accès B210 et du modem donneur ; vérifications en cage | Pivot architectural : B210 pour l'accès, Quectel pour le backhaul ; identité de source et chemin paquet contrôlés | `LAB-HISTORY`, `LAB-README` |
+| 8–21 juin | Automatisation, prévols, retour arrière, portage Pi et instrumentation BLER/MCS | La limite apparente de débit n'est pas résolue par un hôte plus puissant ; nécessité d'une analyse croisée transport/radio | `LAB-HISTORY`, `LAB-EVIDENCE` |
+| 22–24 juin | Réglage MSS/MTU et fenêtre BLER du scheduler | MCS dominant de 5 vers 24–27 ; Ethernet mesuré à 89 Mbit/s soutenus et environ 100 Mbit/s en pic | `LAB-HISTORY`, `LAB-EVIDENCE` |
+| 25 juin–2 juillet | Portage Jetson : noyau SCTP, chemin USB 3 et répartition CPU/IRQ | F1, PWS, enregistrement et Internet obtenus sur Jetson ; le chemin X310 à 106 PRB reste bloqué | `LAB-HISTORY`, `LAB-EVIDENCE`, `KERNEL` |
+| 3–16 juillet | Stabilisation des profils embarqués et backhaul 5G/WireGuard | Pi et Jetson intégrés à la matrice de validation | `LAB-HISTORY`, `LAB-EVIDENCE` |
 | 17–29 juillet | Consolidation du lanceur, des portes de preuve, de la documentation et du dimensionnement | Banc reproductible avec rollback ; meilleur run Jetson final à 68 Mbit/s ; charge utile dimensionnée mais non embarquée ni mesurée en vol | `LAB-HISTORY`, `PAPER-DRAFT`, confirmation du 5 août, `RUNTIME-GATES` |
 
 ## 4. Résultats validés, conditionnels et non validés
@@ -58,21 +57,21 @@ Le support public ne doit contenir ni adresse réseau interne, ni nom d'hôte, n
 
 | Affirmation | Qualification | Preuve disponible | Traitement recommandé |
 |---|---|---|---|
-| Une alerte PWS/SIB8 traverse le split F1 et s'affiche sur un terminal 5G commercial | **Validé de bout en bout** | Rapports 10 et 19, puis synthèse scientifique | Résultat fonctionnel central de la diapositive 4 |
-| Le terminal s'enregistre, obtient une session de données et accède à Internet | **Validé de bout en bout** | Rapports 19, 20 et 22 | Présenter comme une chaîne de service, pas comme un simple processus lancé |
-| F1 fonctionne sur Ethernet, Wi-Fi/GRE et 5G/WireGuard | **Validé**, avec essais réalisés à des dates et sur des hôtes différents | Rapports 10–22, dépôt canonique | Montrer trois transports ; ne pas les classer statistiquement |
-| Des DUs réelles fonctionnent sur Raspberry Pi 5 et Jetson Orin Nano avec B210 | **Validé sur banc** | Rapports 19–22 et synthèse scientifique | Prouve l'embarquabilité du calcul, pas un déploiement aérien |
+| Une alerte PWS/SIB8 traverse le split F1 et s'affiche sur un terminal 5G commercial | **Validé de bout en bout** | `LAB-EVIDENCE` | Résultat fonctionnel central de la diapositive 4 |
+| Le terminal s'enregistre, obtient une session de données et accède à Internet | **Validé de bout en bout** | `LAB-EVIDENCE` | Présenter comme une chaîne de service, pas comme un simple processus lancé |
+| F1 fonctionne sur Ethernet, Wi-Fi/GRE et 5G/WireGuard | **Validé**, avec essais réalisés à des dates et sur des hôtes différents | `LAB-EVIDENCE`, `LAB-README` | Montrer trois transports ; ne pas les classer statistiquement |
+| Des DUs réelles fonctionnent sur Raspberry Pi 5 et Jetson Orin Nano avec B210 | **Validé sur banc** | `LAB-EVIDENCE`, `LAB-README` | Prouve l'embarquabilité du calcul, pas un déploiement aérien |
 | Un noyau Jetson reproductible avec SCTP et rollback a été produit | **Validé comme livrable** | Dépôt `jetson-kernel-sctp` et historique de juillet | Exemple concret de contribution personnelle |
-| Ethernet x86 : 89 Mbit/s soutenus, environ 100 Mbit/s en pic après correction MSS/BLER | **Validé comme instantané instrumenté** | Rapports 18–19 et brouillon d'article | Afficher `89 soutenus / 100 pic`, avec la mention « un run, pas une moyenne » |
-| Wi-Fi/GRE x86 : 52 Mbit/s | **Validé comme meilleur instantané** | Rapports 19–20 | Repère secondaire ; ne pas l'opposer directement aux autres hôtes |
-| Raspberry Pi 5 sur 5G/WireGuard : 48 Mbit/s | **Validé comme meilleur instantané** | Rapports 19–20 | Repère de faisabilité ARM, avec prudence comparative |
+| Ethernet x86 : 89 Mbit/s soutenus, environ 100 Mbit/s en pic après correction MSS/BLER | **Validé comme instantané instrumenté** | `LAB-EVIDENCE`, brouillon d'article | Afficher `89 soutenus / 100 pic`, avec la mention « un run, pas une moyenne » |
+| Wi-Fi/GRE x86 : 52 Mbit/s | **Validé comme meilleur instantané** | `LAB-EVIDENCE` | Repère secondaire ; ne pas l'opposer directement aux autres hôtes |
+| Raspberry Pi 5 sur 5G/WireGuard : 48 Mbit/s | **Validé comme meilleur instantané** | `LAB-EVIDENCE` | Repère de faisabilité ARM, avec prudence comparative |
 | Jetson sur 5G/WireGuard : 68 Mbit/s | **Validé comme meilleur instantané final** | Brouillon d'article et confirmation explicite de l'étudiant le 5 août 2026 | Afficher `68 Mbit/s`, avec la mention « meilleur run documenté, pas une moyenne » |
 
 ### Résultats à ne pas présenter comme acquis
 
 | Affirmation | Statut | Pourquoi | Formulation sûre |
 |---|---|---|---|
-| Jetson sur 5G/WireGuard à 40–44 Mbit/s | **Résultat intermédiaire** | Rapports 21–22, antérieurs au meilleur run final | Utiliser en questions-réponses pour expliquer la progression vers 68 Mbit/s |
+| Jetson sur 5G/WireGuard à 40–44 Mbit/s | **Résultat intermédiaire** | Anciennes observations, antérieures au meilleur run final | Utiliser en questions-réponses pour expliquer la progression vers 68 Mbit/s |
 | Mini-PC sur 5G/WireGuard à 78 Mbit/s | **Consolidé, à confirmer** | Mention de récapitulatif sans campagne primaire retrouvée | Ne pas utiliser dans les cinq diapositives |
 | Comparaison de performance intrinsèque des trois transports | **Non démontré** | Hôtes, dates, conditions RF et réglages différents ; valeurs maximales, pas moyennes | Dire « repères de runs distincts », pas « le plus rapide » |
 | Charge utile Jetson complète, environ 1,6 kg, batterie 44,4 Wh et plafond 50 W | **Dimensionnement** | Masse itemisée et puissance calculée, pas campagne de mesures électriques intégrée | Présenter au besoin comme faisabilité estimée, pas comme performance validée |
@@ -84,8 +83,8 @@ Le support public ne doit contenir ni adresse réseau interne, ni nom d'hôte, n
 
 ## 5. Contradictions et arbitrages
 
-1. **Jetson 40–44 contre 68 Mbit/s.** Les rapports 21–22 datés documentent 44 puis environ 40 Mbit/s. Le brouillon d'article plus récent annonce 68 Mbit/s après lancement propre, valeur confirmée officiellement par l'étudiant le 5 août. Le support retient donc `68`, en la qualifiant de meilleur run et non de moyenne.
-2. **Anciens graphiques contre matrice récente.** Les anciens supports utilisent notamment `150 / 23 / 12 / 50`. Ils sont remplacés par les rapports 18–22 et ne doivent pas être réemployés.
+1. **Jetson 40–44 contre 68 Mbit/s.** Les anciennes observations documentent 44 puis environ 40 Mbit/s. Le brouillon d'article plus récent annonce 68 Mbit/s après lancement propre, valeur confirmée officiellement par l'étudiant le 5 août. Le support retient donc `68`, en la qualifiant de meilleur run et non de moyenne.
+2. **Anciens graphiques contre matrice récente.** Les anciens supports utilisent notamment `150 / 23 / 12 / 50`. Ils sont remplacés par les preuves assainies du dépôt canonique et ne doivent pas être réemployés.
 3. **Capacité actuelle contre fraîcheur de preuve.** L'outillage consolidé signale les scénarios comme disponibles, mais une porte machine n'établit pas automatiquement PWS, état du terminal et débit dans un même essai.
 4. **« Déploiement réel » contre banc au sol.** Le matériel a été dimensionné pour une charge utile, mais aucun vol n'a été réalisé. Le mot « aérien » ne désigne donc qu'un objectif futur.
 5. **Cadre sécurité.** La mission officielle porte sur la sécurité des réseaux 5G-Advanced/6G à base d'UAV et l'étude contrôlée de la falsification d'alertes. Le résultat effectivement démontré est la plateforme expérimentale et le chemin PWS sur F1 ; aucune mitigation de sécurité ni validation en vol ne doit être revendiquée.
@@ -108,8 +107,8 @@ Intitulé officiel : **Security for UAV-Based 5G-Advanced and 6G Networks**.
 
 | Diapositive | Affirmations principales | Sources minimales | Risque contrôlé |
 |---|---|---|---|
-| 1 — contexte et mission | KAUST/SeRBER, sécurité des alertes, architecture CU/DU, dates du stage | `MISSION`, `KAUST-WEB`, `REPORTS` | Distinguer objectif de sécurité et résultats effectivement obtenus |
-| 2 — problème | Déporter la DU sans perdre PWS, données, maîtrise du chemin et rollback | `REQ`, `LAB-README`, `REPORTS` 7–13 | Ne pas réduire le problème au seul débit |
-| 3 — méthode et contributions | Baselines, isolation, pivots, patches PWS, transports, noyau Jetson, outillage | `REPORTS`, `LAB-HISTORY`, `KERNEL` | Distinguer travail personnel et contexte d'équipe |
-| 4 — résultats et limites | PWS, service utilisateur, trois transports, ARM, repères de débit, absence de vol | `REPORTS` 18–22, `PAPER-DRAFT`, confirmation du 5 août, `RUNTIME-GATES` | Indiquer « meilleurs runs », ne pas transformer les valeurs en comparaison contrôlée |
-| 5 — compétences et projet | Diagnostic croisé, reproductibilité, embarqué, méthode transférable | Historique des livrables, `KERNEL`, retours d'expérience des rapports | Éviter une liste générique de compétences |
+| 1 — contexte et mission | KAUST/SeRBER, sécurité des alertes, architecture CU/DU, dates du stage | `MISSION`, `KAUST-WEB`, `LAB-HISTORY` | Distinguer objectif de sécurité et résultats effectivement obtenus |
+| 2 — problème | Déporter la DU sans perdre PWS, données, maîtrise du chemin et rollback | `REQ`, `LAB-README`, `LAB-EVIDENCE` | Ne pas réduire le problème au seul débit |
+| 3 — méthode et contributions | Baselines, isolation, pivots, patches PWS, transports, noyau Jetson, outillage | `LAB-EVIDENCE`, `LAB-HISTORY`, `KERNEL` | Distinguer travail personnel et contexte d'équipe |
+| 4 — résultats et limites | PWS, service utilisateur, trois transports, ARM, repères de débit, absence de vol | `LAB-EVIDENCE`, `PAPER-DRAFT`, confirmation du 5 août, `RUNTIME-GATES` | Indiquer « meilleurs runs », ne pas transformer les valeurs en comparaison contrôlée |
+| 5 — compétences et projet | Diagnostic croisé, reproductibilité, embarqué, méthode transférable | Historique des livrables, `KERNEL`, preuves assainies | Éviter une liste générique de compétences |

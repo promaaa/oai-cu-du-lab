@@ -40,7 +40,7 @@ Les réponses directes visent 15 à 25 secondes. Les versions développées vise
 
 **Réponse développée :** Mon travail personnel couvre quatre blocs vérifiables. Côté protocole, j'ai complété le traitement Write-Replace Warning côté DU et sécurisé le transfert mémoire du payload SIB8. Côté réseau, j'ai mis en place le routage GRE puis le chemin 5G/WireGuard en prouvant l'interface réellement utilisée. Côté embarqué, j'ai porté la DU sur Raspberry Pi et Jetson, avec un noyau SCTP reproductible et des réglages USB/CPU. Enfin, j'ai instrumenté BLER, MCS et taille de paquets pour expliquer le débit, puis consolidé l'ensemble dans une console opérateur, des portes de validation, de la documentation et un rollback.
 
-**Faits à citer :** rapports 7, 10, 18–22 ; dépôt du noyau ; historique du dépôt canonique.
+**Faits à citer :** preuves assainies PWS et benchmarks ; dépôt du noyau ; historique du dépôt canonique.
 
 **Piège à éviter :** s'attribuer OAI, le cœur 5G initial de l'équipe ou les travaux des encadrants.
 
@@ -122,7 +122,7 @@ Les réponses directes visent 15 à 25 secondes. Les versions développées vise
 
 **Réponse développée :** La validation est une chaîne. D'abord, la CU émet la procédure F1AP attendue. Ensuite, le gestionnaire DU la reçoit sans erreur et transmet le payload à la couche radio. Enfin, le terminal connecté à la cellule affiche l'alerte. Pour les transports non Ethernet, j'ai aussi vérifié que les paquets F1 empruntaient l'interface ou le tunnel sélectionné. L'association de ces éléments évite deux faux positifs : croire qu'un message local a été diffusé sans passer par F1, ou considérer la présence d'un paquet comme une preuve d'effet utilisateur.
 
-**Faits à citer :** rapports 10, 12 et 19 ; preuve de chemin ; observation sur UE.
+**Faits à citer :** preuve assainie du chemin PWS/F1 ; observation sur UE.
 
 **Piège à éviter :** montrer une capture brute avec des identifiants ou citer un simple « process up » comme preuve.
 
@@ -284,7 +284,7 @@ Les réponses directes visent 15 à 25 secondes. Les versions développées vise
 
 **Réponse directe :** C'est le meilleur run Jetson final, consigné dans le brouillon d'article et confirmé comme résultat officiellement validé. Je l'étiquette comme maximum documenté, sans en faire une moyenne ni une comparaison équitable avec les autres transports.
 
-**Réponse développée :** Les rapports 21 et 22 montrent d'abord la progression à 44 puis environ 40 Mbit/s. Le brouillon scientifique plus récent rapporte 68 Mbit/s après un lancement propre, avec le profil Jetson corrigé et la plage MCS complète. Cette valeur a été confirmée le 5 août comme résultat final validé. La traçabilité conserve néanmoins l'historique et signale que la trace primaire assainie du run n'était pas dans l'archive locale consultée. Sur la diapositive, j'utilise donc « 68 Mbit/s max » et « meilleurs runs distincts », pas une barre de moyenne ou une promesse de débit.
+**Réponse développée :** Les anciennes observations montrent d'abord la progression à 44 puis environ 40 Mbit/s. Le brouillon scientifique plus récent rapporte 68 Mbit/s après un lancement propre, avec le profil Jetson corrigé et la plage MCS complète. Cette valeur a été confirmée le 5 août comme résultat final validé. La traçabilité conserve néanmoins l'historique et signale que la trace primaire assainie du run n'était pas dans l'archive locale consultée. Sur la diapositive, j'utilise donc « 68 Mbit/s max » et « meilleurs runs distincts », pas une barre de moyenne ou une promesse de débit.
 
 **Faits à citer :** progression `40–44` puis `68` ; brouillon d'article ; confirmation du 5 août ; conditions Jetson/5G-WireGuard.
 
@@ -380,7 +380,7 @@ Les réponses directes visent 15 à 25 secondes. Les versions développées vise
 
 **Réponse développée :** La chronologie n'était pas un plan figé, car plusieurs résultats ont imposé des pivots. Avril a servi à rendre le système monolithique observable. Mai a porté le split et le chemin PWS, puis le Wi-Fi. Juin a introduit le backhaul 5G et l'instrumentation, avec l'abandon de l'architecture circulaire. Fin juin et juillet ont ciblé le diagnostic de débit, le Pi, le Jetson et la reproductibilité. Les rapports datés ont servi de journal de décision. En fin de stage, j'ai regroupé commandes, prévols, preuves et rollback dans un dépôt canonique afin que l'équipe puisse reprendre le travail.
 
-**Faits à citer :** rapports 2–22 ; cinq phases ; dépôt canonique ; console opérateur.
+**Faits à citer :** historique Git ; cinq phases ; preuves assainies ; console opérateur.
 
 **Piège à éviter :** présenter la frise comme si aucun imprévu n'avait modifié le plan.
 

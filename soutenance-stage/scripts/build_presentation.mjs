@@ -178,7 +178,7 @@ function slideOne(p) {
     [
       "KAUST_IMT_CellularSecurity_v2.pdf — intitulé officiel, objectifs et encadrement.",
       "https://serber.kaust.edu.sa/ — environnement de recherche SeRBER.",
-      "kaust-5G-research/reports/report-02.md à report-06.md — dates et socle initial.",
+      "oai-cu-du-lab/docs/STATUS.md et docs/BASELINES.md — périmètre et état consolidé.",
     ],
   );
 }
@@ -224,7 +224,7 @@ function slideTwo(p) {
     "La question était : comment exécuter la DU sur une plateforme légère, transporter F1 sur un lien non idéal et conserver PWS ainsi que les données du terminal ? Trois couches interagissaient : le calcul ARM et l'USB vers la radio ; le transport, avec routage, latence et MTU ; enfin la radio, avec BLER et adaptation MCS. J'ai donc défini quatre preuves : F1 observé sur le bon chemin, terminal enregistré, session de données avec Internet, puis alerte affichée. La baseline Ethernet restait disponible pour revenir à un état connu.\n\nTransition : Ces critères ont transformé le stage en une suite d'expériences isolées et comparables à une référence.",
     [
       "oai-cu-du-lab/README.md — architecture, transports, validation et rollback.",
-      "kaust-5G-research/reports/report-07.md à report-13.md — contraintes calcul, transport, radio et PWS.",
+      "oai-cu-du-lab/docs/evidence/PWS-F1.md et docs/NETWORK.md — chemin PWS et transports F1.",
     ],
   );
 }
@@ -266,9 +266,9 @@ function slideThree(p) {
   addFooter(s, 3);
   setNotes(
     s,
-    "En avril, j'ai reproduit le cœur 5G, la B210 et le terminal. En mai, j'ai séparé CU et DU puis complété le chemin SIB8 sur F1, le gestionnaire DU et la copie sûre du message. J'ai ensuite transporté F1 par Wi-Fi/GRE, puis par 5G/WireGuard. Un premier choix a échoué : partager la même cellule entre accès et backhaul créait une dépendance circulaire au redémarrage. J'ai séparé la B210 d'accès et le modem donneur. Enfin, j'ai porté la DU sur Raspberry Pi et Jetson, construit un noyau Jetson avec SCTP, fiabilisé l'USB 3 et automatisé prévols, preuves et rollback. Chaque pivot est consigné dans les rapports datés. La méthode est restée : baseline, hypothèse, mesure, correction, reproduction.\n\nTransition : Cette démarche donne des résultats solides, à condition de ne pas confondre meilleurs runs et comparaison statistique.",
+    "En avril, j'ai reproduit le cœur 5G, la B210 et le terminal. En mai, j'ai séparé CU et DU puis complété le chemin SIB8 sur F1, le gestionnaire DU et la copie sûre du message. J'ai ensuite transporté F1 par Wi-Fi/GRE, puis par 5G/WireGuard. Un premier choix a échoué : partager la même cellule entre accès et backhaul créait une dépendance circulaire au redémarrage. J'ai séparé la B210 d'accès et le modem donneur. Enfin, j'ai porté la DU sur Raspberry Pi et Jetson, construit un noyau Jetson avec SCTP, fiabilisé l'USB 3 et automatisé prévols, preuves et rollback. Chaque pivot est consigné dans l'historique canonique et les preuves assainies. La méthode est restée : baseline, hypothèse, mesure, correction, reproduction.\n\nTransition : Cette démarche donne des résultats solides, à condition de ne pas confondre meilleurs runs et comparaison statistique.",
     [
-      "kaust-5G-research/reports/report-02.md à report-22.md — chronologie et décisions.",
+      "Historique Git de oai-cu-du-lab — chronologie et décisions consolidées.",
       "github.com/promaaa/jetson-kernel-sctp — noyau SCTP, vérification et rollback Jetson.",
       "oai-cu-du-lab — console opérateur, portes de preuve et consolidation de juillet 2026.",
     ],
@@ -324,7 +324,7 @@ function slideFour(p) {
     s,
     "Sur un téléphone commercial, j'ai validé l'enregistrement, Internet et une alerte PWS transmise de la CU vers la DU par F1. Le banc fonctionne sur Ethernet, Wi-Fi/GRE et 5G/WireGuard, sur Pi et Jetson. Ces chiffres sont des meilleurs runs dans des conditions différentes, pas des moyennes comparables. Sur x86 et Ethernet : 89 mégabits par seconde soutenus, environ 100 en pic. Le Wi-Fi atteint 52. Sur Jetson avec backhaul 5G, le meilleur run validé atteint 68. Le diagnostic Ethernet compte autant : le réglage MSS et la fenêtre BLER ont fait passer le MCS dominant de 5 à 24-27. Je laisse un banc relançable, un noyau Jetson et un rollback documenté. Limites : pas de vol, pas de campagne RF répétée et une puissance encore estimée.\n\nTransition : Au-delà des chiffres, ce travail a surtout changé ma manière d'aborder un système complexe.",
     [
-      "kaust-5G-research/reports/report-18.md à report-22.md — PWS, service utilisateur, diagnostic et mesures intermédiaires.",
+      "oai-cu-du-lab/docs/evidence/BENCHMARKS.md et PWS-F1.md — PWS, service utilisateur et mesures assainies.",
       "oai-cu-du-lab/docs/PDFs/research-paper.tex — 68 Mbit/s Jetson, 89 soutenus/100 pic, MCS 24-27 et limites.",
       "Confirmation explicite de Marc Duboc, 5 août 2026 — 68 Mbit/s officiellement validés.",
     ],
@@ -375,7 +375,7 @@ function slideFive(p) {
     "J'ai mobilisé les réseaux appris à IMT Atlantique, puis développé trois compétences. Diagnostiquer entre couches : le faible débit venait de l'interaction entre paquets, BLER et scheduler. Rendre une expérience transmissible grâce aux prévols, aux preuves et au rollback. Maîtriser les contraintes embarquées, du noyau SCTP au partage CPU et USB. Cette méthode — hypothèse, instrumentation, preuve, référence — est transférable aux systèmes cyberphysiques. C'est mon principal acquis d'ingénieur. Elle relie ce stage à mon projet en R&D, robotique autonome et vision 3D à Seoul National University. Je n'ai pas fait voler une base 5G ; j'ai construit et dé-risqué le nœud reproductible qu'il faut valider avant le vol.",
     [
       "github.com/promaaa/jetson-kernel-sctp — preuve de portage et de rollback Jetson.",
-      "oai-cu-du-lab et kaust-5G-research — livrables, diagnostics et chronologie.",
+      "oai-cu-du-lab — livrables, diagnostics et chronologie consolidée.",
       "Cahier des charges de la soutenance — projet professionnel SNU 3D Vision Lab.",
     ],
   );
