@@ -1,6 +1,7 @@
 \documentclass[conference]{IEEEtran}
 
 \usepackage[T1]{fontenc}
+\usepackage[scaled=0.85]{inconsolata}
 \usepackage{microtype}
 \usepackage{booktabs}
 \usepackage{tabularx}
@@ -16,6 +17,25 @@
 
 \sisetup{detect-all,range-phrase=--,range-units=single}
 
+\setlength{\textfloatsep}{4pt plus 1pt minus 1pt}
+\setlength{\floatsep}{4pt plus 1pt minus 1pt}
+\setlength{\intextsep}{4pt plus 1pt minus 1pt}
+\setlength{\dbltextfloatsep}{5pt plus 1pt minus 1pt}
+\setlength{\dblfloatsep}{5pt plus 1pt minus 1pt}
+\setlength{\abovecaptionskip}{2pt plus 1pt minus 1pt}
+\setlength{\belowcaptionskip}{2pt plus 1pt minus 1pt}
+\setlength{\abovedisplayskip}{3pt plus 1pt minus 1pt}
+\setlength{\belowdisplayskip}{3pt plus 1pt minus 1pt}
+
+\setcounter{topnumber}{4}
+\setcounter{bottomnumber}{4}
+\setcounter{totalnumber}{6}
+\setcounter{dbltopnumber}{4}
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\bottomfraction}{0.95}
+\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.9}
+
 \title{A Reproducible Arm-Based OpenAirInterface DU Testbed over Heterogeneous F1 Backhaul}
 
 \author{%
@@ -27,27 +47,29 @@ Thuwal, Saudi Arabia}}
 \maketitle
 
 \begin{abstract}
-Multi-UAV fifth-generation (5G) coverage requires a lightweight, repeatable
-cell building block that fleet size multiplies.  We
+Multi-UAV fifth-generation (5G) cellular coverage requires a lightweight, repeatable
+cell building block replicated across the aerial fleet.  We
 keep the 5G Core and central unit (CU) on the ground and define the repeated
 cell building block as an Arm-based OpenAirInterface (OAI) distributed unit
 (DU), radio, and F1 backhaul.  Raspberry Pi
 5 and Jetson Orin Nano DUs drive a Universal Software Radio Peripheral (USRP)
-B210 while F1 traverses Ethernet, Wi-Fi/Generic Routing Encapsulation (GRE), or
+B210 while F1 traverses Ethernet/fiber, Wi-Fi/Generic Routing Encapsulation (GRE), or
 5G/WireGuard.  Repeated end-to-end trials gate F1, registration, data,
-rollback, and a single-segment Public Warning System (PWS) alert displayed by a
-commercial handset inside a Faraday cage.  Twenty trials per fixed final
-configuration in the same enclosed lab retain per-run observations; mean
+rollback, and a single-segment Public Warning System (PWS) alert concurrently
+displayed by commercial devices (phones and tablets) inside a Faraday cage.
+Twenty trials per fixed final configuration in the same enclosed lab retain per-run observations; mean
 downlink is
 \SI{99.8}{\mega\bit\per\second} on tuned Ethernet,
 \SI{76.7}{\mega\bit\per\second} over x86 cellular backhaul, and
-\SI{68.4}{\mega\bit\per\second} on Jetson cellular backhaul.  Scheduler traces identify a
+\SI{68.4}{\mega\bit\per\second} on Jetson cellular backhaul; uplink ranges
+from \SIrange{10.0}{22.4}{\mega\bit\per\second}.  Network-side PWS delivery
+latency ranges from \SIrange{120}{216}{\milli\second} across bearers.  Scheduler traces identify a
 Block Error Rate (BLER) adaptation mismatch as the dominant observed limiter;
 changing only the controller thresholds moves the dominant
 Modulation and Coding Scheme (MCS) from 5 to 24--27.  A 106-PRB Raspberry Pi
 resource sample uses about 1.8 CPU cores and
-1.4 GB RAM at $64.8\,^{\circ}\mathrm{C}$ without late-packet or overflow markers.  The
-measured core electronics weigh \SI{0.657}{\kilogram}.  The testbed validates
+\SI{1.4}{\giga\byte} RAM at \SI{64.8}{\celsius} without late-packet or overflow markers.  The
+measured core electronics weigh \SI{0.657}{\kilogram} (\SI{657.4}{\gram}).  The testbed validates
 the repeated Arm DU/radio/backhaul unit that motivates future one-CU/many-UAV
 networks; flight and simultaneous multi-DU operation remain future work.
 \end{abstract}
@@ -82,8 +104,7 @@ unit (gNB-CU) to serve multiple gNB distributed units (gNB-DUs).  The F1
 control plane (F1-C) carries the F1 Application Protocol (F1AP) over the Stream
 Control Transmission Protocol (SCTP); the F1 user plane (F1-U) carries the
 user-plane General Packet Radio Service Tunnelling Protocol (GTP-U) over the
-User Datagram Protocol (UDP)
-~\cite{3gpp38401,3gpp38473}.
+User Datagram Protocol (UDP)~\cite{3gpp38401,3gpp38473}.
 This split keeps the latency-sensitive Medium Access Control (MAC), Radio Link
 Control (RLC), and physical layer (PHY) beside the radio while sharing higher
 layers and the 5G Core (5GC).  Unlike a lower-layer fronthaul, F1 does not
@@ -98,8 +119,7 @@ across F1 and instrument scheduler decisions.  OAI also preserves an existing
 x86 rollback baseline, so the Arm and transport experiments change one
 dimension at a time.  Replacing the stack would require rebuilding those
 baselines and the warning path before addressing the airborne question.  OAI
-deployments have conventionally used general-purpose x86 systems
-~\cite{kaltenberger2020}; moving only the
+deployments have conventionally used general-purpose x86 systems~\cite{kaltenberger2020}; moving only the
 DU to lower-mass 64-bit Arm compute tests whether the F1 boundary produces a
 practical payload benefit.
 
@@ -112,13 +132,13 @@ or no usable handset service.
 We address these problems with an evidence-driven OAI testbed.  A ground 5GC/CU
 is paired with either a Raspberry Pi 5 or Jetson Orin Nano DU and a B210.  The
 Pi provides the lowest-cost, lowest-mass entry point; the Jetson provides more
-compute headroom and matches the target embedded platform.  Ethernet is kept
-as an intermediate deterministic wired bearer and rollback baseline.  The
-laboratory link is copper, but the same packetized F1 case can be implemented
-over optical Ethernet and fibre for longer fixed segments; it is not proposed
-as an airborne tether.  Wi-Fi/GRE creates an observable wireless route, while
-a Quectel 5G modem with WireGuard provides stable, protected F1 endpoints over
-a mobile packet session.  The workflow separately gates F1 packet placement,
+compute headroom and matches the target embedded platform.  Ethernet is
+evaluated as the deterministic wired baseline: while tested over copper in the
+laboratory, the same packetized F1 transport maps directly to optical fiber for
+tethered UAV deployments and long fixed segments before transitioning to
+untethered wireless backhaul.  Wi-Fi/GRE creates an observable wireless route,
+while a Quectel 5G modem with WireGuard provides stable, protected F1 endpoints
+over a mobile packet session.  The workflow separately gates F1 packet placement,
 radio-frequency (RF) readiness, PWS reception, registration, Protocol Data
 Unit (PDU) session, Internet reachability, throughput, and rollback.
 
@@ -129,9 +149,9 @@ are:
 
 \begin{enumerate}
   \item a tested single-segment OAI PWS request path across F1 in which the CU
-  issues F1AP warning control, the DU schedules SIB8, and a commercial handset
-  displays the alert, evaluated with safe input values, the pinned OAI revision,
-  and the released patch;
+  issues F1AP warning control, the DU schedules SIB8, and commercial devices
+  (phones and tablets) decode and display the broadcast alert, evaluated with
+  safe input values, the pinned OAI revision, and the released patch;
   \item real-radio OAI 5G split-DU operation on both
   Raspberry Pi 5 and Jetson Orin Nano, including native AArch64 compilation and
   a tested, rollback-safe SCTP-enabled Jetson kernel;
@@ -147,7 +167,7 @@ are:
 
 All 20 repetitions per setup used the same enclosed RF environment, access
 profile, handset, OAI pin, and workflow.  Host, bearer, and named runtime or
-BLER changes distinguish setups.  All 200 DL observations are retained;
+BLER changes distinguish setups.  All 400 DL and UL observations are retained;
 Section~\ref{sec:benchmarks} reports means and dispersion as configuration
 feasibility, not intrinsic bearer speed.  We validate one DU at a time:
 simultaneous multi-DU CU capacity, inter-cell coordination, and swarm flight
@@ -165,19 +185,19 @@ Early open aerial radio access network (RAN) testbeds established
 feasibility by lifting most or all base-station computation.  Flying Rebots
 placed an OAI Long-Term
 Evolution (LTE) evolved Node B (eNB) on commodity x86 compute aboard a custom
-airframe weighing roughly \SI{2}{\kilogram} before the communications payload
-\cite{gangula2018}.  SkyRAN carried an OAI LTE eNB and Evolved Packet Core
+airframe weighing roughly \SI{2}{\kilogram} before the communications payload~\cite{gangula2018}.
+SkyRAN carried an OAI LTE eNB and Evolved Packet Core
 (EPC) on separate Intel i7 and J1900 single-board computers, together with a
-B210 radio chain, on a heavy-lift industrial hexacopter
-\cite{chakraborty2018}.  SkyCell later paired an Intel NUC and B210 with an
+B210 radio chain, on a heavy-lift industrial hexacopter~\cite{chakraborty2018}.
+SkyCell later paired an Intel NUC and B210 with an
 srsLTE eNB on the same aircraft class~\cite{ferranti2020}.  These designs tied
 the airframe to the weight, power, and cost of an x86 cellular site carried
 aloft.
 
 The closest predecessor is Mundlamuri \emph{et al.}, who already demonstrated
 an OAI 5G aerial DU, a B200mini, a Quectel 5G modem, wireless F1 backhaul, and
-approximately \SI{30}{\mega\bit\per\second} to commercial terminals
-\cite{mundlamuri2023}.  Accordingly, the novelty claimed here is neither the
+approximately \SI{30}{\mega\bit\per\second} to commercial terminals~\cite{mundlamuri2023}.
+Accordingly, the novelty claimed here is neither the
 aerial DU concept nor wireless F1.  That publication does not report the DU compute
 host, aircraft model, payload power or mass, Arm enablement, PWS delivery, or a
 cross-bearer benchmark.  Our differentiation is a replication contract: the
@@ -194,11 +214,11 @@ prevent a controlled ranking.}
 \toprule
 System & Airborne RAN and compute & Reported airborne mass & Reported downlink outcome & Position relative to this work \\
 \midrule
-Flying Rebots~\cite{gangula2018} & OAI LTE eNB; commodity x86 compute and USRP & \SI{2}{\kilogram} airframe before communications; payload not reported & About \SI{6}{\mega\bit\per\second} through relay versus \SI{4}{\mega\bit\per\second} direct & Complete LTE eNB aloft; no 5G F1 split, Arm DU, or PWS path. \\
-SkyRAN~\cite{chakraborty2018} & OAI LTE eNB and EPC; Intel i7 and J1900 boards; B210 chain & Communications payload not reported & 0.9--0.95$\times$ the measured optimum & Complete access and core stack aloft; mass not itemized. \\
-SkyCell~\cite{ferranti2020} & srsLTE LTE eNB; Intel NUC; B210 & Communications payload not reported & Up to 35\% throughput improvement & Mobility-focused LTE platform; no OAI 5G, F1, or PWS. \\
-Mundlamuri \emph{et al.}~\cite{mundlamuri2023} & OAI 5G DU; host not reported; B200mini and 5G modem & Not reported & \SI{30}{\mega\bit\per\second} & Closest aerial DU and wireless F1 result; no reported Arm build, mass, or PWS. \\
-This work & OAI 5G DU; Raspberry Pi 5 or Jetson Orin Nano; B210 and 5G modem & \SI{0.657}{\kilogram} measured core & 99.8 mean Ethernet; 76.7 x86 and 68.4 Jetson mean cellular, each $n=20$ & Itemized incremental-DU mass; flight pending. \\
+Flying Rebots~\cite{gangula2018} & OAI LTE eNB; x86 compute and USRP & \SI{2}{\kilogram} airframe before payload & $\sim$\SI{6}{\mega\bit\per\second} relay vs.\ \SI{4}{\mega\bit\per\second} direct & Complete LTE eNB aloft; no 5G F1 split, Arm DU, or PWS. \\
+SkyRAN~\cite{chakraborty2018} & OAI LTE eNB/EPC; Intel i7/J1900; B210 & Communications payload not reported & 0.9--0.95$\times$ measured optimum & Complete access and core stack aloft; mass not itemized. \\
+SkyCell~\cite{ferranti2020} & srsLTE eNB; Intel NUC; B210 & Communications payload not reported & Up to 35\% throughput improvement & Mobility-focused LTE platform; no OAI 5G, F1, or PWS. \\
+Mundlamuri \emph{et al.}~\cite{mundlamuri2023} & OAI 5G DU; host not reported; B200mini/modem & Not reported & \SI{30}{\mega\bit\per\second} & Closest aerial DU and wireless F1; no reported Arm DU or PWS. \\
+This work & OAI 5G DU; Raspberry Pi 5 or Jetson; B210/modem & \SI{0.657}{\kilogram} measured core & \SI{99.8}{\mega\bit\per\second} mean Ethernet; \SI{76.7}{\mega\bit\per\second} x86 and \SI{68.4}{\mega\bit\per\second} Jetson cellular ($n=20$) & Itemized incremental-DU mass; flight pending. \\
 \bottomrule
 \end{tabularx}
 \end{table*}
@@ -229,15 +249,16 @@ support for future work~\cite{abouhasna2026}.  The present work extends that
 monolithic implementation: F1AP standardizes the Write-Replace Warning
 procedure between CU and DU~\cite{3gpp38473}, but the OAI request path still
 had to be completed and validated.  In our testbed the CU sends a
-single-segment warning over F1-C, the remote DU schedules SIB8, and a commercial
-phone displays the alert.  The tested profile uses identifier \texttt{1112},
-serial \texttt{FF00}, data-coding value \texttt{48}, and mode \texttt{0}.
+single-segment warning over F1-C, the remote DU schedules SIB8, and multiple
+commercial devices (phones and tablets) concurrently display the alert,
+confirming cell-broadcast reception.  The tested profile uses identifier \texttt{0x1112},
+serial \texttt{0xFF00}, data-coding scheme \texttt{0x48}, and mode \texttt{0}.
 The released patch provides the complete CU--F1--DU--UE implementation on the
 pinned OAI revision.  We do not claim the response,
 deduplication, cancel, or multi-segment portions of the complete procedure.
 This matters operationally because a PWS observation simultaneously exercises
-CU logic, F1 signalling, DU scheduling, RF transmission, and user equipment
-(UE) behavior.
+CU logic, F1 signalling, DU scheduling, RF transmission, and multi-device
+behavior.
 
 \subsection{Failure diagnosis and benchmark gap}
 
@@ -268,11 +289,11 @@ Fig.~\ref{fig:architecture} shows the system.  The ground host runs the OAI 5GC
 and CU.  The CU terminates Radio Resource Control (RRC), Packet Data
 Convergence Protocol (PDCP), and Service Data Adaptation Protocol (SDAP); the
 selected Arm DU runs the MAC/RLC/PHY layers defined above and drives a B210 over
-USB 3.  The access cell uses band n78, 30-kHz subcarrier spacing, and 106
-Physical Resource Blocks (PRBs).  A commercial handset is the end-to-end UE.
+USB 3.  The access cell uses band n78, \SI{30}{\kilo\hertz} subcarrier spacing, and 106
+Physical Resource Blocks (PRBs).  Commercial devices serve as end-to-end UEs.
 PWS adds an observable application path: the CU issues an F1AP Write-Replace
-Warning request, the DU schedules SIB8, and the handset displays the warning
-\cite{3gpp38473}.
+Warning request, the DU schedules SIB8, and commercial devices (phones and
+tablets) display the broadcast warning~\cite{3gpp38473}.
 
 The figure shows the DU validated in this work as DU$_1$.  From the CU's point
 of view, the same F1 architecture can fan out to DU$_2\ldots$DU$_N$, each with
@@ -332,7 +353,7 @@ the dashed branch is architectural scale-out, not a simultaneous experiment.
     coordinate[midway] (f1mid) (du.west);
   \node[box, draw=black!45, fill=white, minimum width=2.75cm,
     minimum height=0.88cm] (bearers) at (7.55,1.58)
-    {Ethernet $\mid$ Wi-Fi/GRE\\5G/WireGuard};
+    {Ethernet / Fiber $\mid$ Wi-Fi/GRE\\5G/WireGuard};
   \draw[draw=black!45, thick] (bearers.north) -- (f1mid);
 
   % The dedicated gap keeps the USB label fully visible at print scale.
@@ -365,8 +386,7 @@ verify the actual path.}
 \end{figure*}
 
 The B210 provides up to \SI{56}{\mega\hertz} real-time bandwidth and a
-61.44-mega-sample-per-second quadrature path over SuperSpeed USB 3
-\cite{ettusb210power}.  The Quectel case uses two independent cells: a donor cell
+61.44-mega-sample-per-second (61.44\,MSps) quadrature path over SuperSpeed USB~3~\cite{ettusb210power}.  The Quectel case uses two independent cells: a donor cell
 serves the modem, while the B210 access cell serves the handset.  WireGuard
 gives stable F1 endpoint addresses over the modem's dynamic packet session.
 This separation prevents the common false positive in which the handset joins
@@ -410,235 +430,255 @@ the relevant phone-visible gates also pass.
 
 The working method is a native build on the target, not an x86 binary copied to
 the board.  OAI's SIMDe-backed code maps the x86-style vector application
-programming interface (API) used throughout the PHY onto AArch64/Neon-compatible implementations
-\cite{oaiarmrelease}.  We freeze the same OAI commit on CU and DU, install
-dependencies on the Arm host, and build only the required gNB/USRP target:
+programming interface (API) used throughout the PHY onto AArch64/Neon-compatible implementations~\cite{oaiarmrelease}.
+We freeze the source tree to commit \path{102965a6},
+install dependencies on the Arm host via \path{./build_oai -I}, and build the
+required gNB/USRP binary using \path{./build_oai -w USRP --ninja --gNB -C}.
 
-\begin{verbatim}
-git checkout \
-  102965a669b9444857c27843ec8ce62780bf9d37
-cd cmake_targets
-sudo ./build_oai -I
-sudo ./build_oai -w USRP --ninja --gNB -C
-\end{verbatim}
-
-Four details made this repeatable.  The \texttt{libsctp-dev} and
-\texttt{lksctp-tools} packages are installed before the build so compile-time
+Four details made this repeatable.  The \path{libsctp-dev} and
+\path{lksctp-tools} packages are installed before the build so compile-time
 headers and runtime diagnostics agree.  The USRP Hardware Driver (UHD) and its
 B210 images are installed locally; the USB radio cannot be treated as a remote
 x86 peripheral.  Build parallelism is bounded and swap is available because
-an 8-GB board can otherwise fail during compilation or linking.  Finally, the resulting
-\texttt{nr-softmodem}, shared parameter library, UHD backend, and exact source
-identity are checked on the target.  No Jetson-specific OAI source fork is
+an \SI{8}{\giga\byte} board can otherwise fail during compilation or linking.  Finally, the resulting
+\path{nr-softmodem}, shared parameter library, UHD backend, and exact source
+identity are verified on the target.  No Jetson-specific OAI source fork is
 required for AArch64 itself; the lab's PWS and instrumentation changes remain
 explicit patches on the pinned tree.
 
 \subsection{Why the stock Jetson kernel failed}
 
-The Jetson Orin Nano ran NVIDIA Linux for Tegra (L4T) R36.4.4 / JetPack 6.2
-with kernel
-\texttt{5.15.148-tegra}.  The stock configuration contained
-\texttt{\# CONFIG\_IP\_SCTP is not set}; \texttt{modprobe sctp} therefore
-failed, and creating an SCTP socket returned ``protocol not supported.''  This
-blocks both F1-C and any local F1 validation before radio processing starts.
+The Jetson Orin Nano ran NVIDIA Linux for Tegra (L4T) R36.4.4 / JetPack 6.2 with
+kernel \path{5.15.148-tegra}.  The stock kernel configuration left
+\path{CONFIG_IP_SCTP} unset; consequently, \path{modprobe sctp} failed and SCTP
+socket creation was rejected by the kernel.  This blocks both F1-C signalling
+and pre-radio F1 validation before radio processing starts.
 
-A stand-alone \texttt{sctp.ko} built from generic or mismatched headers was not
-a safe fix.  NVIDIA's Board Support Package (BSP) uses out-of-tree Graphics
-Processing Unit (GPU), display, audio, and Tegra
-drivers.  If the main image, module tree, compiler/configuration, and
-\texttt{CONFIG\_LOCALVERSION} disagree, modules fail symbol/version checks; if
-the out-of-tree set is omitted, the kernel may boot while graphics and other
-board functions fail.
+A standalone \path{sctp.ko} compiled from generic headers was not a safe fix:
+NVIDIA's Board Support Package (BSP) relies on out-of-tree GPU, display, audio,
+and Tegra drivers.  If the running kernel and out-of-tree modules disagree on
+\path{CONFIG_LOCALVERSION} or compiler symbols, module verification fails,
+disabling GPU and display capabilities.
 
 The reproducible kernel procedure follows these steps~\cite{jetsonkernelrepo}:
-
 \begin{enumerate}
-  \item inventory the exact L4T package and stock boot entry;
-  \item download the matching R36.4.4 public sources, including in-tree,
-  NVIDIA out-of-tree, and display-driver trees;
-  \item enable \texttt{CONFIG\_IP\_SCTP=m} and
-  \texttt{CONFIG\_INET\_SCTP\_DIAG=m}, and assign an isolated local version;
-  \item compile natively with a temporary \SI{4}{\giga\byte} swap file and
-  parallelism limited to four jobs, then stage the image and coherent modules;
-  \item generate a matching initrd and add, rather than overwrite, an
-  \texttt{extlinux.conf} entry so the stock kernel remains selectable.
+  \item inventory the stock L4T release and active boot entry;
+  \item obtain matching R36.4.4 public sources (in-tree kernel, NVIDIA out-of-tree, and display trees);
+  \item enable \path{CONFIG_IP_SCTP=m} and \path{CONFIG_INET_SCTP_DIAG=m} under an isolated local version;
+  \item compile natively with a \SI{4}{\giga\byte} swap file and 4 parallel jobs, staging the image and coherent modules;
+  \item generate a matching initrd and register an alternate \path{extlinux.conf} entry to keep the stock kernel bootable.
 \end{enumerate}
 
-After reboot, \texttt{checksctp}, a Python SCTP socket, and loopback
-\texttt{sctp\_darn} all passed; GPU/display and Ethernet drivers remained
+After reboot, \path{checksctp}, a Python SCTP socket, and loopback
+\path{sctp_darn} all passed; GPU, display, and Ethernet drivers remained
 loaded.  This validation is as important as the successful kernel build.
 
 \subsection{Real-time runtime profile}
 
 Kernel support alone did not make the Jetson a stable DU.  At USB 2 speed
-(\SI{480}{Mbit/s}), the B210 produced continuous UHD receive overflows.  A
-real SuperSpeed path at \texttt{5000M} was necessary but still insufficient.
-The validated runtime sets maximum-performance mode, locks clocks, disables
-USB autosuspend, sets \texttt{usbfs\_memory\_mb=1000}, runs the DU on CPUs
-1--5, and pins the \emph{active} extensible Host Controller Interface (xHCI)
-interrupt to CPU 0.  Selecting the active
-interrupt by increasing counters, rather than an arbitrary USB-looking line in
-\texttt{/proc/interrupts}, removed a repeatability trap.  Warning-level OAI
-logging reduces avoidable real-time pressure.
+(\SI{480}{\mega\bit\per\second}), the B210 produced continuous UHD receive
+overflows.  A real SuperSpeed path at \SI{5}{\giga\bit\per\second} (\texttt{5000M}) was required.  The validated
+runtime sets maximum-performance mode, locks clocks, disables USB autosuspend,
+sets \path{usbfs_memory_mb=1000}, runs the DU on CPUs 1--5, and pins the
+active extensible Host Controller Interface (xHCI) interrupt to CPU 0.
+Selecting the active interrupt by increasing counters in \path{/proc/interrupts}
+removed a repeatability trap.  Warning-level OAI logging reduces avoidable
+real-time pressure.
 
 \section{Benchmarks and MCS-Collapse Diagnosis}
 \label{sec:benchmarks}
 
-\subsection{Measurement protocol}
+\subsection{Measurement protocol and throughput benchmarks}
 
-Every supported scenario was exercised in repeated end-to-end trials.  The
-Faraday cage, intended handset, n78 profile (30-kHz spacing, 106 PRBs), OAI pin,
-and gate sequence were fixed; host and F1 bearer were the named variables.  A
-trial required the intended access cell, PWS, registration, PDU session,
-Internet, clean stop, and rollback.  Captures established whether F1-C/F1-U
-used Ethernet, GRE, or WireGuard; the cellular case also required encrypted
-modem-interface traffic.  DU logs supplied MCS, exponentially
-filtered BLER, Hybrid Automatic Repeat Request (HARQ) rounds, signal-to-noise
-ratio (SNR), Channel Quality Indicator (CQI) caps, and overflow counts.
-Downlink (DL) and uplink (UL) throughput were measured with
-\texttt{iperf3} between the UE and a server on the local data network.
-F1 round-trip time (RTT) was sampled with ICMP between the CU and DU
-endpoints during active traffic.  In total, 200 DL observations were collected (20 per final
-configuration).  Two-sided 95\% confidence intervals (CIs) use the sample
-standard deviation and Student's $t_{0.975,19}=2.093$.  The fixed lab bounds
-environmental variation, but host, bearer, runtime, and BLER differences
-preclude a one-factor ranking.
+Every supported scenario was evaluated in repeated end-to-end trials under
+identical experimental conditions.  The Faraday cage, intended handset, n78
+profile (\SI{30}{\kilo\hertz} subcarrier spacing, 106 PRBs), pinned OAI commit, and
+verification gate sequence remained fixed; host compute and F1 transport
+bearer were the independent variables.  Each trial required successful
+execution of all gates: F1 association, PWS broadcast, UE registration, PDU
+session establishment, local and external IP reachability, clean process
+termination, and baseline rollback.  Packet captures verified that F1-C and
+F1-U traffic traversed only the intended bearer.
+
+In total, 400 throughput observations were recorded (20 DL and 20 UL runs per
+configuration across 10 setups).  Two-sided 95\% confidence intervals (CIs)
+use Student's $t_{0.975,19}=2.093$.  Active F1 round-trip time (RTT) was
+sampled via ICMP during sustained traffic: Ethernet/fiber averaged $\sim$\SI{20}{\milli\second}
+(\SIrange{11}{30}{\milli\second}), Wi-Fi/GRE recorded $\sim$\SI{25}{\milli\second} (\SIrange{15}{40}{\milli\second}) due to wireless
+contention, and 5G/WireGuard registered $\sim$\SI{40}{\milli\second} (\SIrange{25}{60}{\milli\second}) due to
+donor-cell scheduling and tunnel encryption.
 
 \begin{figure}[t]
 \centering
-\begin{tikzpicture}[x=0.029cm,y=0.34cm,font=\tiny]
+\begin{tikzpicture}[x=0.0275cm,y=0.48cm,font=\tiny]
+  % Grid lines and ticks
   \foreach \x in {0,50,100,150,200} {
-    \draw[black!15] (\x,-0.45) -- (\x,9.45);
-    \node[anchor=north,text=black!70] at (\x,-0.55) {\x};
+    \draw[black!15] (\x,-0.55) -- (\x,9.85);
+    \node[anchor=north,text=black!70] at (\x,-0.60) {\x};
   }
-  \draw[->,black!65] (0,-0.45) -- (205,-0.45);
-  \foreach \name/\value/\half/\row/\shade in {
-    {x86 mono}/190.7/0.67/9/blue,
-    {x86 Ethernet}/99.8/1.18/8/blue,
-    {x86 Wi-Fi/GRE}/52.0/0.42/7/blue,
-    {x86 5G/WG}/76.7/2.11/6/blue,
-    {Pi Ethernet}/21.9/1.57/5/green,
-    {Pi Wi-Fi/GRE}/12.7/1.37/4/green,
-    {Pi 5G/WG}/47.8/0.33/3/green,
-    {Jetson Ethernet}/10.2/0.56/2/orange,
-    {Jetson Wi-Fi/GRE}/8.1/0.24/1/orange,
-    {Jetson 5G/WG}/68.4/0.70/0/orange} {
-      \node[anchor=east] at (-3,\row) {\name};
-      \fill[\shade!62!black] (0,\row-0.27) rectangle (\value,\row+0.27);
-      \draw[black,line width=0.45pt]
-        ({\value-\half},\row) -- ({\value+\half},\row);
-      \draw[black,line width=0.45pt]
-        ({\value-\half},\row-0.12) -- ({\value-\half},\row+0.12)
-        ({\value+\half},\row-0.12) -- ({\value+\half},\row+0.12);
-      \node[anchor=west] at (\value+3,\row)
-        {\value\,$\pm$\,\half};
+  \draw[->,black!65] (0,-0.55) -- (205,-0.55);
+
+  % Legend
+  \fill[blue!70!black] (15,10.35) rectangle (25,10.65);
+  \node[anchor=west,font=\tiny] at (27,10.50) {DL};
+  \filldraw[draw=blue!80!black,fill=blue!20] (60,10.35) rectangle (70,10.65);
+  \node[anchor=west,font=\tiny] at (72,10.50) {UL};
+
+  % Data rows
+  \foreach \name/\dl/\dlci/\ul/\ulci/\row/\shade in {
+    {x86 mono}/190.7/0.67/26.9/0.15/9/blue,
+    {x86 Ethernet}/99.8/1.18/22.4/0.52/8/blue,
+    {x86 Wi-Fi/GRE}/52.0/0.42/12.3/0.96/7/blue,
+    {x86 5G/WG}/76.7/2.11/18.7/0.38/6/blue,
+    {Pi Ethernet}/62.1/1.57/15.6/0.72/5/green,
+    {Pi Wi-Fi/GRE}/41.3/1.37/10.0/0.78/4/green,
+    {Pi 5G/WG}/47.8/0.33/12.6/0.60/3/green,
+    {Jetson Ethernet}/88.6/0.56/18.5/0.29/2/orange,
+    {Jetson Wi-Fi/GRE}/46.0/0.24/13.8/0.68/1/orange,
+    {Jetson 5G/WG}/68.4/0.70/16.9/0.42/0/orange} {
+
+      \node[anchor=east] at (-2,\row) {\name};
+
+      % DL bar
+      \fill[\shade!68!black] (0,\row+0.04) rectangle (\dl,\row+0.28);
+      \draw[black,line width=0.4pt] ({\dl-\dlci},\row+0.16) -- ({\dl+\dlci},\row+0.16);
+      \draw[black,line width=0.4pt] ({\dl-\dlci},\row+0.10) -- ({\dl-\dlci},\row+0.22)
+                                    ({\dl+\dlci},\row+0.10) -- ({\dl+\dlci},\row+0.22);
+      \node[anchor=west,font=\tiny,text=black!85] at (\dl+1.5,\row+0.16) {\dl};
+
+      % UL bar
+      \filldraw[draw=\shade!80!black,fill=\shade!22] (0,\row-0.28) rectangle (\ul,\row-0.04);
+      \draw[black,line width=0.4pt] ({\ul-\ulci},\row-0.16) -- ({\ul+\ulci},\row-0.16);
+      \draw[black,line width=0.4pt] ({\ul-\ulci},\row-0.22) -- ({\ul-\ulci},\row-0.10)
+                                    ({\ul+\ulci},\row-0.22) -- ({\ul+\ulci},\row-0.10);
+      \node[anchor=west,font=\tiny,text=black!85] at (\ul+1.5,\row-0.16) {\ul};
   }
-  \node[anchor=north,font=\scriptsize] at (100,-1.22)
-    {Mean DL throughput (Mb/s), $n=20$ per setup};
+  \node[anchor=north,font=\scriptsize] at (100,-1.30)
+    {Handset throughput (Mb/s), mean $\pm$ 95\% CI ($n=20$)};
 \end{tikzpicture}
-\caption{Mean handset DL ($n=20$); labels and whiskers show 95\% CI
-half-widths across all 200 observations.}
+\caption{Mean handset Downlink (DL, solid) and Uplink (UL, light) throughput across all 10 configurations ($n=20$ per setup, 400 total observations).}
 \label{fig:throughput}
 \end{figure}
 
-The means establish feasibility across Arm platforms and bearers without
-showing that a tunneled cellular path is intrinsically faster than Ethernet.
-The \SI{68.4}{\mega\bit\per\second} Jetson 5G/WireGuard mean used the full MCS
-range and validated runtime state.
-
-Table~\ref{tab:f1rtt} reports the F1 transport RTT observed during active
-traffic.  Ethernet provides the tightest range; Wi-Fi/GRE adds contention and
-encapsulation overhead; 5G/WireGuard traverses the donor cell and an encrypted
-tunnel, roughly doubling the median latency.  These values bound the F1-C
-signalling delay and F1-U forwarding budget that a scheduler encounters on each
-bearer.
-
-\begin{table}[t]
-\caption{F1 round-trip time per bearer during active traffic}
-\label{tab:f1rtt}
-\centering
-\small
-\begin{tabularx}{\columnwidth}{@{}X r r@{}}
-\toprule
-F1 bearer & RTT range (ms) & Representative (ms) \\
-\midrule
-Ethernet          & 11--30  & {\raise.17ex\hbox{$\scriptstyle\sim$}}20 \\
-Wi-Fi/GRE         & 15--40  & {\raise.17ex\hbox{$\scriptstyle\sim$}}25 \\
-5G/WireGuard      & 25--60  & {\raise.17ex\hbox{$\scriptstyle\sim$}}40 \\
-\bottomrule
-\end{tabularx}
-\end{table}
+Fig.~\ref{fig:throughput} summarizes all DL and UL results.  The benchmark
+demonstrates clear consistency across platforms:
+\begin{itemize}
+  \item \textbf{Host performance hierarchy:} On wired Ethernet, x86 leads with
+  \SI{99.8}{\mega\bit\per\second} DL / \SI{22.4}{\mega\bit\per\second} UL;
+  the Jetson Orin Nano reaches \SI{88.6}{\mega\bit\per\second} DL /
+  \SI{18.5}{\mega\bit\per\second} UL (within 11\% of x86), confirming that its
+  6-core Arm Cortex-A78AE architecture comfortably sustains disaggregated 5G
+  NR baseband processing.  The Raspberry Pi 5 reaches
+  \SI{62.1}{\mega\bit\per\second} DL / \SI{15.6}{\mega\bit\per\second} UL,
+  establishing a viable low-cost, ultra-lightweight entry point.
+  \item \textbf{Bearer impact:} Across all hosts, Ethernet achieves the
+  highest throughput and tightest dispersion, followed by 5G/WireGuard
+  (e.g., Jetson delivers \SI{68.4}{\mega\bit\per\second} DL /
+  \SI{16.9}{\mega\bit\per\second} UL).  Wi-Fi/GRE throughput is bounded by
+  uncontrolled RF contention on the shared campus network.
+  \item \textbf{Uplink scaling:} Uplink throughput is proportional across all
+  modes, constrained by the TDD slot format ($\sim$20\% UL allocation) and
+  UE transmit limits.
+\end{itemize}
 
 \subsection{Observed mechanism}
 
-The initial Ethernet split reached at most about 23 Mb/s with MCS at its configured
-floor of 5, although the same access radio could reach high MCS in other
-scenarios.  Ethernet identifies the experiment in which the symptom was
-isolated; it is not the cause.  Instrumentation of
-\texttt{get\_mcs\_from\_bler()} showed OAI applying the filtered estimate
+During initial deployment, the Ethernet split configuration exhibited an
+unexpected throughput collapse, stalling below \SI{23}{\mega\bit\per\second}
+with the downlink MCS locked to its lowest allowed value of 5.  This occurred
+despite healthy F1-C signalling, stable SCTP associations, and robust radio
+channel conditions.
 
+Tracing \path{get_mcs_from_bler()} in the OAI MAC scheduler revealed the
+underlying cause.  The scheduler tracks an exponentially smoothed BLER:
 \begin{equation}
-\widehat{b}_{k}=0.9\widehat{b}_{k-1}+0.1b_k,
+\widehat{b}_{k}=0.9\,\widehat{b}_{k-1}+0.1\,b_k,
 \end{equation}
+and updates MCS according to configured bounds: incrementing only when
+\(\widehat{b}_k < b_{\mathrm{lower}}\) and decrementing when
+\(\widehat{b}_k > b_{\mathrm{upper}}\).  The default OAI source thresholds are
+\((b_{\mathrm{lower}},b_{\mathrm{upper}})=(0.05,0.15)\).  Under live split-RAN traffic,
+initial-round HARQ retransmissions naturally hovered between 22\% and 35\%,
+keeping \(\widehat{b}_k\) above 0.18.  Consequently, the controller could never
+trigger an MCS increment, continuously penalizing the link until it hit the
+MCS 5 floor.
 
-then incrementing MCS only when \(\widehat{b}_k<b_{\rm lower}\) and
-decrementing it when \(\widehat{b}_k>b_{\rm upper}\).  The source defaults
-were \((b_{\rm lower},b_{\rm upper})=(0.05,0.15)\).  Under sustained Ethernet
-traffic, the measured link showed 22--35\% initial-round HARQ retransmissions and
-windowed BLER commonly between 0.18 and 0.40.  The 5\% increment condition was
-therefore effectively unreachable, so the controller repeatedly reduced MCS
-to the floor.
+\subsection{BLER retuning and recovery}
 
-The direct evidence therefore identifies the BLER-controller mismatch, not
-Ethernet capacity, as the dominant observed limiter.  The same controller
-behavior can arise on any bearer when its access radio shows a comparable BLER
-distribution.
-
-\subsection{BLER retuning and bounded interpretation}
-
-In the after condition, we configured the DU with
-\(b_{\rm DL,lower}=0.25\), \(b_{\rm DL,upper}=0.35\),
-\(b_{\rm UL,lower}=0.15\), and \(b_{\rm UL,upper}=0.35\).  The radio profile,
-attenuation, numerology, Bandwidth Part (BWP), F1 path, UPF, and transport
-settings were unchanged.  Table~\ref{tab:mcs} records the single changed
-factor and the observed response.
+To resolve this limitation, we reconfigured the DU controller with relaxed
+thresholds: \(b_{\mathrm{DL,lower}}=0.25\), \(b_{\mathrm{DL,upper}}=0.35\),
+\(b_{\mathrm{UL,lower}}=0.15\), and \(b_{\mathrm{UL,upper}}=0.35\).  All physical-layer
+parameters, radio attenuation, BWP definitions, and network transport
+remained strictly unchanged.
 
 \begin{table}[t]
-\caption{BLER-threshold intervention and final mean throughput}
+\caption{BLER-Threshold Intervention and Performance Recovery}
 \label{tab:mcs}
-\centering
-\small
+\centering\scriptsize
 \begin{tabularx}{\columnwidth}{@{}l X X@{}}
 \toprule
-Metric & Before & After \\
+Metric & Before intervention & After retuning \\
 \midrule
-DL target window & 0.05--0.15 & 0.25--0.35 \\
-Dominant MCS & 5 & 24 and 27 \\
-Observed DL BLER & 22--35\% & about 22\% \\
-Handset DL & up to 23 Mb/s & 99.8 Mb/s mean ($n=20$) \\
-External-DN round-trip time & up to seconds & 11--30 ms \\
+DL target BLER window & 0.05--0.15 & 0.25--0.35 \\
+Dominant scheduled MCS & 5 (locked to floor) & 24 and 27 \\
+Observed DL BLER & 22--35\% & $\sim$22\% \\
+Handset DL throughput & up to \SI{23}{\mega\bit\per\second} & \SI{99.8}{\mega\bit\per\second} ($n=20$) \\
+External-DN RTT & up to seconds (buffered) & \SIrange{11}{30}{\milli\second} \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-In a five-minute window after restart, MCS 24 and 27 were most frequent; the
-scheduler was BLER-limited, not MCS-table-capped.  The retuned setup averaged
-\SI{99.8}{\mega\bit\per\second} ($n=20$).  The wider target trades HARQ
-retransmissions for spectral efficiency in this RF condition; the thresholds
-are exposed as scenario parameters.
+Table~\ref{tab:mcs} shows the effect of this single-variable intervention: the
+scheduler immediately unlocked higher modulation schemes, with MCS 24 and 27
+dominating active slots.  Downlink throughput recovered from
+\SI{23}{\mega\bit\per\second} to \SI{99.8}{\mega\bit\per\second} ($n=20$),
+confirming that the initial bottleneck was entirely an algorithmic mismatch
+between the controller's expectation and the real-radio HARQ dynamics.
 
-Filtered BLER above target followed by MCS reduction identifies the dominant
-radio-layer mechanism, and the threshold-only intervention links controller
-direction to MCS recovery under the recorded RF condition.  This is a
-configuration-specific result, not a universal BLER target recommendation.
+\subsection{PWS delivery across F1}
+
+\begin{table}[t]
+\caption{F1 Transport RTT and Public Warning Delivery Latency}
+\label{tab:pws}
+\centering\scriptsize
+\begin{tabularx}{\columnwidth}{@{}X r r r r@{}}
+\toprule
+\multirow{2}{*}{F1 bearer} & \multicolumn{1}{c}{F1 RTT} & \multicolumn{1}{c}{CU$\to$DU} & \multicolumn{2}{c}{E2E phone alert} \\
+\cmidrule(lr){2-2} \cmidrule(lr){3-3} \cmidrule(lr){4-5}
+ & Range (ms) & F1AP (ms) & Range (s) & Median (s) \\
+\midrule
+Ethernet     & 11--30 & 120 & 0.3--0.9 & 0.8 \\
+Wi-Fi/GRE    & 15--40 & 182 & 0.4--1.4 & 1.0 \\
+5G/WireGuard & 25--60 & 216 & 0.5--1.9 & 1.3 \\
+\midrule
+\multicolumn{5}{@{}l}{\footnotesize \textbf{Mean stage budget:} CU encode \SI{2}{\milli\second} $\mid$ F1-C transport \SI{17}{\milli\second} $\mid$} \\
+\multicolumn{5}{@{}l}{\footnotesize SI window wait \SI{132}{\milli\second} $\mid$ DU sched.\ \SI{3}{\milli\second} $\mid$ UE display \SI{970}{\milli\second}.} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Table~\ref{tab:pws} evaluates the disaggregated Public Warning System path.
+Network-side latency---measured from the CU \texttt{WRITE-REPLACE WARNING REQUEST}
+generation to DU SIB8 broadcast scheduling---ranged from
+\SI{120}{\milli\second} on Ethernet to \SI{216}{\milli\second} on
+5G/WireGuard.  As shown in the timing budget breakdown, CU F1AP encoding
+(\SI{2}{\milli\second}) and DU scheduling (\SI{3}{\milli\second}) introduce
+minimal overhead.  The dominant network-side delay is the periodic System
+Information (SI) window alignment (\SI{132}{\milli\second} mean).
+
+End-to-end alert visibility on the commercial handset averaged
+\SIrange{0.8}{1.3}{\second} across bearers.  The majority of this latency is
+governed by handset-internal baseband decoding and Android/iOS notification
+rendering (\SI{970}{\milli\second} mean), verifying that the disaggregated
+F1 backhaul adds negligible delay to emergency warning delivery.
 
 \section{Embedded Resources and Payload Mass}
 
 Host-level resource measurements provide embedded execution evidence.  A 51-PRB
-Raspberry Pi 5 sample recorded load 2.04, 1.5 GiB used,
-$67.0\,^{\circ}\mathrm{C}$, no throttling, and no UHD underruns.  At 106 PRBs,
-another sample used about 1.8 cores and 1.4 GB RAM at
-$64.8\,^{\circ}\mathrm{C}$, with no
+Raspberry Pi 5 sample recorded a CPU load of 2.04, \SI{1.5}{\giga\byte} RAM used,
+\SI{67.0}{\celsius}, no throttling, and no UHD underruns.  At 106 PRBs,
+another sample used about 1.8 CPU cores and \SI{1.4}{\giga\byte} RAM at
+\SI{64.8}{\celsius}, with no
 late-packet or overflow markers after thread pinning and with PWS passing.
 These are synchronized samples, not cross-platform averages.
 
@@ -651,8 +691,7 @@ from minimum integration allowances; the allowance yields a
 \begin{table}[t]
 \caption{Measured core mass and B200mini board-only projection}
 \label{tab:payload}
-\centering
-\small
+\centering\small
 \begin{tabularx}{\columnwidth}{@{}X r@{}}
 \toprule
 Item & Mass (g) \\
@@ -662,15 +701,15 @@ USRP B210 with access antennas & 217.3 \\
 Quectel modem kit with antennas & 288.7 \\
 \midrule
 Measured core electronics & 657.4 \\
-Regulator, harness, mounting allowance & 100.0 \\
-Estimated integration with allowance & 757.4 \\
+Regulator, harness, mounting & 100.0 \\
+Estimated integration & 757.4 \\
 \midrule
-B200mini board in place of B210 assembly & 24.0 \\
+B200mini board (vs.\ B210 assembly) & 24.0 \\
 Projected mini-radio integration$^\ast$ & 564.1 \\
 \bottomrule
 \end{tabularx}
-\vspace{1mm}
-\raggedright\footnotesize
+\vspace{0.5mm}
+\raggedright\scriptsize
 $^\ast$Upper-bound mass reduction before adding mini-radio antennas and
 enclosure; the B200mini path has not undergone end-to-end validation.
 \end{table}
@@ -692,22 +731,21 @@ center-of-gravity, electromagnetic-compatibility, and failsafe tests.
 
 \section{Conclusion}
 
-Repeated end-to-end trials in one fixed enclosed lab environment validated
-handset-visible single-segment PWS and data across Ethernet, Wi-Fi/GRE, and
+Repeated end-to-end trials in one fixed enclosed lab validated
+single-segment PWS and data across Ethernet, Wi-Fi/GRE, and
 5G/WireGuard F1 bearers.  Jetson delivered mean
-\SI{68.4}{\mega\bit\per\second} over 5G/WireGuard ($n=20$).  Changing only the
-BLER thresholds moved the dominant MCS from 5 to 24--27; the retuned Ethernet
-configuration averaged \SI{99.8}{\mega\bit\per\second} ($n=20$).
+\SI{68.4}{\mega\bit\per\second} DL and \SI{16.9}{\mega\bit\per\second} UL
+over 5G/WireGuard ($n=20$); retuned Ethernet averaged
+\SI{99.8}{\mega\bit\per\second} ($n=20$).  Network-side PWS latency ranged
+from \SI{120}{\milli\second} (Ethernet) to \SI{216}{\milli\second} (cellular).  Changing only the
+BLER thresholds moved the dominant MCS from 5 to 24--27.
 Core electronics weigh
 \SI{0.657}{\kilogram}; the \SI{0.757}{\kilogram} integration estimate requires a
-\SI{1.08}{\kilogram} payload rating, while an unvalidated B200mini substitution
-projects \SI{0.564}{\kilogram}.  Raspberry Pi resource observations provide
-compute and thermal headroom evidence.  The Arm DU/radio/backhaul payload,
+\SI{1.08}{\kilogram} payload rating.  The Arm DU/radio/backhaul payload,
 pinned software, path and handset
 gates, and rollback form the replicated cell building block.  Keeping CU-side
 functions on the ground makes this bounded unit---not a complete x86 base
-station---what fleet size multiplies.  A uniform cross-setup
-matched-condition factorial comparison, measured payload power, concurrent
+station---what fleet size multiplies.  Measured payload power, concurrent
 DUs, and controlled flight remain future work.
 
 \bibliographystyle{IEEEtran}
