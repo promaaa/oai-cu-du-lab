@@ -352,7 +352,7 @@ the dashed branch is architectural scale-out, not a simultaneous experiment.
     node[midway, link badge, yshift=5.5mm] {F1-C / F1-U}
     coordinate[midway] (f1mid) (du.west);
   \node[box, draw=black!45, fill=white, minimum width=2.75cm,
-    minimum height=0.88cm] (bearers) at (7.55,1.58)
+    minimum height=0.88cm] (bearers) at (f1mid |- 0, 1.58)
     {Ethernet / Fiber $\mid$ Wi-Fi/GRE\\5G/WireGuard};
   \draw[draw=black!45, thick] (bearers.north) -- (f1mid);
 
