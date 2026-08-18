@@ -9,6 +9,7 @@
 \usepackage{amsmath}
 \usepackage{siunitx}
 \usepackage{url}
+\def\UrlBreaks{\do\/\do-\do\_}
 \usepackage{graphicx}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta}
@@ -206,20 +207,29 @@ incremental DU is named, pinned, measured, exercised across heterogeneous
 paths, and paired with explicit service gates and rollback.
 
 \begin{table*}[t]
-\caption{Mass and downlink positioning against representative open aerial
-cellular testbeds.  Heterogeneous bandwidths, radios, terminals, and traffic
-prevent a controlled ranking.}
+\caption{Mass and Downlink Positioning Against Representative Open Aerial
+Cellular Testbeds. Heterogeneous Bandwidths, Radios, Terminals, and Traffic
+Prevent a Controlled Ranking.}
 \label{tab:related}
 \centering\scriptsize
-\begin{tabularx}{\textwidth}{@{}p{0.105\textwidth}p{0.235\textwidth}p{0.17\textwidth}p{0.165\textwidth}X@{}}
+\begin{tabularx}{\textwidth}{@{}
+  >{\raggedright\arraybackslash}p{0.135\textwidth}
+  >{\raggedright\arraybackslash}p{0.215\textwidth}
+  >{\raggedright\arraybackslash}p{0.135\textwidth}
+  >{\raggedright\arraybackslash}p{0.185\textwidth}
+  >{\raggedright\arraybackslash}X@{}}
 \toprule
-System & Airborne RAN and compute & Reported airborne mass & Reported downlink outcome & Position relative to this work \\
+\textbf{System} & \textbf{Airborne RAN \& Compute} & \textbf{Airborne Mass} & \textbf{Reported Downlink} & \textbf{Position Relative to This Work} \\
 \midrule
 Flying Rebots~\cite{gangula2018} & OAI LTE eNB; x86 compute and USRP & \SI{2}{\kilogram} airframe before payload & $\sim$\SI{6}{\mega\bit\per\second} relay vs.\ \SI{4}{\mega\bit\per\second} direct & Complete LTE eNB aloft; no 5G F1 split, Arm DU, or PWS. \\
-SkyRAN~\cite{chakraborty2018} & OAI LTE eNB/EPC; Intel i7/J1900; B210 & Communications payload not reported & 0.9--0.95$\times$ measured optimum & Complete access and core stack aloft; mass not itemized. \\
-SkyCell~\cite{ferranti2020} & srsLTE eNB; Intel NUC; B210 & Communications payload not reported & Up to 35\% throughput improvement & Mobility-focused LTE platform; no OAI 5G, F1, or PWS. \\
+\addlinespace[2pt]
+SkyRAN~\cite{chakraborty2018} & OAI LTE eNB/EPC; Intel i7/J1900; B210 & Payload mass not reported & 0.9--0.95$\times$ measured optimum & Complete access and core stack aloft; mass not itemized. \\
+\addlinespace[2pt]
+SkyCell~\cite{ferranti2020} & srsLTE eNB; Intel NUC; B210 & Payload mass not reported & Up to 35\% throughput improvement & Mobility-focused LTE platform; no OAI 5G, F1, or PWS. \\
+\addlinespace[2pt]
 Mundlamuri \emph{et al.}~\cite{mundlamuri2023} & OAI 5G DU; host not reported; B200mini/modem & Not reported & \SI{30}{\mega\bit\per\second} & Closest aerial DU and wireless F1; no reported Arm DU or PWS. \\
-This work & OAI 5G DU; Raspberry Pi 5 or Jetson; B210/modem & \SI{0.657}{\kilogram} measured core & \SI{99.8}{\mega\bit\per\second} mean Ethernet; \SI{76.7}{\mega\bit\per\second} x86 and \SI{68.4}{\mega\bit\per\second} Jetson cellular ($n=20$) & Itemized incremental-DU mass; flight pending. \\
+\addlinespace[2pt]
+This work & OAI 5G DU; Raspberry Pi 5 or Jetson; B210/modem & \SI{0.657}{\kilogram} measured core & \SI{99.8}{\mega\bit\per\second} mean Ethernet; \SI{76.7}{\mega\bit\per\second} x86; \SI{68.4}{\mega\bit\per\second} Jetson ($n=20$) & Itemized incremental-DU mass; flight pending. \\
 \bottomrule
 \end{tabularx}
 \end{table*}
@@ -477,9 +487,9 @@ Four details made this repeatable.  The \path{libsctp-dev} and
 \path{lksctp-tools} packages are installed before the build so compile-time
 headers and runtime diagnostics agree.  The USRP Hardware Driver (UHD) and its
 B210 images are installed locally; the USB radio cannot be treated as a remote
-x86 peripheral.  Build parallelism is bounded and swap is available because
-an \SI{8}{\giga\byte} board can otherwise fail during compilation or linking.  Finally, the resulting
-\path{nr-softmodem}, shared parameter library, UHD backend, and exact source
+x86 peripheral.  Build parallelism is bounded and swap is enabled because
+an \SI{8}{\giga\byte} board can otherwise run out of memory during compilation.  Finally, the resulting
+\texttt{nr-softmodem}, parameter library, UHD backend, and exact source
 identity are verified on the target.  No Jetson-specific OAI source fork is
 required for AArch64 itself; the lab's PWS and instrumentation changes remain
 explicit patches on the pinned tree.
@@ -655,9 +665,9 @@ and updates MCS according to configured bounds: incrementing only when
 \(\widehat{b}_k > b_{\mathrm{upper}}\).  The default OAI source thresholds are
 \((b_{\mathrm{lower}},b_{\mathrm{upper}})=(0.05,0.15)\).  Under live split-RAN traffic,
 initial-round HARQ retransmissions naturally hovered between 22\% and 35\%,
-keeping \(\widehat{b}_k\) above 0.18.  Consequently, the controller could never
-trigger an MCS increment, continuously penalizing the link until it hit the
-MCS 5 floor.
+maintaining \(\widehat{b}_k > 0.18\).  Consequently, the controller could never
+trigger an MCS increment, continuously penalizing the radio link until it reached
+the MCS~5 floor.
 
 \subsection{BLER retuning and recovery}
 
@@ -671,9 +681,12 @@ remained strictly unchanged.
 \caption{BLER-Threshold Intervention and Performance Recovery}
 \label{tab:mcs}
 \centering\scriptsize
-\begin{tabularx}{\columnwidth}{@{}l X X@{}}
+\begin{tabularx}{\columnwidth}{@{}
+  >{\raggedright\arraybackslash}p{0.32\columnwidth}
+  >{\raggedright\arraybackslash}X
+  >{\raggedright\arraybackslash}X@{}}
 \toprule
-Metric & Before intervention & After retuning \\
+\textbf{Metric} & \textbf{Before Intervention} & \textbf{After Retuning} \\
 \midrule
 DL target BLER window & 0.05--0.15 & 0.25--0.35 \\
 Dominant scheduled MCS & 5 (locked to floor) & 24 and 27 \\
@@ -701,7 +714,7 @@ between the controller's expectation and the real-radio HARQ dynamics.
 \setlength{\tabcolsep}{3pt}
 \begin{tabularx}{\columnwidth}{@{}X c c c c@{}}
 \toprule
-F1 Bearer & F1 RTT (ms) & CU$\to$DU (ms) & E2E Range (s) & E2E Median (s) \\
+\textbf{F1 Bearer} & \textbf{F1 RTT (ms)} & \textbf{CU$\to$DU (ms)} & \textbf{E2E Range (s)} & \textbf{E2E Median (s)} \\
 \midrule
 Ethernet     & 11--30 & 120 & 0.3--0.9 & 0.8 \\
 Wi-Fi/GRE    & 15--40 & 182 & 0.4--1.4 & 1.0 \\
@@ -714,7 +727,7 @@ Wi-Fi/GRE    & 15--40 & 182 & 0.4--1.4 & 1.0 \\
 \setlength{\tabcolsep}{6pt}
 \begin{tabularx}{\columnwidth}{@{}X r@{}}
 \toprule
-Pipeline Stage & Mean Delay \\
+\textbf{Pipeline Stage} & \textbf{Mean Delay} \\
 \midrule
 CU F1AP warning generation & \SI{2}{\milli\second} \\
 F1-C transport (Ethernet baseline) & \SI{17}{\milli\second} \\
@@ -722,7 +735,7 @@ Periodic SI window alignment & \SI{132}{\milli\second} \\
 DU SIB8 broadcast scheduling & \SI{3}{\milli\second} \\
 Handset baseband decode \& display & \SI{970}{\milli\second} \\
 \midrule
-Total end-to-end latency & \SI{1124}{\milli\second} ($\sim$\SI{1.1}{\second}) \\
+\textbf{Total end-to-end latency} & \SI{1124}{\milli\second} ($\sim$\SI{1.1}{\second}) \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -759,12 +772,12 @@ from minimum integration allowances; the allowance yields a
 \SI{0.757}{\kilogram} integration estimate.
 
 \begin{table}[t]
-\caption{Measured core mass and B200mini board-only projection}
+\caption{Measured Core Mass and B200mini Board-Only Projection}
 \label{tab:payload}
-\centering\small
+\centering\scriptsize
 \begin{tabularx}{\columnwidth}{@{}X r@{}}
 \toprule
-Item & Mass (g) \\
+\textbf{Item} & \textbf{Mass (g)} \\
 \midrule
 Jetson Orin Nano board & 151.4 \\
 USRP B210 with access antennas & 217.3 \\
@@ -777,11 +790,8 @@ Estimated integration & 757.4 \\
 B200mini board (vs.\ B210 assembly) & 24.0 \\
 Projected mini-radio integration$^\ast$ & 564.1 \\
 \bottomrule
+\multicolumn{2}{@{}p{\columnwidth}@{}}{\vspace{1pt}\raggedright $^\ast$Upper-bound mass reduction before adding mini-radio antennas and enclosure; the B200mini path has not undergone end-to-end validation.}
 \end{tabularx}
-\vspace{0.5mm}
-\raggedright\scriptsize
-$^\ast$Upper-bound mass reduction before adding mini-radio antennas and
-enclosure; the B200mini path has not undergone end-to-end validation.
 \end{table}
 
 Ettus specifies a \SI{24}{\gram} board-only mass for the B200mini, compared
