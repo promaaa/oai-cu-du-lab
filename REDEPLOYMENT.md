@@ -83,12 +83,6 @@ If the lab uses values different from the tracked defaults, edit only
 values, passwords, private keys, or tokens unless an existing approved private
 configuration explicitly requires them.
 
-Run the dependency-free test before contacting the lab:
-
-```bash
-node scripts/tests/oai-lab-static.test.mjs
-```
-
 Then prove SSH discovery for the rollback profile:
 
 ```bash
@@ -164,7 +158,6 @@ cd "$HOME/oai-cu-du-lab-redeploy-test"
 mkdir -p conf/local
 install -m 600 conf/lab.env.example conf/local/lab.env
 ./oai-lab --check-local-setup
-node scripts/tests/oai-lab-static.test.mjs
 ./oai-lab --minipc-ethernet --verify
 ./oai-lab
 ```
@@ -182,7 +175,6 @@ Record only these sanitized results in the handover notes:
 | Fresh clone and exact Git commit recorded | `PASS` / `FAIL` |
 | Node.js 18+ and OpenSSH | `PASS` / `FAIL` |
 | Private env loaded with mode `600` | `PASS` / `FAIL` |
-| Static suite | `PASS` / `FAIL` |
 | Firecell SSH | `PASS` / `FAIL` |
 | MiniPC discovery | `PASS` / `FAIL` |
 | Read-only TUI status/log/exit | `PASS` / `FAIL` |

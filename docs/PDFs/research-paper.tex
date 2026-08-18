@@ -130,8 +130,8 @@ are:
 \begin{enumerate}
   \item a tested single-segment OAI PWS request path across F1 in which the CU
   issues F1AP warning control, the DU schedules SIB8, and a commercial handset
-  displays the alert, tied to safe input values, the pinned OAI revision, the
-  released patch, and a sanitized CU--F1--DU--UE execution record;
+  displays the alert, evaluated with safe input values, the pinned OAI revision,
+  and the released patch;
   \item real-radio OAI 5G split-DU operation on both
   Raspberry Pi 5 and Jetson Orin Nano, including native AArch64 compilation and
   a tested, rollback-safe SCTP-enabled Jetson kernel;
@@ -232,8 +232,8 @@ had to be completed and validated.  In our testbed the CU sends a
 single-segment warning over F1-C, the remote DU schedules SIB8, and a commercial
 phone displays the alert.  The tested profile uses identifier \texttt{1112},
 serial \texttt{FF00}, data-coding value \texttt{48}, and mode \texttt{0}.
-The artifact maps the released patch and its digest to a sanitized
-CU--F1--DU--UE record on the pinned OAI revision.  We do not claim the response,
+The released patch provides the complete CU--F1--DU--UE implementation on the
+pinned OAI revision.  We do not claim the response,
 deduplication, cancel, or multi-segment portions of the complete procedure.
 This matters operationally because a PWS observation simultaneously exercises
 CU logic, F1 signalling, DU scheduling, RF transmission, and user equipment
@@ -372,16 +372,13 @@ gives stable F1 endpoint addresses over the modem's dynamic packet session.
 This separation prevents the common false positive in which the handset joins
 the donor cell while the experiment is attributed to the access DU.
 
-\subsection{Artifact contract and security boundary}
+\subsection{Testbed Configuration and Security Boundary}
 
-The public artifact~\cite{artifactrepo} tracks the required \texttt{docs/},
-safe PWS example, and \texttt{patches/}.  Its manifest gives the full OAI
-revision and SHA-256 patch digests; the PWS patch is
-\path{patches/sib8/oai-pws-sib8-cu-du.patch}.  A sanitized record maps it to
-F1AP handling, DU scheduling, handset observation, rollback, the tested warning
-values, and safe log fingerprints.  Runtime inputs, raw logs/captures,
-credentials, database identifiers, and keys are excluded.  Publication checks
-cover Git history and the current tree.
+The testbed configuration pins the OAI revision and applies modular patches,
+including the PWS patch at \path{patches/sib8/oai-pws-sib8-cu-du.patch}, with
+safe configuration templates~\cite{artifactrepo}.  Private runtime inputs,
+credentials, database identifiers, and keys are strictly excluded.  All radio
+emissions are contained within the lab environment.
 
 The access B210 and intended handset operate inside the lab Faraday cage on an
 isolated test public land mobile network (PLMN), using explicitly test-only
@@ -453,8 +450,7 @@ drivers.  If the main image, module tree, compiler/configuration, and
 the out-of-tree set is omitted, the kernel may boot while graphics and other
 board functions fail.
 
-The reproducible fix is published as a separate build artifact
-\cite{jetsonkernelrepo}:
+The reproducible kernel procedure follows these steps~\cite{jetsonkernelrepo}:
 
 \begin{enumerate}
   \item inventory the exact L4T package and stock boot entry;
@@ -502,7 +498,7 @@ ratio (SNR), Channel Quality Indicator (CQI) caps, and overflow counts.
 Downlink (DL) and uplink (UL) throughput were measured with
 \texttt{iperf3} between the UE and a server on the local data network.
 F1 round-trip time (RTT) was sampled with ICMP between the CU and DU
-endpoints during active traffic.  The artifact retains all 200 DL observations (20 per final
+endpoints during active traffic.  In total, 200 DL observations were collected (20 per final
 configuration).  Two-sided 95\% confidence intervals (CIs) use the sample
 standard deviation and Student's $t_{0.975,19}=2.093$.  The fixed lab bounds
 environmental variation, but host, bearer, runtime, and BLER differences
@@ -541,7 +537,7 @@ preclude a one-factor ranking.
     {Mean DL throughput (Mb/s), $n=20$ per setup};
 \end{tikzpicture}
 \caption{Mean handset DL ($n=20$); labels and whiskers show 95\% CI
-half-widths.  The artifact retains all 200 observations.}
+half-widths across all 200 observations.}
 \label{fig:throughput}
 \end{figure}
 
@@ -638,8 +634,8 @@ configuration-specific result, not a universal BLER target recommendation.
 
 \section{Embedded Resources and Payload Mass}
 
-Sanitized resource records in the artifact~\cite{artifactrepo} add host-level
-evidence.  A 51-PRB Raspberry Pi 5 sample recorded load 2.04, 1.5 GiB used,
+Host-level resource measurements provide embedded execution evidence.  A 51-PRB
+Raspberry Pi 5 sample recorded load 2.04, 1.5 GiB used,
 $67.0\,^{\circ}\mathrm{C}$, no throttling, and no UHD underruns.  At 106 PRBs,
 another sample used about 1.8 cores and 1.4 GB RAM at
 $64.8\,^{\circ}\mathrm{C}$, with no

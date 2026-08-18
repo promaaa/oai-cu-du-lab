@@ -22,34 +22,20 @@ SIB8/Public Warning System support.
 This repository is the operational source of truth. OpenAirInterface source
 remains external and is pinned for each deployment.
 
-## Research artifact
+## Research artifact and components
 
-- [`docs/ARTIFACT_MANIFEST.md`](docs/ARTIFACT_MANIFEST.md) pins OAI and every
-  released patch.
-- [`docs/evidence/PWS-F1.md`](docs/evidence/PWS-F1.md) maps the PWS/SIB8 patch
-  to a sanitized CU-F1-DU-UE execution record, safe historical provenance,
-  tested values, and the exact standards scope.
+- [`docs/PDFs/research-paper.tex`](docs/PDFs/research-paper.tex) is the research
+  paper LaTeX source; the PDF manuscript is
+  [`docs/PDFs/research-paper.pdf`](docs/PDFs/research-paper.pdf).
 - [`conf/pws-sib8.example`](conf/pws-sib8.example) provides the public,
   test-only warning profile without subscriber or infrastructure data.
-- [`docs/evidence/BENCHMARKS.md`](docs/evidence/BENCHMARKS.md) records the
-  current end-to-end trial campaign, including mean throughput over 20
-  repetitions per final setup.
-- [`docs/evidence/throughput-means.csv`](docs/evidence/throughput-means.csv)
-  is the machine-readable statistical source for the manuscript's throughput
-  plot.
-- [`docs/evidence/throughput-observations.csv`](docs/evidence/throughput-observations.csv)
-  retains all 20 downlink observations for each of the nine final setups.
-- [`docs/evidence/RESOURCE_PROFILE.md`](docs/evidence/RESOURCE_PROFILE.md)
-  publishes sanitized Raspberry Pi CPU, memory, thermal, and runtime-stability
-  observations and separates them from component-based power estimates.
-- [`docs/BASELINES.md`](docs/BASELINES.md) preserves the Ethernet rollback and
-  records the directly observed BLER-driven MCS mechanism.
-- [`docs/prompts/PWS_REPOSITORY_STRENGTHENING.md`](docs/prompts/PWS_REPOSITORY_STRENGTHENING.md)
-  is a ready-to-use agent prompt for extending the canonical PWS artifact
-  without importing unsafe legacy material.
-- [`docs/PDFs/research-paper.tex`](docs/PDFs/research-paper.tex) is the WCNC
-  Track 4 paper source; the verified six-page PDF is
-  [`docs/PDFs/research-paper.pdf`](docs/PDFs/research-paper.pdf).
+- [`patches/sib8/`](patches/sib8/) contains the F1 CU/DU SIB8/PWS patch.
+- [`patches/performance/`](patches/performance/) contains the DL MCS scheduler
+  instrumentation and jumbo frames guide.
+- [`patches/rpi-du/`](patches/rpi-du/) contains the Raspberry Pi DU B210 sample
+  rate patch.
+- [`wiki/`](wiki/) provides the operator guides, topology reference, and
+  validation workflows.
 
 ## Quick start
 

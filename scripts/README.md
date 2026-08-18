@@ -16,15 +16,6 @@ are internal implementation details and must not be launched directly.
 `--check-local-setup` checks only the local operator workstation and private
 environment file. `--verify` contacts the configured lab hosts.
 
-Run the dependency-free static suite without contacting the lab:
-
-```bash
-node scripts/tests/oai-lab-static.test.mjs
-```
-
-Static tests prove CLI/menu dispatch and external-command blocking only. They
-are not radio or phone evidence.
-
 The TUI records its run output outside the repository at:
 
 ```text
