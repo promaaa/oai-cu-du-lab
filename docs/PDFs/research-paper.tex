@@ -298,85 +298,122 @@ tablets) display the broadcast warning~\cite{3gpp38473}.
 
 The figure shows the DU validated in this work as DU$_1$.  From the CU's point
 of view, the same F1 architecture can fan out to DU$_2\ldots$DU$_N$, each with
-its own F1 endpoints, access cell, and airborne payload.  Replicating the green
+its own F1 endpoints, access cell, and airborne payload.  Replicating the airborne
 payload while retaining the ground 5GC/CU is the intended multi-UAV extension;
 the dashed branch is architectural scale-out, not a simultaneous experiment.
 
 \begin{figure*}[t]
 \centering
+\definecolor{GroundBorder}{HTML}{4B5563}
+\definecolor{GroundFill}{HTML}{F9FAFB}
+\definecolor{GroundTitle}{HTML}{111827}
+\definecolor{GroundBoxBorder}{HTML}{1F2937}
+\definecolor{GroundBoxFill}{HTML}{E5E7EB}
+\definecolor{GroundText}{HTML}{111827}
+
+\definecolor{PayloadBorder}{HTML}{1F2937}
+\definecolor{PayloadFill}{HTML}{F3F4F6}
+\definecolor{PayloadTitle}{HTML}{111827}
+\definecolor{DUBoxBorder}{HTML}{111827}
+\definecolor{DUBoxFill}{HTML}{FFFFFF}
+\definecolor{DUText}{HTML}{000000}
+
+\definecolor{RadioBorder}{HTML}{BE123C}
+\definecolor{RadioFill}{HTML}{FFE4E6}
+\definecolor{RadioText}{HTML}{881337}
+
+\definecolor{UEBorder}{HTML}{3F3F46}
+\definecolor{UEFill}{HTML}{F4F4F5}
+\definecolor{UEText}{HTML}{18181B}
+
+\definecolor{FutureBorder}{HTML}{9CA3AF}
+\definecolor{FutureFill}{HTML}{FFFFFF}
+\definecolor{FutureText}{HTML}{4B5563}
+
+\definecolor{F1Link}{HTML}{1F2937}
+\definecolor{F1BadgeBorder}{HTML}{1F2937}
+\definecolor{F1BadgeText}{HTML}{111827}
+
+\definecolor{RFLink}{HTML}{BE123C}
+\definecolor{RFBadgeBorder}{HTML}{BE123C}
+\definecolor{RFBadgeText}{HTML}{881337}
+
+\definecolor{FutureLink}{HTML}{6B7280}
+\definecolor{NoteText}{HTML}{4B5563}
+
 \begin{tikzpicture}[
   x=1cm,
   y=1cm,
   box/.style={thick, rounded corners=1.5mm, align=center,
-    font=\scriptsize, text=black!72},
-  group title/.style={font=\scriptsize\bfseries, text=blue!45!black,
-    anchor=west},
-  link badge/.style={draw=blue!45!black, fill=white, rounded corners=1mm,
+    font=\scriptsize},
+  ground title/.style={font=\scriptsize\bfseries, text=GroundTitle, anchor=west},
+  payload title/.style={font=\scriptsize\bfseries, text=PayloadTitle, anchor=west},
+  f1 link badge/.style={draw=F1BadgeBorder, fill=white, rounded corners=1mm,
     inner xsep=0.6mm, inner ysep=0.7mm, outer sep=0pt,
     minimum height=0.38cm, text height=1.45ex, text depth=0.30ex,
-    font=\scriptsize\bfseries, text=blue!45!black},
-  blue link/.style={draw=blue!55!black, very thick,
-    -{Stealth[length=2mm,width=1.6mm]}},
-  orange link/.style={draw=orange!80!black, very thick,
-    -{Stealth[length=2mm,width=1.6mm]}},
-  future link/.style={draw=green!50!black, thick, dashed,
-    -{Stealth[length=2mm,width=1.6mm]}}
+    font=\scriptsize\bfseries, text=F1BadgeText},
+  rf link badge/.style={draw=RFBadgeBorder, fill=white, rounded corners=1mm,
+    inner xsep=0.6mm, inner ysep=0.7mm, outer sep=0pt,
+    minimum height=0.38cm, text height=1.45ex, text depth=0.30ex,
+    font=\scriptsize\bfseries, text=RFBadgeText},
+  f1 link/.style={draw=F1Link, very thick, -{Stealth[length=2mm,width=1.6mm]}},
+  rf link/.style={draw=RFLink, very thick, -{Stealth[length=2mm,width=1.6mm]}},
+  future link/.style={draw=FutureLink, thick, dashed, -{Stealth[length=2mm,width=1.6mm]}}
 ]
   \path[use as bounding box] (0,0) rectangle (17.95,5.65);
 
   % Shared ground functions.
-  \draw[thick, rounded corners=2mm, draw=blue!55!black, fill=blue!5]
+  \draw[thick, rounded corners=2mm, draw=GroundBorder, fill=GroundFill]
     (0.20,0.75) rectangle (5.55,4.55);
-  \node[group title] at (0.48,4.24) {Ground -- shared functions};
-  \node[box, draw=blue!60!black, fill=blue!12,
+  \node[ground title] at (0.48,4.24) {Ground -- shared functions};
+  \node[box, draw=GroundBoxBorder, fill=GroundBoxFill, text=GroundText,
     minimum width=1.90cm, minimum height=1.85cm] (core) at (1.70,2.68)
     {\bfseries OAI 5G Core\\[1mm]shared network};
-  \node[box, draw=blue!60!black, fill=blue!12,
+  \node[box, draw=GroundBoxBorder, fill=GroundBoxFill, text=GroundText,
     minimum width=1.90cm, minimum height=1.85cm] (cu) at (4.25,2.68)
     {\bfseries OAI CU\\[1mm]RRC / PDCP\\SDAP};
-  \draw[blue link] (core.east) -- (cu.west);
+  \draw[f1 link] (core.east) -- (cu.west);
 
   % Validated UAV-compatible payload.
-  \draw[thick, rounded corners=2mm, draw=green!55!black, fill=green!5]
+  \draw[thick, rounded corners=2mm, draw=PayloadBorder, fill=PayloadFill]
     (9.55,0.75) rectangle (14.70,4.55);
-  \node[group title, text=green!35!black] at (9.83,4.24)
+  \node[payload title] at (9.83,4.24)
     {UAV-compatible payload};
-  \node[box, draw=green!55!black, fill=green!12,
+  \node[box, draw=DUBoxBorder, fill=DUBoxFill, text=DUText,
     minimum width=1.70cm, minimum height=1.85cm] (du) at (10.68,2.68)
     {\bfseries Arm DU$_1$\\[1mm]MAC / RLC\\PHY};
-  \node[box, draw=orange!80!black, fill=orange!12,
+  \node[box, draw=RadioBorder, fill=RadioFill, text=RadioText,
     minimum width=1.95cm, minimum height=1.85cm] (b210) at (13.55,2.68)
     {\bfseries USRP B210\\[1mm]n78 access\\106 PRBs};
 
   % F1 bearer and its selectable transports.
-  \draw[blue link] (cu.east) --
-    node[midway, link badge, yshift=5.5mm] {F1-C / F1-U}
+  \draw[f1 link] (cu.east) --
+    node[midway, f1 link badge, yshift=5.5mm] {F1-C / F1-U}
     coordinate[midway] (f1mid) (du.west);
-  \node[box, draw=black!45, fill=white, minimum width=2.75cm,
+  \node[box, draw=GroundBorder!70, fill=white, text=GroundText, minimum width=2.75cm,
     minimum height=0.88cm] (bearers) at (f1mid |- 0, 1.58)
     {Ethernet / Fiber $\mid$ Wi-Fi/GRE\\5G/WireGuard};
-  \draw[draw=black!45, thick] (bearers.north) -- (f1mid);
+  \draw[draw=GroundBorder!70, thick] (bearers.north) -- (f1mid);
 
   % The dedicated gap keeps the USB label fully visible at print scale.
-  \draw[blue link] (du.east) --
-    node[midway, link badge, yshift=5.5mm] {USB 3} (b210.west);
+  \draw[f1 link] (du.east) --
+    node[midway, f1 link badge, yshift=5.5mm] {USB 3} (b210.west);
 
   % Commercial handset and radio interface.
-  \node[box, draw=black!55, fill=black!3,
+  \node[box, draw=UEBorder, fill=UEFill, text=UEText,
     minimum width=1.95cm, minimum height=1.85cm] (ue) at (16.90,2.68)
     {\bfseries Commercial UE\\[1mm]PWS alert\\and user data};
-  \draw[orange link] (b210.east) --
-    node[midway, link badge, draw=orange!80!black, text=orange!70!black,
-      yshift=5.5mm] {NR-Uu} (ue.west);
+  \draw[rf link] (b210.east) --
+    node[midway, rf link badge, yshift=5.5mm] {NR-Uu} (ue.west);
 
   % Architectural scale-out, not part of the one-DU validation.
-  \node[box, draw=green!55!black, fill=green!3, dashed,
+  \node[box, draw=FutureBorder, fill=FutureFill, dashed,
     minimum width=5.70cm, minimum height=0.68cm,
-    font=\scriptsize\bfseries, text=green!30!black] (future)
+    font=\scriptsize\bfseries, text=FutureText] (future)
     at (12.20,5.20) {Future UAV DUs: DU$_2$ to DU$_N$};
   \draw[future link] (cu.north east) to[out=40,in=180] (future.west);
 
-  \node[font=\scriptsize, text=black!62] at (8.88,0.25)
+  \node[font=\scriptsize, text=NoteText] at (8.88,0.25)
     {Solid path validated with one DU; dashed branch is architectural scale-out only.};
 \end{tikzpicture}
 \caption{Shared-CU testbed architecture.  The solid DU$_1$ path is validated;
@@ -511,52 +548,70 @@ donor-cell scheduling and tunnel encryption.
 
 \begin{figure}[t]
 \centering
-\begin{tikzpicture}[x=0.0275cm,y=0.48cm,font=\tiny]
-  % Grid lines and ticks
+\definecolor{DLBar}{HTML}{BE123C}
+\definecolor{DLBorder}{HTML}{881337}
+\definecolor{ULBar}{HTML}{FFE4E6}
+\definecolor{ULBorder}{HTML}{BE123C}
+\definecolor{GridLine}{HTML}{E5E7EB}
+\definecolor{AxisLine}{HTML}{4B5563}
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[x=0.032cm,y=0.56cm,font=\scriptsize]
+  % Grid lines and ticks (clean white background)
   \foreach \x in {0,50,100,150,200} {
-    \draw[black!15] (\x,-0.55) -- (\x,9.85);
-    \node[anchor=north,text=black!70] at (\x,-0.60) {\x};
+    \draw[GridLine,line width=0.5pt] (\x,-0.60) -- (\x,9.90);
+    \node[anchor=north,font=\scriptsize,text=black!75] at (\x,-0.65) {\x};
   }
-  \draw[->,black!65] (0,-0.55) -- (205,-0.55);
+  \draw[->,AxisLine,line width=0.7pt] (0,-0.60) -- (206,-0.60);
 
   % Legend
-  \fill[blue!70!black] (15,10.35) rectangle (25,10.65);
-  \node[anchor=west,font=\tiny] at (27,10.50) {DL};
-  \filldraw[draw=blue!80!black,fill=blue!20] (60,10.35) rectangle (70,10.65);
-  \node[anchor=west,font=\tiny] at (72,10.50) {UL};
+  \filldraw[draw=DLBorder,fill=DLBar] (20,10.40) rectangle (32,10.75);
+  \node[anchor=west,font=\scriptsize\bfseries,text=DLBorder] at (34,10.58) {DL};
+  \filldraw[draw=ULBorder,fill=ULBar] (80,10.40) rectangle (92,10.75);
+  \node[anchor=west,font=\scriptsize\bfseries,text=DLBorder] at (94,10.58) {UL};
+
+  % Platform tier indicators (square brackets + centered rotated labels)
+  \node[anchor=center,font=\scriptsize\bfseries,text=black!80,rotate=90] at (-53,7.50) {x86};
+  \draw[draw=black!45,line width=0.6pt] (-42,5.65) -- (-45,5.65) -- (-45,9.35) -- (-42,9.35);
+
+  \node[anchor=center,font=\scriptsize\bfseries,text=black!80,rotate=90] at (-53,4.00) {Pi 5};
+  \draw[draw=black!45,line width=0.6pt] (-42,2.65) -- (-45,2.65) -- (-45,5.35) -- (-42,5.35);
+
+  \node[anchor=center,font=\scriptsize\bfseries,text=black!80,rotate=90] at (-53,1.00) {Jetson};
+  \draw[draw=black!45,line width=0.6pt] (-42,-0.35) -- (-45,-0.35) -- (-45,2.35) -- (-42,2.35);
 
   % Data rows
-  \foreach \name/\dl/\dlci/\ul/\ulci/\row/\shade in {
-    {x86 mono}/190.7/0.67/26.9/0.15/9/blue,
-    {x86 Ethernet}/99.8/1.18/22.4/0.52/8/blue,
-    {x86 Wi-Fi/GRE}/52.0/0.42/12.3/0.96/7/blue,
-    {x86 5G/WG}/76.7/2.11/18.7/0.38/6/blue,
-    {Pi Ethernet}/62.1/1.57/15.6/0.72/5/green,
-    {Pi Wi-Fi/GRE}/41.3/1.37/10.0/0.78/4/green,
-    {Pi 5G/WG}/47.8/0.33/12.6/0.60/3/green,
-    {Jetson Ethernet}/88.6/0.56/18.5/0.29/2/orange,
-    {Jetson Wi-Fi/GRE}/46.0/0.24/13.8/0.68/1/orange,
-    {Jetson 5G/WG}/68.4/0.70/16.9/0.42/0/orange} {
+  \foreach \name/\dl/\dlci/\ul/\ulci/\row in {
+    {mono}/190.7/0.67/26.9/0.15/9,
+    {Ethernet}/99.8/1.18/22.4/0.52/8,
+    {Wi-Fi/GRE}/52.0/0.42/12.3/0.96/7,
+    {5G/WG}/76.7/2.11/18.7/0.38/6,
+    {Ethernet}/62.1/1.57/15.6/0.72/5,
+    {Wi-Fi/GRE}/41.3/1.37/10.0/0.78/4,
+    {5G/WG}/47.8/0.33/12.6/0.60/3,
+    {Ethernet}/88.6/0.56/18.5/0.29/2,
+    {Wi-Fi/GRE}/46.0/0.24/13.8/0.68/1,
+    {5G/WG}/68.4/0.70/16.9/0.42/0} {
 
-      \node[anchor=east] at (-2,\row) {\name};
+      \node[anchor=east,font=\scriptsize] at (-1.5,\row) {\name};
 
       % DL bar
-      \fill[\shade!68!black] (0,\row+0.04) rectangle (\dl,\row+0.28);
-      \draw[black,line width=0.4pt] ({\dl-\dlci},\row+0.16) -- ({\dl+\dlci},\row+0.16);
-      \draw[black,line width=0.4pt] ({\dl-\dlci},\row+0.10) -- ({\dl-\dlci},\row+0.22)
-                                    ({\dl+\dlci},\row+0.10) -- ({\dl+\dlci},\row+0.22);
-      \node[anchor=west,font=\tiny,text=black!85] at (\dl+1.5,\row+0.16) {\dl};
+      \filldraw[draw=DLBorder,fill=DLBar,line width=0.35pt] (0,\row+0.05) rectangle (\dl,\row+0.32);
+      \draw[black!85,line width=0.5pt] ({\dl-\dlci},\row+0.185) -- ({\dl+\dlci},\row+0.185);
+      \draw[black!85,line width=0.5pt] ({\dl-\dlci},\row+0.11) -- ({\dl-\dlci},\row+0.26)
+                                    ({\dl+\dlci},\row+0.11) -- ({\dl+\dlci},\row+0.26);
+      \node[anchor=west,font=\scriptsize\bfseries,text=black!90] at (\dl+1.5,\row+0.185) {\dl};
 
       % UL bar
-      \filldraw[draw=\shade!80!black,fill=\shade!22] (0,\row-0.28) rectangle (\ul,\row-0.04);
-      \draw[black,line width=0.4pt] ({\ul-\ulci},\row-0.16) -- ({\ul+\ulci},\row-0.16);
-      \draw[black,line width=0.4pt] ({\ul-\ulci},\row-0.22) -- ({\ul-\ulci},\row-0.10)
-                                    ({\ul+\ulci},\row-0.22) -- ({\ul+\ulci},\row-0.10);
-      \node[anchor=west,font=\tiny,text=black!85] at (\ul+1.5,\row-0.16) {\ul};
+      \filldraw[draw=ULBorder,fill=ULBar,line width=0.45pt] (0,\row-0.32) rectangle (\ul,\row-0.05);
+      \draw[black!85,line width=0.5pt] ({\ul-\ulci},\row-0.185) -- ({\ul+\ulci},\row-0.185);
+      \draw[black!85,line width=0.5pt] ({\ul-\ulci},\row-0.26) -- ({\ul-\ulci},\row-0.11)
+                                    ({\ul+\ulci},\row-0.26) -- ({\ul+\ulci},\row-0.11);
+      \node[anchor=west,font=\scriptsize,text=black!80] at (\ul+1.5,\row-0.185) {\ul};
   }
-  \node[anchor=north,font=\scriptsize] at (100,-1.30)
+  \node[anchor=north,font=\scriptsize] at (100,-1.40)
     {Handset throughput (Mb/s), mean $\pm$ 95\% CI ($n=20$)};
-\end{tikzpicture}
+\end{tikzpicture}%
+}
 \caption{Mean handset Downlink (DL, solid) and Uplink (UL, light) throughput across all 10 configurations ($n=20$ per setup, 400 total observations).}
 \label{fig:throughput}
 \end{figure}
