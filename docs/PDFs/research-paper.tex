@@ -414,7 +414,7 @@ the dashed branch is architectural scale-out, not a simultaneous experiment.
     minimum width=1.95cm, minimum height=1.85cm] (ue) at (16.90,2.68)
     {\bfseries Commercial UE\\[1mm]PWS alert\\and user data};
   \draw[rf link] (b210.east) --
-    node[midway, rf link badge, yshift=5.5mm] {NR-Uu} (ue.west);
+    node[pos=0.68, rf link badge, yshift=5.5mm] {NR-Uu} (ue.west);
 
   % Architectural scale-out, not part of the one-DU validation.
   \node[box, draw=FutureBorder, fill=FutureFill, dashed,
@@ -537,7 +537,6 @@ real-time pressure.
 \label{sec:benchmarks}
 
 \subsection{Measurement protocol and throughput benchmarks}
-
 Every supported scenario was evaluated in repeated end-to-end trials under
 identical experimental conditions.  The Faraday cage, intended handset, n78
 profile (\SI{30}{\kilo\hertz} subcarrier spacing, 106 PRBs), pinned OAI commit, and
