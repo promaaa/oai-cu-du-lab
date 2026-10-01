@@ -1,9 +1,13 @@
+<img src="docs/assets/kaust-logo.png" alt="KAUST" align="right" height="64">
+
 # OAI CU/DU Lab
 
 Operator tooling for an OpenAirInterface 5G NR CU/DU split lab with
 SIB8/Public Warning System support.
 
 ## At a glance
+
+![Operator console main menu](docs/assets/operator-console.png)
 
 | Category | Configuration |
 |---|---|
