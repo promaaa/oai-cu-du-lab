@@ -91,3 +91,7 @@ Run `./oai-lab --help` for every DU, transport, and action.
 
 For detailed procedures, see the [redeployment guide](REDEPLOYMENT.md) and
 [operator wiki](wiki/index.html).
+
+## License
+
+Tooling, scripts and wiki: MIT ([LICENSE](LICENSE)). Patches under [`patches/`](patches/) modify OpenAirInterface and are distributed under the OAI Public License v1.1 ([patches/LICENSE](patches/LICENSE)).
