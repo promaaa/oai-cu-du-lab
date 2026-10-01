@@ -1,0 +1,1254 @@
+diff --git a/common/utils/nr/nr_common.h b/common/utils/nr/nr_common.h
+index ada9813373..c838a2caff 100644
+--- a/common/utils/nr/nr_common.h
++++ b/common/utils/nr/nr_common.h
+@@ -39,6 +39,11 @@
+ #include "common/utils/utils.h"
+ #include "common/utils/LOG/log.h"
+ 
++#define SIB8_MAX_SCAN_CELLS  3 
++#define SIB8_TARGET_CELLS 1
++#define SIB8_HASH_LEN        32
++#define SIB8_SCAN_TIMEOUT_MS 10000
++
+ #define MAX_SI_GROUPS 3
+ #define NR_MAX_PDSCH_TBS 3824
+ #define MAX_NUM_BEAM_PERIODS 4
+diff --git a/executables/nr-ue-ru.c b/executables/nr-ue-ru.c
+index 7235ae5c9f..3fdc5128fc 100644
+--- a/executables/nr-ue-ru.c
++++ b/executables/nr-ue-ru.c
+@@ -371,7 +371,7 @@ void nrue_ru_end(void)
+   }
+ }
+ 
+-void nrue_ru_set_freq(PHY_VARS_NR_UE *UE, uint64_t ul_carrier, uint64_t dl_carrier, int freq_offset)
++void nrue_ru_set_freq(PHY_VARS_NR_UE *UE, uint64_t ul_carrier, uint64_t dl_carrier, int freq_offset, bool soft_rest)
+ {
+   int current_cell_id = nrue_rus[UE->rf_map.card].used_by_cell;
+   NR_DL_FRAME_PARMS *fp0 = &nrue_cell_fp[current_cell_id];
+@@ -407,7 +407,10 @@ void nrue_ru_set_freq(PHY_VARS_NR_UE *UE, uint64_t ul_carrier, uint64_t dl_carri
+   openair0_config_t *cfg0 = &openair0_cfg[UE->rf_map.card];
+   openair0_device_t *dev0 = &openair0_dev[UE->rf_map.card];
+   nr_rf_card_config_freq(cfg0, ul_carrier, dl_carrier, freq_offset);
+-  dev0->trx_set_freq_func(dev0, cfg0);
++  if(soft_rest)
++    dev0->trx_soft_reset_func(dev0, cfg0);
++  else
++    dev0->trx_set_freq_func(dev0, cfg0);
+ }
+ 
+ int nrue_ru_adjust_rx_gain(PHY_VARS_NR_UE *UE, int gain_change)
+diff --git a/executables/nr-ue-ru.h b/executables/nr-ue-ru.h
+index 9fe3fc3bd9..a7f9cacf06 100644
+--- a/executables/nr-ue-ru.h
++++ b/executables/nr-ue-ru.h
+@@ -40,7 +40,7 @@ void nrue_init_openair0(void);
+ 
+ void nrue_ru_start(void);
+ void nrue_ru_end(void);
+-void nrue_ru_set_freq(PHY_VARS_NR_UE *UE, uint64_t ul_carrier, uint64_t dl_carrier, int freq_offset);
++void nrue_ru_set_freq(PHY_VARS_NR_UE *UE, uint64_t ul_carrier, uint64_t dl_carrier, int freq_offset, bool soft_reset);
+ int nrue_ru_adjust_rx_gain(PHY_VARS_NR_UE *UE, int gain_change);
+ int nrue_ru_read(PHY_VARS_NR_UE *UE, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int num_antennas);
+ int nrue_ru_write(PHY_VARS_NR_UE *UE, openair0_timestamp_t timestamp, void **buff, int nsamps, int num_antennas, int flags);
+diff --git a/executables/nr-ue.c b/executables/nr-ue.c
+index 0d1ae421f0..1babcb7aa9 100644
+--- a/executables/nr-ue.c
++++ b/executables/nr-ue.c
+@@ -239,7 +239,7 @@ static void UE_synch(void *arg) {
+       UE->freq_offset = freq_offset - UE->dl_Doppler_shift;
+     } else {
+       // rerun with new cell parameters and frequency-offset
+-      nrue_ru_set_freq(UE, ul_carrier, dl_carrier, freq_offset);
++      nrue_ru_set_freq(UE, ul_carrier, dl_carrier, freq_offset, false);
+     }
+ 
+     if (get_nrUE_params()->agc) {
+@@ -478,29 +478,38 @@ static int handle_sync_req_from_mac(PHY_VARS_NR_UE *UE)
+     // if upper layers signal BW scan we do as instructed by command line parameter
+     // if upper layers disable BW scan we set it to false
+     if (UE->synch_request.synch_req.ssb_bw_scan)
+-      UE->UE_scan_carrier = get_nrUE_params()->UE_scan_carrier;
++      UE->UE_scan_carrier = true;
+     else
+       UE->UE_scan_carrier = false;
+     UE->target_Nid_cell = UE->synch_request.synch_req.target_Nid_cell;
+ 
++    if(UE->synch_request.synch_req.n_excl > 0){
++        UE->n_excl = UE->synch_request.synch_req.n_excl;
++        memcpy(UE->exclude_Nid_cell, UE->synch_request.synch_req.exclude_Nid_cell, sizeof(uint16_t) * UE->n_excl);
++    } else 
++        UE->n_excl = 0;
++    
++    
+     const fapi_nr_ue_carrier_config_t *cfg = &UE->nrUE_config.carrier_config;
+     uint64_t dl_CarrierFreq = get_carrier_frequency(fp->N_RB_DL, fp->numerology_index, cfg->dl_frequency);
+     uint64_t ul_CarrierFreq = get_carrier_frequency(fp->N_RB_UL, fp->numerology_index, cfg->uplink_frequency);
+-    if (dl_CarrierFreq != fp->dl_CarrierFreq || ul_CarrierFreq != fp->ul_CarrierFreq) {
+-      LOG_I(NR_PHY,
+-            "[UE %d] RF frequency change: dl %lu->%lu Hz, ul %lu->%lu Hz (from dl_frequency=%u kHz, target_Nid_cell=%d)\n",
+-            UE->Mod_id,
+-            fp->dl_CarrierFreq,
+-            dl_CarrierFreq,
+-            fp->ul_CarrierFreq,
+-            ul_CarrierFreq,
+-            cfg->dl_frequency,
+-            UE->target_Nid_cell);
+-      nrue_ru_set_freq(UE, ul_CarrierFreq, dl_CarrierFreq, 0);
+-      fp->dl_CarrierFreq = dl_CarrierFreq;
+-      fp->ul_CarrierFreq = ul_CarrierFreq;
+-      init_symbol_rotation(fp);
+-    }
++    bool freq_changed = dl_CarrierFreq != fp->dl_CarrierFreq || ul_CarrierFreq != fp->ul_CarrierFreq;
++
++    LOG_I(NR_PHY,
++          "[UE %d] RF frequency change: dl %lu->%lu Hz, ul %lu->%lu Hz (from dl_frequency=%u kHz, target_Nid_cell=%d)\n",
++          UE->Mod_id,
++          fp->dl_CarrierFreq,
++          dl_CarrierFreq,
++          fp->ul_CarrierFreq,
++          ul_CarrierFreq,
++          cfg->dl_frequency,
++          UE->target_Nid_cell);
++          
++    nrue_ru_set_freq(UE, ul_CarrierFreq, dl_CarrierFreq, 0, freq_changed);
++    fp->dl_CarrierFreq = dl_CarrierFreq;
++    fp->ul_CarrierFreq = ul_CarrierFreq;
++    init_symbol_rotation(fp);
++    
+ 
+     // Apply Doppler based on NTN-Config for target cell
+     if (UE->nrUE_config.ntn_config.is_targetcell)
+@@ -537,12 +546,16 @@ static int UE_dl_preprocessing(PHY_VARS_NR_UE *UE,
+   if (UE->sl_mode == 2)
+     fp = &UE->SL_UE_PHY_PARAMS.sl_frame_params;
+ 
++  LOG_D(PHY, "UE_dl_preprocessing:\n");
++
+   // process what RRC thread sent to MAC
+   do {
+     notifiedFIFO_elt_t *elt = pollNotifiedFIFO(&get_mac_inst(UE->Mod_id)->input_nf);
+     if (!elt) {
++      LOG_D(PHY, "UE_dl_preprocessing: elt is NULL\n");
+       break;
+     }
++    LOG_D(PHY, "UE_dl_preprocessing: elt is NOT NULL\n");
+     process_msg_rcc_to_mac(NotifiedFifoData(elt), UE->Mod_id);
+     delNotifiedFIFO_elt(elt);
+   } while (true);
+@@ -775,8 +788,10 @@ void *UE_thread(void *arg)
+     for (int i = 0; i < 50; i++)
+       readFrame(UE, &tmp, duration_rx_to_tx, true);
+   }
++  UE->n_excl = 0;
+ 
+   while (!oai_exit) {
++
+     if (syncRunning) {
+       notifiedFIFO_elt_t *res = pollNotifiedFIFO(&nf);
+ 
+@@ -804,6 +819,17 @@ void *UE_thread(void *arg)
+           syncData_t *syncMsg = (syncData_t *)NotifiedFifoData(res);
+           intialSyncOffset = syncMsg->rx_offset;
+         }
++        //Not synchronized, check ccv timer and scan next carrier.
++        else if (mac->ccv_active) {
++          nr_ue_ccv_timer_trigger(UE->Mod_id);
++          
++          notifiedFIFO_elt_t *elt = pullNotifiedFIFO(&mac->input_nf);
++          AssertFatal(elt != NULL, "fifo error while waiting for rrc ccv message");
++          process_msg_rcc_to_mac(NotifiedFifoData(elt), UE->Mod_id);
++          delNotifiedFIFO_elt(elt); 
++          handle_sync_req_from_mac(UE);      
++        }
++
+         delNotifiedFIFO_elt(res);
+         stream_status = STREAM_STATUS_UNSYNC;
+       } else {
+@@ -828,6 +854,7 @@ void *UE_thread(void *arg)
+ 
+     AssertFatal(!syncRunning, "At this point synchronization can't be running\n");
+ 
++
+     if (!UE->is_synchronized) {
+       readFrame(UE, &sync_timestamp, duration_rx_to_tx, false);
+       notifiedFIFO_elt_t *Msg = newNotifiedFIFO_elt(sizeof(syncData_t), 0, &nf, UE_synch);
+@@ -865,6 +892,7 @@ void *UE_thread(void *arg)
+                                       fp->ofdm_symbol_size + fp->nb_prefix_samples0,
+                                       fp->nb_antennas_rx),
+                   "");
++
+       // we have the decoded frame index in the return of the synch process
+       // and we shifted above to the first slot of next frame
+       decoded_frame_rx = (decoded_frame_rx + 1) % MAX_FRAME_NUMBER;
+@@ -905,7 +933,9 @@ void *UE_thread(void *arg)
+       continue;
+     }
+ 
+-    /* check if MAC has sent sync request */
++
++
++    /* check if MAC has sent sync request . This will be called when ccv is activated.*/
+     if (handle_sync_req_from_mac(UE) == 0)
+       continue;
+ 
+diff --git a/nfapi/open-nFAPI/nfapi/public_inc/fapi_nr_ue_interface.h b/nfapi/open-nFAPI/nfapi/public_inc/fapi_nr_ue_interface.h
+index 481f704da1..8b0cbc371a 100644
+--- a/nfapi/open-nFAPI/nfapi/public_inc/fapi_nr_ue_interface.h
++++ b/nfapi/open-nFAPI/nfapi/public_inc/fapi_nr_ue_interface.h
+@@ -740,6 +740,9 @@ typedef struct {
+ typedef struct {
+   int16_t target_Nid_cell;
+   bool ssb_bw_scan;
++  bool ccv_active;
++  uint8_t n_excl; 
++  uint16_t exclude_Nid_cell[SIB8_MAX_SCAN_CELLS + 1];
+ } fapi_nr_synch_request_t;
+ 
+ typedef struct {
+diff --git a/openair1/PHY/NR_UE_TRANSPORT/nr_initial_sync.c b/openair1/PHY/NR_UE_TRANSPORT/nr_initial_sync.c
+index 4b4b4b7be8..d0372dce73 100644
+--- a/openair1/PHY/NR_UE_TRANSPORT/nr_initial_sync.c
++++ b/openair1/PHY/NR_UE_TRANSPORT/nr_initial_sync.c
+@@ -268,8 +268,12 @@ bool nr_search_ssb_common(nr_ssb_search_params_t *params)
+   }
+ 
+   // Check if we should exclude the serving cell
+-  if (params->exclude_nid_cell >= 0 && detected_nid_cell == params->exclude_nid_cell) {
+-    return false;
++  if (params->n_excl > 0) {
++    for (int i = 0; i < params->n_excl; i++) {
++      if (detected_nid_cell == params->ccv_exclude_Nid_cell[i]) {
++        return false;
++      }
++    }
+   }
+ 
+   if (params->detected_nid_cell)
+@@ -326,6 +330,7 @@ void nr_scan_ssb(void *arg)
+         .ssb_start_subcarrier = ssbInfo->gscnInfo.ssbFirstSC,
+         .target_nid_cell = ssbInfo->targetNidCell,
+         .exclude_nid_cell = -1, // No exclusion for initial sync
++        .n_excl = 0,
+         .apply_freq_offset = ssbInfo->foFlag,
+         .search_frame_id = frame_id,
+         .fo_flag = ssbInfo->foFlag,
+@@ -341,6 +346,11 @@ void nr_scan_ssb(void *arg)
+         .pss_avg = &ssbInfo->pssCorrAvgPower,
+     };
+ 
++    if(ssbInfo->n_excl > 0){
++      memcpy(search_params.ccv_exclude_Nid_cell, ssbInfo->exclude_Nid_cell, sizeof(ssbInfo->exclude_Nid_cell));
++      search_params.n_excl = ssbInfo->n_excl;
++    }
++    
+     ssbInfo->syncRes.frame_id = frame_id;
+     ssbInfo->syncRes.cell_detected = nr_search_ssb_common(&search_params);
+ 
+@@ -413,7 +423,15 @@ nr_initial_sync_t nr_initial_sync(UE_nr_rxtx_proc_t *proc,
+                                   .nFrames = n_frames,
+                                   .foFlag = ue->UE_fo_compensation,
+                                   .freqOffset = ue->initial_fo,
+-                                  .targetNidCell = ue->target_Nid_cell};
++                                  .targetNidCell = ue->target_Nid_cell,
++                                  .n_excl = 0
++                                  };
++
++    if(ue->n_excl > 0){    
++      ssbInfo->n_excl = ue->n_excl;
++      memcpy(ssbInfo->exclude_Nid_cell, ue->exclude_Nid_cell, sizeof(uint16_t) * ue->n_excl);
++    }
++    LOG_I(NR_PHY, "ue->n_excl: %d", ue->n_excl);
+     ssbInfo->rxdata = malloc16_clear(fp->nb_antennas_rx * sizeof(c16_t *));
+     for (int ant = 0; ant < fp->nb_antennas_rx; ant++) {
+       ssbInfo->rxdata[ant] = malloc16(sizeof(c16_t) * (fp->samples_per_frame * 2 + fp->ofdm_symbol_size));
+diff --git a/openair1/PHY/defs_nr_UE.h b/openair1/PHY/defs_nr_UE.h
+index 5511d8ed0d..f0833e00e2 100644
+--- a/openair1/PHY/defs_nr_UE.h
++++ b/openair1/PHY/defs_nr_UE.h
+@@ -383,6 +383,8 @@ typedef struct PHY_VARS_NR_UE_s {
+   int is_synchronized_sl;
+   /// \brief Target gNB Nid_cell when UE is resynchronizing
+   int target_Nid_cell;
++  uint8_t n_excl; 
++  uint16_t exclude_Nid_cell[SIB8_MAX_SCAN_CELLS + 1];
+   /// \brief Indicator that UE is an SynchRef UE
+   int sync_ref;
+   /// Data structure for UE process scheduling
+@@ -581,6 +583,8 @@ typedef struct {
+   nr_gscn_info_t gscnInfo;
+   int foFlag;
+   int targetNidCell;
++  uint8_t n_excl; 
++  uint16_t exclude_Nid_cell[SIB8_MAX_SCAN_CELLS];
+   c16_t **rxdata;
+   NR_DL_FRAME_PARMS *fp;
+   UE_nr_rxtx_proc_t *proc;
+@@ -606,6 +610,8 @@ typedef struct {
+   uint32_t rxdata_size;
+   int ssb_start_subcarrier;
+   int target_nid_cell; // -1 for blind search, specific PCI for targeted search
++  uint8_t n_excl; 
++  uint16_t ccv_exclude_Nid_cell[SIB8_MAX_SCAN_CELLS];
+   int exclude_nid_cell; // -1 for no exclusion, or serving cell PCI to exclude
+   bool apply_freq_offset; // whether to compensate frequency offset
+   int search_frame_id; // Frame index to search (0, 1, 2...) within rxdata buffer
+diff --git a/openair2/COMMON/rrc_messages_def.h b/openair2/COMMON/rrc_messages_def.h
+index 7dda028565..8580d11a35 100644
+--- a/openair2/COMMON/rrc_messages_def.h
++++ b/openair2/COMMON/rrc_messages_def.h
+@@ -82,6 +82,7 @@ MESSAGE_DEF(NAS_INIT_NOS1_IF, MESSAGE_PRIORITY_MED, nas_nos1_msg_t, nas_init_nos
+ // xNB: realtime -> RRC messages
+ MESSAGE_DEF(RRC_SUBFRAME_PROCESS,       MESSAGE_PRIORITY_MED,       RrcSubframeProcess,         rrc_subframe_process)
+ MESSAGE_DEF(NRRRC_FRAME_PROCESS,        MESSAGE_PRIORITY_MED,       NRRrcFrameProcess,          nr_rrc_frame_process)
++MESSAGE_DEF(NRRRC_CCV_TIMER_PROCESS,        MESSAGE_PRIORITY_MED,       NRRrcCCVTimerProcess,          nr_rrc_ccv_timer_process)
+ 
+ // eNB: RLC -> RRC messages
+ MESSAGE_DEF(RLC_SDU_INDICATION,         MESSAGE_PRIORITY_MED,       RlcSduIndication,           rlc_sdu_indication)
+diff --git a/openair2/COMMON/rrc_messages_types.h b/openair2/COMMON/rrc_messages_types.h
+index d11e6573c7..f89619df21 100644
+--- a/openair2/COMMON/rrc_messages_types.h
++++ b/openair2/COMMON/rrc_messages_types.h
+@@ -99,6 +99,7 @@
+ 
+ #define RRC_SUBFRAME_PROCESS(mSGpTR)    (mSGpTR)->ittiMsg.rrc_subframe_process
+ #define NRRRC_FRAME_PROCESS(mSGpTR)     (mSGpTR)->ittiMsg.nr_rrc_frame_process
++#define NRRRC_CCV_TIMER_PROCESS(mSGpTR)     (mSGpTR)->ittiMsg.nr_rrc_ccv_timer_process
+ 
+ #define RLC_SDU_INDICATION(mSGpTR)      (mSGpTR)->ittiMsg.rlc_sdu_indication
+ #define NRDuDlReq(mSGpTR)      (mSGpTR)->ittiMsg.nr_du_dl_req
+@@ -425,7 +426,9 @@ typedef struct nrrrc_frame_process_s {
+   int frame;
+   int gnb_id;
+ } NRRrcFrameProcess;
+-
++typedef struct nrrrc_ccv_timer_process_s {
++  int gnb_id;
++} NRRrcCCVTimerProcess;
+ typedef enum NR_Release_Cause_e {
+   RRC_CONNECTION_FAILURE,
+   RRC_RESUME_FAILURE,
+@@ -488,7 +491,9 @@ enum payload_type {
+   NR_MAC_RRC_CONFIG_SIB1,
+   NR_MAC_RRC_CONFIG_OTHER_SIB,
+   NR_MAC_RRC_SCHED_SIB,
+-  NR_MAC_RRC_RESUME_RB
++  NR_MAC_RRC_RESUME_RB,
++  NR_MAC_RRC_SIB8_SCAN_NEXT,
++  NR_MAC_RRC_SIB8_SCAN_STOP
+ };
+ 
+ typedef struct {
+@@ -501,6 +506,8 @@ typedef struct {
+     nr_mac_rrc_sched_sib_t sched_sib;
+     nr_mac_rrc_config_other_sib_t config_other_sib;
+     nr_mac_rrc_resume_rb_t resume_rb;
++    struct { uint16_t excl[9]; uint8_t n_excl;} sib8_scan_next;
++    struct { int32_t excl;} sib8_scan_stop;
+   } payload;
+ } nr_mac_rrc_message_t;
+ 
+diff --git a/openair2/LAYER2/NR_MAC_UE/config_ue.c b/openair2/LAYER2/NR_MAC_UE/config_ue.c
+index b3195894a4..8725c5384f 100644
+--- a/openair2/LAYER2/NR_MAC_UE/config_ue.c
++++ b/openair2/LAYER2/NR_MAC_UE/config_ue.c
+@@ -444,6 +444,111 @@ static void configure_ntn_ta(fapi_nr_ntn_config_t *ntn_ta,
+   ntn_ta->params_changed = true;
+ }
+ 
++
++static void ccv_apply_carrier(NR_UE_MAC_INST_t *mac, const ccv_carrier_entry_t *c)
++{
++    fapi_nr_config_request_t *cfg = &mac->phy_config.config_req;
++    fapi_nr_ue_carrier_config_t *cc = &cfg->carrier_config;
++
++    frequency_range_t freq_range = get_freq_range_from_band(c->band);
++
++    mac->nr_band        = c->band;
++    mac->numerology     = c->scs;
++    mac->frequency_range = freq_range;
++
++    cc->dl_frequency = c->dl_frequency; // kHz
++    int bw_idx = get_supported_band_index(c->scs, freq_range, c->N_RB_DL);
++    cc->dl_bandwidth = get_supported_bw_mhz(freq_range, bw_idx);
++    for (int i = 0; i < 5; i++) {
++        cc->dl_grid_size[i] = (i == c->scs) ? c->N_RB_DL : 0;
++        cc->dl_k0[i]        = 0;
++    }
++
++    cc->uplink_frequency = c->dl_frequency;
++    int ul_bw_idx = get_supported_band_index(c->scs, freq_range, c->N_RB_DL);
++    cc->uplink_bandwidth = get_supported_bw_mhz(freq_range, ul_bw_idx);
++    for (int i = 0; i < 5; i++) {
++        cc->ul_grid_size[i] = (i == c->scs) ? c->N_RB_DL : 0;
++        cc->ul_k0[i]        = 0;
++    }
++
++    LOG_I(NR_MAC, "[CCV] Switching to band %d, dl_freq=%u kHz, N_RB=%d\n",
++          c->band, cc->dl_frequency, c->N_RB_DL);
++}
++
++void nr_rrc_mac_stop_sib8_scan(module_id_t module_id, int32_t excl)
++{
++  LOG_I(NR_MAC, "[CCV] nr_rrc_mac_stop_sib8_scan\n");
++  nr_rrc_mac_config_req_reset(module_id, GO_TO_IDLE);
++  NR_UE_MAC_INST_t *mac = get_mac_inst(module_id);
++  
++  ccv_apply_carrier(mac, &mac->saved_carrier);
++
++  mac->ccv_active = false;
++  // mac->state = UE_NOT_SYNC;
++
++  mac->synch_request.Mod_id  = mac->ue_id;
++  fapi_nr_synch_request_t *req = &mac->synch_request.synch_req;
++  req->target_Nid_cell        = -1;  
++  req->ssb_bw_scan            = true;
++  
++  
++  req->n_excl = excl > 0 ? 1 : 0;
++  req->exclude_Nid_cell[0] = (uint16_t)excl;
++  
++
++
++  mac->if_module->synch_request(&mac->synch_request);
++  mac->if_module->phy_config_request(&mac->phy_config); 
++
++  LOG_A(NR_MAC, "SIB8 scan mode deactivated, restarting normal camping\n");
++}
++
++void nr_rrc_mac_sib8_scan_next(module_id_t module_id,
++                                uint16_t *excl,
++                                uint8_t n_excl)
++{
++  NR_UE_MAC_INST_t *mac = get_mac_inst(module_id);
++
++  if(!mac->ccv_active){
++    LOG_A(NR_MAC, "SIB8 scan mode activated.\n");
++    mac->ccv_active        = true;
++    mac->ccv_carrier_idx = -1;
++
++    fapi_nr_ue_carrier_config_t *cfg = &mac->phy_config.config_req.carrier_config;
++
++    mac->saved_carrier.band = mac->nr_band;
++    mac->saved_carrier.scs = mac->numerology;
++    mac->saved_carrier.N_RB_DL = cfg->dl_grid_size[mac->numerology];
++
++    mac->saved_carrier.dl_frequency = cfg->dl_frequency;   
++    LOG_W(MAC, "[CCV] Saved carrier: band=%d scs=%d N_RB_DL=%d dl_freq=%lu\n",
++                mac->saved_carrier.band,
++                mac->saved_carrier.scs,
++                mac->saved_carrier.N_RB_DL,
++                (unsigned long)mac->saved_carrier.dl_frequency);  
++  }
++  nr_rrc_mac_config_req_reset(module_id, GO_TO_IDLE);
++  mac = get_mac_inst(module_id);
++  
++  if(mac->ccv_carrier_idx == CCV_CARRIERS_NUM - 1)
++    mac->ccv_carrier_idx = -1;
++  const ccv_carrier_entry_t *c = &ccv_carrier_table[++mac->ccv_carrier_idx];
++  ccv_apply_carrier(mac, c);
++  mac->if_module->phy_config_request(&mac->phy_config); 
++  
++  /* Issue a synch_request like handle_reconfiguration_with_sync does,
++     but with target_Nid_cell=-1 (blind), and ccv_active is true so MAC will NOT start RACH. */
++  mac->synch_request.Mod_id  = mac->ue_id;
++  fapi_nr_synch_request_t *req = &mac->synch_request.synch_req;
++  req->target_Nid_cell        = -1;  
++  req->ssb_bw_scan            = true;
++  req->n_excl                 = n_excl;
++  memcpy(req->exclude_Nid_cell, excl, n_excl * sizeof(uint16_t));
++
++  mac->if_module->synch_request(&mac->synch_request);
++}
++
+ static void config_common_ue(NR_UE_MAC_INST_t *mac, NR_ServingCellConfigCommon_t *scc, int cc_idP, int hfn, int frame)
+ {
+   fapi_nr_config_request_t *cfg = &mac->phy_config.config_req;
+@@ -1103,15 +1208,20 @@ static bool is_cset0_present(frequency_range_t const fr, uint8_t const kssb)
+ void nr_rrc_mac_sched_sib(module_id_t module_id, int sched_sib)
+ {
+   NR_UE_MAC_INST_t *mac = get_mac_inst(module_id);
++  LOG_D(NR_MAC, "sched_sib %d\n", sched_sib);
+   if (sched_sib == 1) {
+     bool const is_c0 = is_cset0_present(mac->frequency_range, mac->ssb_subcarrier_offset);
+     mac->get_sib1 = is_c0;
++    LOG_D(NR_MAC, "is_c0 %d\n", is_c0);
++
+     AssertFatal(is_c0, "RRC scheduling SIB1 reception but MIB indicates no SIB1 present in current cell\n");
+   } else if (sched_sib > 1)
+     mac->get_otherSI[sched_sib - 2] = true;
+ 
+-  if (mac->state == UE_NOT_SYNC && mac->get_sib1)
++  if (mac->state == UE_NOT_SYNC && mac->get_sib1){
+     mac->state = UE_RECEIVING_SIB;
++    LOG_D(NR_MAC, "mac->get_sib1 %d\n", mac->get_sib1);
++  }
+ }
+ 
+ void nr_rrc_mac_config_req_mib(module_id_t module_id, int cc_idP, NR_MIB_t *mib, bool barred)
+@@ -1877,11 +1987,12 @@ void nr_rrc_mac_config_req_reset(module_id_t module_id, NR_UE_MAC_reset_cause_t
+   switch (cause) {
+     case GO_TO_IDLE:
+       reset_ra(mac, true);
++      // reset_mac_inst(mac);
+       nr_ue_init_mac(mac);
+       release_mac_configuration(mac, cause);
+       nr_ue_mac_default_configs(mac);
+       // new sync but no target cell id -> -1
+-      nr_ue_send_synch_request(mac, module_id, 0, &sync_req);
++      // nr_ue_send_synch_request(mac, module_id, 0, &sync_req);
+       break;
+     case DETACH:
+       LOG_A(NR_MAC, "Received detach indication\n");
+@@ -2004,7 +2115,6 @@ void nr_rrc_mac_config_req_sib1(module_id_t module_id, int cc_idP, NR_SIB1_t *si
+   config_common_ue_sa(mac, scc, cc_idP);
+ 
+   // Build the list of all the valid/transmitted SSBs according to the config
+-  LOG_D(NR_MAC, "Build SSB list\n");
+   build_ssb_list(mac);
+ 
+   int bwp_id = 0;
+@@ -2022,7 +2132,7 @@ void nr_rrc_mac_config_req_sib1(module_id_t module_id, int cc_idP, NR_SIB1_t *si
+     AssertFatal(mac->current_UL_BWP, "Couldn't find DL-BWP0\n");
+     configure_timeAlignmentTimer(&mac->time_alignment_timer, mac->timeAlignmentTimerCommon, mac->current_UL_BWP->scs);
+   }
+-  if (mac->state == UE_RECEIVING_SIB && can_start_ra)
++  if (mac->state == UE_RECEIVING_SIB && can_start_ra && !mac->ccv_active)
+     mac->state = UE_PERFORMING_RA;
+ 
+   mac->if_module->phy_config_request(&mac->phy_config);
+@@ -2044,7 +2154,7 @@ void nr_rrc_mac_config_other_sib(module_id_t module_id, NR_SIB19_r17_t *sib19, i
+     mac->if_module->phy_config_request(&mac->phy_config);
+     mac->phy_config.config_req.ntn_config.params_changed = false;
+   }
+-  if (mac->state == UE_RECEIVING_SIB && can_start_ra)
++  if (mac->state == UE_RECEIVING_SIB && can_start_ra && !mac->ccv_active)
+     mac->state = UE_PERFORMING_RA;
+   ret = pthread_mutex_unlock(&mac->if_mutex);
+   AssertFatal(!ret, "mutex failed %d\n", ret);
+diff --git a/openair2/LAYER2/NR_MAC_UE/mac_defs.h b/openair2/LAYER2/NR_MAC_UE/mac_defs.h
+index 10a89adc89..375d05eddb 100644
+--- a/openair2/LAYER2/NR_MAC_UE/mac_defs.h
++++ b/openair2/LAYER2/NR_MAC_UE/mac_defs.h
+@@ -536,6 +536,37 @@ typedef struct {
+   A_SEQUENCE_OF(si_schedinfo_config_t) si_SchedInfo_list;
+ } si_schedInfo_t;
+ 
++typedef struct {
++    uint32_t dl_frequency; //point A      
++    uint8_t  band;
++    uint8_t  scs;         
++    uint16_t N_RB_DL;
++} ccv_carrier_entry_t;
++
++/*
++valid_ssb_kHz = 3000000 + 1440 * N
++In OAI SSB freq should be equal to the center frequency:
++dl_frequency_kHz(point A) = valid_ssb_kHz - 19080 (for scs = 1 and N_PRB=106: channel width = 38.16 MHz and half width = 19.08 MHz)
++dl_frequency_kHz = 2980920 + 1440 * N
++For example: Take 3600120 as a base dl_frequency_kHz, which corresponds to N=430;
++             new_dl_frequency =  3600120 + 1440 * N'; where N' is any integer (positive or negative)
++To avoid overlapping: N' = 27*k (1440*27 > 38.16 MHz)
++                      new_dl_frequency = 3600120 + 38880 * k; 
++              k = -1: new_dl_frequency = 3561240
++              k = +1: new_dl_frequency = 3639000*/
++#define CCV_CARRIERS_NUM 9
++static const ccv_carrier_entry_t ccv_carrier_table[] = {
++    { 3444600, 78, 1, 106 }, // center = 3463680000 Hz
++    { 3483480, 78, 1, 106 }, // center = 3502560000 Hz
++    { 3522360, 78, 1, 106 }, // center = 3541440000 Hz
++    { 3561240, 78, 1, 106 }, // center = 3580320000 Hz
++    { 3600120, 78, 1, 106 }, // center = 3619200000 Hz
++    { 3639000, 78, 1, 106 }, // center = 3658080000 Hz
++    { 3677880, 78, 1, 106 }, // center = 3696960000 Hz
++    { 3716760, 78, 1, 106 }, // center = 3735840000 Hz
++    { 3755640, 78, 1, 106 }  // center = 3774720000 Hz
++};
++
+ /*!\brief Top level UE MAC structure */
+ typedef struct NR_UE_MAC_INST_s {
+   module_id_t ue_id;
+@@ -639,6 +670,9 @@ typedef struct NR_UE_MAC_INST_s {
+   pthread_mutex_t if_mutex;
+   ue_mac_stats_t stats;
+   notifiedFIFO_t input_nf;
++  bool    ccv_active;  
++  int ccv_carrier_idx;  
++  ccv_carrier_entry_t saved_carrier;
+ } NR_UE_MAC_INST_t;
+ 
+ static inline int GET_NTN_UE_K_OFFSET(const fapi_nr_ntn_config_t *ntn_ta, int scs)
+diff --git a/openair2/LAYER2/NR_MAC_UE/mac_proto.h b/openair2/LAYER2/NR_MAC_UE/mac_proto.h
+index 9ee1bfab28..0caf811b58 100644
+--- a/openair2/LAYER2/NR_MAC_UE/mac_proto.h
++++ b/openair2/LAYER2/NR_MAC_UE/mac_proto.h
+@@ -87,7 +87,10 @@ void nr_rrc_mac_config_req_cg(module_id_t module_id,
+                               int frame,
+                               NR_CellGroupConfig_t *cell_group_config,
+                               NR_UE_NR_Capability_t *ue_Capability);
+-
++void nr_rrc_mac_stop_sib8_scan(module_id_t module_id, int32_t excl);
++void nr_rrc_mac_sib8_scan_next(module_id_t module_id,
++                                uint16_t *excl,
++                                uint8_t n_excl);
+ void nr_rrc_mac_config_req_mib(module_id_t module_id, int cc_idP, NR_MIB_t *mibP, bool barred);
+ void nr_rrc_mac_sched_sib(module_id_t module_id, int sched_sib);
+ void nr_rrc_mac_config_req_sib1(module_id_t module_id, int cc_idP, NR_SIB1_t *sib1, bool can_start_ra);
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_dci_configuration.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_dci_configuration.c
+index 8dbce0032c..30a4c2da1c 100644
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ue_dci_configuration.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_dci_configuration.c
+@@ -429,7 +429,10 @@ void ue_dci_configuration(NR_UE_MAC_INST_t *mac, fapi_nr_dl_config_request_t *dl
+   NR_BWP_PDCCH_t *pdcch_config = &mac->config_BWP_PDCCH[dl_bwp_id];
+   int scs = current_DL_BWP ? current_DL_BWP->scs : mac->numerology;
+   const int slots_per_frame = get_slots_per_frame_from_scs(scs);
++
+   if (mac->get_sib1) {
++    // LOG_E(NR_MAC_DCI, "get_sib1 in frame %d slot %d\n", frame, slot);
++
+     int ssb_sc_offset_norm;
+     if (mac->ssb_subcarrier_offset < 24 && mac->frequency_range == FR1)
+       ssb_sc_offset_norm = mac->ssb_subcarrier_offset >> scs;
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_procedures.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_procedures.c
+index 52ed7580c6..fca3712f49 100644
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ue_procedures.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_procedures.c
+@@ -304,7 +304,7 @@ void nr_ue_decode_BCCH_DL_SCH(NR_UE_MAC_INST_t *mac,
+                               int slot)
+ {
+   if(ack_nack) {
+-    LOG_D(NR_MAC, "Decoding NR-BCCH-DL-SCH-Message (SIB1 or SI)\n");
++    LOG_A(NR_MAC, "Decoding NR-BCCH-DL-SCH-Message (SIB1 or SI)\n");
+     nr_mac_rrc_data_ind_ue(mac->ue_id, cc_id, gNB_index, hfn, frame, slot, 0, mac->physCellId, 0, NR_BCCH_DL_SCH, (uint8_t *) pduP, pdu_len);
+     if (mac->get_sib1)
+       mac->get_sib1 = false;
+diff --git a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+index d06c8302a6..f3a94becd0 100644
+--- a/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
++++ b/openair2/LAYER2/NR_MAC_UE/nr_ue_scheduler.c
+@@ -2567,13 +2567,13 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
+ 
+   RA_config_t *ra = &mac->ra;
+ 
+-  if (mac->state == UE_PERFORMING_RA && ra->ra_state == nrRA_UE_IDLE) {
++  if (mac->state == UE_PERFORMING_RA && ra->ra_state == nrRA_UE_IDLE && !mac->ccv_active) {
+     init_RA(mac, frame_tx);
+     // perform the Random Access Resource selection procedure (see clause 5.1.2 and .2a)
+     ra_resource_selection(mac);
+   }
+ 
+-  if (mac->state == UE_PERFORMING_RA && ra->ra_state == nrRA_GENERATE_PREAMBLE)
++  if (mac->state == UE_PERFORMING_RA && ra->ra_state == nrRA_GENERATE_PREAMBLE && !mac->ccv_active)
+     nr_ue_prach_scheduler(mac, frame_tx, slot_tx);
+ 
+   bool BSRsent = false;
+diff --git a/openair2/RRC/NR_UE/L2_interface_ue.c b/openair2/RRC/NR_UE/L2_interface_ue.c
+index a1af257282..6c3edcdf4e 100644
+--- a/openair2/RRC/NR_UE/L2_interface_ue.c
++++ b/openair2/RRC/NR_UE/L2_interface_ue.c
+@@ -135,6 +135,7 @@ void nr_mac_rrc_data_ind_ue(const module_id_t module_id,
+   }
+ }
+ 
++
+ void process_msg_rcc_to_mac(nr_mac_rrc_message_t *msg, int instance_id)
+ {
+   switch (msg->payload_type) {
+@@ -176,6 +177,14 @@ void process_msg_rcc_to_mac(nr_mac_rrc_message_t *msg, int instance_id)
+     case NR_MAC_RRC_RESUME_RB:
+       nr_rrc_mac_resume_rb(instance_id, msg->payload.resume_rb.is_srb, msg->payload.resume_rb.rb_id);
+       break;
++    case NR_MAC_RRC_SIB8_SCAN_NEXT:
++      nr_rrc_mac_sib8_scan_next(instance_id,
++                                 msg->payload.sib8_scan_next.excl,
++                                 msg->payload.sib8_scan_next.n_excl);
++      break;
++    case NR_MAC_RRC_SIB8_SCAN_STOP:
++      nr_rrc_mac_stop_sib8_scan(instance_id, msg->payload.sib8_scan_stop.excl);
++      break;
+     default:
+       LOG_E(NR_MAC, "Unexpected msg from RRC: %d\n", msg->payload_type);
+   }
+@@ -206,7 +215,12 @@ void nr_ue_rrc_timer_trigger(int instance, int hfn, int frame, int gnb_id)
+   LOG_D(NR_RRC, "RRC timer trigger: frame %d\n", frame);
+   itti_send_msg_to_task(TASK_RRC_NRUE, instance, message_p);
+ }
+-
++void nr_ue_ccv_timer_trigger(int instance)
++{
++  MessageDef *message_p;
++  message_p = itti_alloc_new_message(TASK_RRC_NRUE, 0, NRRRC_CCV_TIMER_PROCESS);
++  itti_send_msg_to_task(TASK_RRC_NRUE, instance, message_p);
++}
+ void nr_mac_rrc_ra_ind(const module_id_t mod_id, bool success)
+ {
+   MessageDef *message_p = itti_alloc_new_message(TASK_MAC_UE, 0, NR_RRC_MAC_RA_IND);
+diff --git a/openair2/RRC/NR_UE/L2_interface_ue.h b/openair2/RRC/NR_UE/L2_interface_ue.h
+index 9a5e5ee2a8..a52702ec1b 100644
+--- a/openair2/RRC/NR_UE/L2_interface_ue.h
++++ b/openair2/RRC/NR_UE/L2_interface_ue.h
+@@ -47,6 +47,7 @@ void nr_mac_rrc_meas_ind_ue(module_id_t module_id,
+ void nr_mac_rrc_inactivity_timer_ind(const module_id_t mod_id);
+ void nr_mac_rrc_msg3_ind(const module_id_t mod_id, const int rnti, bool prepare_payload);
+ void nr_ue_rrc_timer_trigger(int instance, int hfn, int frame, int gnb_id);
++void nr_ue_ccv_timer_trigger(int instance);
+ void nr_mac_rrc_ra_ind(const module_id_t mod_id, bool success);
+ void process_msg_rcc_to_mac(nr_mac_rrc_message_t *msg, int instance_id);
+ #endif
+diff --git a/openair2/RRC/NR_UE/rrc_UE.c b/openair2/RRC/NR_UE/rrc_UE.c
+index 65a8bf9432..71adba09b6 100644
+--- a/openair2/RRC/NR_UE/rrc_UE.c
++++ b/openair2/RRC/NR_UE/rrc_UE.c
+@@ -70,6 +70,7 @@
+ 
+ #include "nr_nas_msg.h"
+ #include "openair2/SDAP/nr_sdap/nr_sdap_entity.h"
++#include <openssl/sha.h>
+ 
+ static NR_UE_RRC_INST_t *NR_UE_rrc_inst[MAX_NUM_NR_UE_INST] = {0};
+ /* NAS Attach request with IMSI */
+@@ -291,6 +292,147 @@ static void nr_rrc_process_ntnconfig(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *S
+     nr_timer_start(&SI_info->SInfo_r17.sib19_timer);
+ }
+ 
++static void nr_rrc_sib8_conclude(NR_UE_RRC_INST_t *rrc, bool verified)
++{
++  sib8_verification_t *ccv = &rrc->sib8_verif;
++  NR_UE_RRC_SI_INFO *SI_info = &rrc->perNB[0].SInfo;
++
++  
++  nr_mac_rrc_message_t rrc_msg = {0};
++  rrc_msg.payload_type = NR_MAC_RRC_SIB8_SCAN_STOP;
++  rrc_msg.payload.sib8_scan_stop.excl = verified ? -1 : (int32_t)ccv->serving_Nid_cell;
++  nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
++
++  nr_rrc_going_to_IDLE(rrc, OTHER, NULL);
++  ccv->active = false;
++  if (verified) {
++    LOG_A(NR_RRC, "SIB8 alert accepted as legitimate.\n");
++    SI_info->sib8_validity = true;
++    nr_timer_start(&SI_info->sib8_timer);  
++  } else {
++    LOG_A(NR_RRC, "SIB8 alert flagged as potentially spoofed.\n");
++  }
++}
++
++static void nr_rrc_sib8_evaluate(NR_UE_RRC_INST_t *rrc)
++{
++  sib8_verification_t *ccv = &rrc->sib8_verif;
++
++  int matches = 0;
++  for (int i = 0; i < ccv->cells_scanned; i++) {
++    if (ccv->cells[i].result == SIB8_CELL_PRESENT &&
++        memcmp(ccv->cells[i].hash, ccv->serving_hash, SIB8_HASH_LEN) == 0) {
++      matches++;
++    }
++  }
++
++  bool enough_cells  = (ccv->cells_scanned >= SIB8_MAX_SCAN_CELLS);
++  bool enough_match  = (matches >= SIB8_TARGET_CELLS);
++
++  if (enough_match) {
++    LOG_A(NR_RRC,
++          "SIB8 VERIFIED: %d/%d neighbor cells confirm the same SIB8 content.\n",
++          matches, ccv->cells_scanned);
++    nr_rrc_sib8_conclude(rrc, true);
++    return;
++  } else if (enough_cells || ccv->timer_expired) {
++    LOG_A(NR_RRC,
++          "SIB8 UNVERIFIED (possible spoofing): %d/%d matching cells.\n",
++          matches, ccv->cells_scanned);
++    nr_rrc_sib8_conclude(rrc, false);
++    return;
++  }
++
++  uint8_t  n_excl = 0;
++  uint16_t excl[SIB8_MAX_SCAN_CELLS + 1];
++  excl[n_excl++] = ccv->serving_Nid_cell;
++  for (int i = 0; i < ccv->cells_scanned; i++) {
++    excl[n_excl++] = ccv->cells[i].Nid_cell;
++  }
++
++  nr_mac_rrc_message_t rrc_msg = {0};
++  rrc_msg.payload_type = NR_MAC_RRC_SIB8_SCAN_NEXT;
++  rrc_msg.payload.sib8_scan_next.n_excl = n_excl;
++  memcpy(rrc_msg.payload.sib8_scan_next.excl, excl, n_excl * sizeof(uint16_t));
++  nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
++
++}
++
++static void nr_rrc_sib8_record_cell(NR_UE_RRC_INST_t *rrc,
++                                    NR_SIB8_t *sib8,
++                                    bool sib8_present)
++{
++  sib8_verification_t *ccv = &rrc->sib8_verif;
++  if (!ccv->active) return;
++  if (ccv->cells_scanned >= SIB8_MAX_SCAN_CELLS) return;
++
++  uint16_t cell_pci = rrc->phyCellID;
++
++  if (cell_pci == ccv->serving_Nid_cell) return;
++
++  sib8_cell_entry_t *entry = &ccv->cells[ccv->cells_scanned];
++  entry->Nid_cell = cell_pci;
++
++  if (!sib8_present) {
++    entry->result = SIB8_CELL_ABSENT;
++    LOG_I(NR_RRC, "SIB8 scan: cell PCI=%u has no SIB8\n", cell_pci);
++  } else {
++    uint8_t buf[512];
++    asn_enc_rval_t enc = uper_encode_to_buffer(&asn_DEF_NR_SIB8,
++                                               NULL, sib8, buf, sizeof(buf));
++    AssertFatal(enc.encoded > 0, "SIB8 message hashing failed!\n");
++    SHA256(buf, (enc.encoded + 7) / 8, entry->hash);
++    entry->result = SIB8_CELL_PRESENT;
++    LOG_I(NR_RRC, "SIB8 scan: cell PCI=%u has SIB8 (hash recorded)\n", cell_pci);
++  }
++
++  ccv->cells_scanned++;
++  nr_rrc_sib8_evaluate(rrc);
++}
++
++static void nr_rrc_sib8_start_verification(NR_UE_RRC_INST_t *rrc,
++                                           NR_SIB8_t *sib8)
++{
++  sib8_verification_t *ccv = &rrc->sib8_verif;
++
++  if (ccv->active) {
++    LOG_W(NR_RRC, "SIB8 verification already in progress\n");
++    return;
++  }
++
++  uint8_t buf[512];
++  asn_enc_rval_t enc = uper_encode_to_buffer(&asn_DEF_NR_SIB8,
++                                              NULL, sib8, buf, sizeof(buf));
++  if (enc.encoded < 0) {
++    LOG_E(NR_RRC, "SIB8 encoding for hash failed\n");
++    return;
++  }
++  SHA256(buf, (enc.encoded + 7) / 8, ccv->serving_hash);
++
++  clock_gettime(CLOCK_MONOTONIC, &ccv->start_time);
++
++  ccv->serving_Nid_cell = rrc->phyCellID;
++  ccv->active            = true;
++  ccv->timer_expired = false;
++  ccv->cells_scanned     = 0; 
++  memset(ccv->cells, 0, sizeof(ccv->cells));
++
++  LOG_A(NR_RRC, "SIB8 received: Starting neighbor verification scan "
++        "(serving PCI=%u, need %d matching cells out of max %d)\n",
++        ccv->serving_Nid_cell, SIB8_TARGET_CELLS, SIB8_MAX_SCAN_CELLS);
++
++  uint8_t  n_excl = 0;
++  uint16_t excl[1];
++  excl[n_excl++] = ccv->serving_Nid_cell;
++  
++  
++  nr_mac_rrc_message_t rrc_msg = {0};
++  rrc_msg.payload_type = NR_MAC_RRC_SIB8_SCAN_NEXT;
++  rrc_msg.payload.sib8_scan_next.n_excl = n_excl;
++  memcpy(rrc_msg.payload.sib8_scan_next.excl, excl, n_excl * sizeof(uint16_t));
++  nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
++}
++
+ static void nr_decode_SI(NR_UE_RRC_SI_INFO *SI_info, NR_SystemInformation_t *si, NR_UE_RRC_INST_t *rrc, int hfn, int frame)
+ {
+   // Dump contents
+@@ -334,10 +476,15 @@ static void nr_decode_SI(NR_UE_RRC_SI_INFO *SI_info, NR_SystemInformation_t *si,
+         SI_info->sib7_validity = true;
+         nr_timer_start(&SI_info->sib7_timer);
+         break;
+-      case NR_SystemInformation_IEs__sib_TypeAndInfo__Member_PR_sib8:
+-        SI_info->sib8_validity = true;
+-        nr_timer_start(&SI_info->sib8_timer);
++      case NR_SystemInformation_IEs__sib_TypeAndInfo__Member_PR_sib8: {
++        
++        if (rrc->sib8_verif.active) {
++          nr_rrc_sib8_record_cell(rrc, typeandinfo->choice.sib8, true);
++        } else {
++          nr_rrc_sib8_start_verification(rrc, typeandinfo->choice.sib8);
++        }
+         break;
++      }
+       case NR_SystemInformation_IEs__sib_TypeAndInfo__Member_PR_sib9:
+         SI_info->sib9_validity = true;
+         nr_timer_start(&SI_info->sib9_timer);
+@@ -406,13 +553,15 @@ static void nr_rrc_ue_prepare_RRCSetupRequest(NR_UE_RRC_INST_t *rrc)
+   nr_rlc_srb_recv_sdu(rrc->ue_id, 0, buf, len);
+ }
+ 
+-static void nr_rrc_configure_default_SI(NR_UE_RRC_SI_INFO *SI_info,
++static bool nr_rrc_configure_default_SI(NR_UE_RRC_INST_t *rrc,
++                                        NR_UE_RRC_SI_INFO *SI_info,
+                                         NR_SI_SchedulingInfo_t *si_SchedulingInfo,
+                                         NR_SI_SchedulingInfo_v1700_t *si_SchedulingInfo_v1700)
+ {
+   for (int i = 0; i < MAX_SI_GROUPS; i++)
+     SI_info->default_otherSI_map[i] = 0;
+   int nb_groups = 0;
++  bool sib8_found = false;
+   if (si_SchedulingInfo) {
+     nb_groups = si_SchedulingInfo->schedulingInfoList.list.count;
+     AssertFatal(nb_groups <= MAX_SI_GROUPS, "Exceeding max number of SI groups configured\n");
+@@ -421,10 +570,17 @@ static void nr_rrc_configure_default_SI(NR_UE_RRC_SI_INFO *SI_info,
+       for (int j = 0; j < schedulingInfo->sib_MappingInfo.list.count; j++) {
+         NR_SIB_TypeInfo_t *sib_Type = schedulingInfo->sib_MappingInfo.list.array[j];
+         SI_info->default_otherSI_map[i] |= 1 << sib_Type->type;
++        if (sib_Type->type == 6)
++          sib8_found = true;
+       }
+     }
+   }
+ 
++  if(rrc->sib8_verif.active && !sib8_found){
++    nr_rrc_sib8_record_cell(rrc, NULL, false);
++    return false;
++  }
++
+   if (si_SchedulingInfo_v1700) {
+     int start_idx = nb_groups;
+     nb_groups += si_SchedulingInfo_v1700->schedulingInfoList2_r17.list.count;
+@@ -439,6 +595,7 @@ static void nr_rrc_configure_default_SI(NR_UE_RRC_SI_INFO *SI_info,
+       }
+     }
+   }
++  return true;
+ }
+ 
+ static bool verify_NTN_access(const NR_UE_RRC_SI_INFO *SI_info, const NR_SIB1_v1700_IEs_t *sib1_v1700)
+@@ -505,7 +662,9 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_inf
+   SI_info->scs = sib1->servingCellConfigCommon->downlinkConfigCommon.initialDownlinkBWP.genericParameters.subcarrierSpacing;
+   SI_info->si_windowlength = (sib1->si_SchedulingInfo) ? sib1->si_SchedulingInfo->si_WindowLength : 0;
+   // configure default SI
+-  nr_rrc_configure_default_SI(SI_info, sib1->si_SchedulingInfo, si_SchedInfo_v1700);
++  if (!nr_rrc_configure_default_SI(rrc, SI_info, sib1->si_SchedulingInfo, si_SchedInfo_v1700)) {
++      return;
++  }
+   rrc->is_NTN_UE = verify_NTN_access(SI_info, sib1_v1700);
+   if (rrc->is_NTN_UE)
+     get_sib19_schedinfo(SI_info, si_SchedInfo_v1700);
+@@ -1694,6 +1853,7 @@ NR_UE_RRC_INST_t* nr_rrc_init_ue(char* uecap_file, int instance_id, int num_ant_
+     verify_ue_cap(rrc->UECap.UE_NR_Capability, num_ant_tx);
+   }
+ 
++  LOG_I(NR_RRC,"RESET TIMERS\n");
+   memset(&rrc->timers_and_constants, 0, sizeof(rrc->timers_and_constants));
+   set_default_timers_and_constants(&rrc->timers_and_constants);
+ 
+@@ -1860,6 +2020,8 @@ static void nr_rrc_ue_decode_NR_BCCH_BCH_Message(NR_UE_RRC_INST_t *rrc,
+   }
+ 
+   NR_BCCH_BCH_Message_t *bcch_message = NULL;
++  
++  NR_UE_RRC_SI_INFO *SI_info = &rrc->perNB[gNB_index].SInfo;
+   if (rrc->phyCellID != phycellid || rrc->arfcn_ssb != ssb_arfcn) {
+     LOG_I(NR_RRC,
+           "[UE %ld] BCCH update: phyCellID %d->%u, arfcn_ssb %ld->%ld\n",
+@@ -1868,6 +2030,8 @@ static void nr_rrc_ue_decode_NR_BCCH_BCH_Message(NR_UE_RRC_INST_t *rrc,
+           phycellid,
+           rrc->arfcn_ssb,
+           ssb_arfcn);
++    SI_info->sib_pending = false;
++    SI_info->sib1_validity = false;
+   }
+   rrc->phyCellID = phycellid;
+   rrc->arfcn_ssb = ssb_arfcn;
+@@ -1898,7 +2062,6 @@ static void nr_rrc_ue_decode_NR_BCCH_BCH_Message(NR_UE_RRC_INST_t *rrc,
+     // not used
+   }
+ 
+-  NR_UE_RRC_SI_INFO *SI_info = &rrc->perNB[gNB_index].SInfo;
+   bool barred = rrc->access_barred || bcch_message->message.choice.mib->cellBarred == NR_MIB__cellBarred_barred;
+   int get_sib = 0;
+   if (IS_SA_MODE(get_softmodem_params())
+@@ -1908,6 +2071,7 @@ static void nr_rrc_ue_decode_NR_BCCH_BCH_Message(NR_UE_RRC_INST_t *rrc,
+       && rrc->nrRrcState != RRC_STATE_DETACH_NR) {
+     // to schedule MAC to get SI if required
+     get_sib = check_si_status(SI_info);
++    // LOG_E(NR_RRC, "get_sib: %d\n", get_sib);
+   }
+   if (bcch_message->message.present == NR_BCCH_BCH_MessageType_PR_mib) {
+     nr_mac_rrc_message_t rrc_msg = {0};
+@@ -1922,6 +2086,8 @@ static void nr_rrc_ue_decode_NR_BCCH_BCH_Message(NR_UE_RRC_INST_t *rrc,
+       sib_msg.payload_type = NR_MAC_RRC_SCHED_SIB;
+       sib_msg.payload.sched_sib.get_sib = get_sib;
+       nr_rrc_send_msg_to_mac(rrc, &sib_msg);
++      // LOG_E(NR_RRC, "get_sib: %d transmitted\n", get_sib);
++
+     }
+   } else {
+     LOG_E(NR_RRC, "RRC-received BCCH message is not a MIB\n");
+@@ -2212,7 +2378,6 @@ static void nr_rrc_process_rrcreject(NR_UE_RRC_INST_t *rrc, const NR_RRCReject_t
+   rrc_msg.payload_type = NR_MAC_RRC_CONFIG_RESET;
+   rrc_msg.payload.config_reset.cause = cause;
+   nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
+-
+   // if waitTime is configured in the RRCReject: start timer T302, with the timer value set to the waitTime
+   NR_RejectWaitTime_t *waitTime = NULL;
+   if (rrcReject->criticalExtensions.present == NR_RRCReject__criticalExtensions_PR_rrcReject) {
+@@ -3115,6 +3280,9 @@ void *rrc_nrue(void *notUsed)
+     }
+     break;
+ 
++  case NRRRC_CCV_TIMER_PROCESS:
++    handle_tccv_trigger(rrc);
++    break;
+   case NR_RRC_MAC_INAC_IND:
+     LOG_D(NR_RRC, "Received data inactivity indication from lower layers\n");
+     NR_Release_Cause_t release_cause = RRC_CONNECTION_FAILURE;
+@@ -3488,12 +3656,13 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
+   }
+ 
+   // reset MAC
+-  NR_UE_MAC_reset_cause_t cause = (rrc->nrRrcState == RRC_STATE_DETACH_NR) ? DETACH : GO_TO_IDLE;
+-  nr_mac_rrc_message_t rrc_msg = {0};
+-  rrc_msg.payload_type = NR_MAC_RRC_CONFIG_RESET;
+-  rrc_msg.payload.config_reset.cause = cause;
+-  nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
+-
++  if(!rrc->sib8_verif.active){
++    NR_UE_MAC_reset_cause_t cause = (rrc->nrRrcState == RRC_STATE_DETACH_NR) ? DETACH : GO_TO_IDLE;
++    nr_mac_rrc_message_t rrc_msg = {0};
++    rrc_msg.payload_type = NR_MAC_RRC_CONFIG_RESET;
++    rrc_msg.payload.config_reset.cause = cause;
++    nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
++  }
+   // enter RRC_IDLE
+   LOG_I(NR_RRC, "RRC moved into IDLE state\n");
+   if (rrc->nrRrcState != RRC_STATE_DETACH_NR)
+@@ -3514,6 +3683,38 @@ void handle_302_expired_stopped(NR_UE_RRC_INST_t *rrc)
+   rrc->access_barred = false;
+ }
+ 
++void handle_tccv_trigger(NR_UE_RRC_INST_t *rrc)
++{
++  LOG_W(NR_RRC, "handle_tccv_trigger\n");
++  sib8_verification_t *ccv = &rrc->sib8_verif;
++
++  if(!ccv->active) return;
++  
++  struct timespec now;
++  clock_gettime(CLOCK_MONOTONIC, &now);
++  long elapsed_ms = (now.tv_sec - ccv->start_time.tv_sec) * 1000
++                  + (now.tv_nsec - ccv->start_time.tv_nsec) / 1000000;
++  if (elapsed_ms > SIB8_SCAN_TIMEOUT_MS) {
++    LOG_W(NR_RRC, "SIB8 verification timeout after %ld ms\n", elapsed_ms);
++    ccv->timer_expired = true;
++    nr_rrc_sib8_evaluate(rrc);
++    return;
++  }
++    
++  uint8_t  n_excl = 0;
++  uint16_t excl[SIB8_MAX_SCAN_CELLS + 1];
++  excl[n_excl++] = ccv->serving_Nid_cell;
++  for (int i = 0; i < ccv->cells_scanned; i++) {
++    excl[n_excl++] = ccv->cells[i].Nid_cell;
++  }
++
++  nr_mac_rrc_message_t rrc_msg = {0};
++  rrc_msg.payload_type = NR_MAC_RRC_SIB8_SCAN_NEXT;
++  rrc_msg.payload.sib8_scan_next.n_excl = n_excl;
++  memcpy(rrc_msg.payload.sib8_scan_next.excl, excl, n_excl * sizeof(uint16_t));
++  nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
++}
++
+ void handle_t300_expiry(NR_UE_RRC_INST_t *rrc)
+ {
+   rrc->ra_trigger = RRC_CONNECTION_SETUP;
+@@ -3525,7 +3726,6 @@ void handle_t300_expiry(NR_UE_RRC_INST_t *rrc)
+   rrc_msg.payload_type = NR_MAC_RRC_CONFIG_RESET;
+   rrc_msg.payload.config_reset.cause = cause;
+   nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
+-
+   // TODO handle connEstFailureControl
+   // TODO inform upper layers about the failure to establish the RRC connection
+ }
+diff --git a/openair2/RRC/NR_UE/rrc_defs.h b/openair2/RRC/NR_UE/rrc_defs.h
+index efe2e6e147..8b04caeb47 100644
+--- a/openair2/RRC/NR_UE/rrc_defs.h
++++ b/openair2/RRC/NR_UE/rrc_defs.h
+@@ -72,6 +72,7 @@
+ #define MAX_QUANTITY_CONFIG 2
+ #define NUMBER_OF_NEIGHBORING_CELLS_MAX 1
+ 
++
+ typedef enum {
+   nr_SecondaryCellGroupConfig_r15=0,
+   nr_RadioBearerConfigX_r15=1
+@@ -175,6 +176,7 @@ typedef struct NR_UE_Timers_Constants_s {
+   NR_timer_t T325;
+   NR_timer_t T380;
+   NR_timer_t T390;
++  
+   // NTN timer T430 which guards UL SYNC
+   NR_timer_t T430;
+   // counters
+@@ -222,6 +224,27 @@ typedef struct rrcPerNB {
+   l3_measurements_t l3_measurements;
+ } rrcPerNB_t;
+ 
++typedef enum {
++  SIB8_CELL_PRESENT  = 0,
++  SIB8_CELL_ABSENT   = 1,
++} sib8_cell_result_t;
++
++typedef struct {
++  uint16_t             Nid_cell;
++  sib8_cell_result_t   result;
++  uint8_t              hash[SIB8_HASH_LEN];
++} sib8_cell_entry_t;
++
++typedef struct {
++  bool                 active;                     
++  uint16_t             serving_Nid_cell;           
++  uint8_t              serving_hash[SIB8_HASH_LEN];              
++  sib8_cell_entry_t    cells[SIB8_MAX_SCAN_CELLS];
++  int                  cells_scanned;             
++  struct timespec      start_time; 
++  bool                 timer_expired;
++} sib8_verification_t;
++
+ typedef struct NR_UE_RRC_INST_s {
+   instance_t ue_id;
+   rrcPerNB_t perNB[NB_CNX_UE];
+@@ -276,6 +299,7 @@ typedef struct NR_UE_RRC_INST_s {
+   NR_NTN_Config_r17_t *target_ntncfg;
+   bool process_target_ntncfg;
+   notifiedFIFO_t *mac_input_nf;
++  sib8_verification_t sib8_verif;
+ } NR_UE_RRC_INST_t;
+ 
+ #endif
+diff --git a/openair2/RRC/NR_UE/rrc_proto.h b/openair2/RRC/NR_UE/rrc_proto.h
+index 34b3d7e2c7..7e0a6a8d11 100644
+--- a/openair2/RRC/NR_UE/rrc_proto.h
++++ b/openair2/RRC/NR_UE/rrc_proto.h
+@@ -72,6 +72,8 @@ void init_SI_timers(NR_UE_RRC_SI_INFO *SInfo);
+ 
+ void nr_ue_rrc_timer_trigger(int module_id, int hfn, int frame, int gnb_id);
+ void handle_t300_expiry(NR_UE_RRC_INST_t *rrc);
++void handle_tccv_trigger(NR_UE_RRC_INST_t *rrc);
++
+ void handle_t430_expiry(NR_UE_RRC_INST_t *rrc);
+ 
+ int get_event_time_to_trigger(long time_to_trigger);
+diff --git a/radio/COMMON/common_lib.h b/radio/COMMON/common_lib.h
+index f21a1ffff4..e34d90961e 100644
+--- a/radio/COMMON/common_lib.h
++++ b/radio/COMMON/common_lib.h
+@@ -568,6 +568,8 @@ struct openair0_device {
+    */
+   void (*trx_end_func)(openair0_device_t *device);
+ 
++  int (*trx_soft_reset_func)(openair0_device_t *device, openair0_config_t *openair0_cfg);
++
+   /*! \brief Stop operation of the transceiver
+    */
+   int (*trx_stop_func)(openair0_device_t *device);
+diff --git a/radio/USRP/usrp_lib.cpp b/radio/USRP/usrp_lib.cpp
+index f224b75354..697672fdce 100644
+--- a/radio/USRP/usrp_lib.cpp
++++ b/radio/USRP/usrp_lib.cpp
+@@ -833,6 +833,7 @@ void *freq_thread(void *arg) {
+   s->usrp->set_rx_freq(rx_tune_req);
+   return NULL;
+ }
++
+ /*! \brief Set frequencies (TX/RX). Spawns a thread to handle the frequency change to not block the calling thread
+  * \param device the hardware to use
+  * \param openair0_cfg RF frontend parameters set by application
+@@ -852,6 +853,52 @@ int trx_usrp_set_freq(openair0_device_t *device, openair0_config_t *openair0_cfg
+   return(0);
+ }
+ 
++/* Soft stream reset: stop RX/TX streaming, retune, restart.
++ * Does NOT destroy or recreate the UHD device.
++ * Call this instead of trx_usrp_end + trx_usrp_start when only
++ * a frequency change is needed.
++ */
++int trx_usrp_soft_reset(openair0_device_t *device, openair0_config_t *openair0_cfg)
++{
++   usrp_state_t *s = (usrp_state_t *)device->priv;
++  AssertFatal(s != NULL, "%s() called on uninitialized USRP\n", __func__);
++         
++if (usrp_tx_thread != 0) {
++    openair0_thread_t *wt = &device->write_thread;
++    int waited = 0;
++    pthread_mutex_lock(&wt->mutex_write);
++    while (wt->count_write > 0 && waited < 100) {
++      pthread_mutex_unlock(&wt->mutex_write);
++      usleep(1000);
++      waited++;
++      pthread_mutex_lock(&wt->mutex_write);
++    }
++    pthread_mutex_unlock(&wt->mutex_write);
++  }
++  
++  // Step 1: Stop streaming
++  trx_usrp_send_end_of_burst(s);
++  trx_usrp_finish_rx(s);
++  usleep(10000); 
++
++  // Step 2: Retune TX and RX
++  trx_usrp_set_freq(device, openair0_cfg);
++
++  // Step 3: Another short settle — wait for LO lock after retune
++  usleep(10000);
++
++  // Step 4: Reset internal stream state counters
++  s->rx_count = 0;
++  s->tx_count = 0;
++  s->rx_timestamp = 0;
++  s->wait_for_first_pps = 1;
++
++
++  // // Step 5: Restart RX streaming
++
++  return trx_usrp_start(device);
++}
++
+ /*! \brief Set RX frequencies
+  * \param device the hardware to use
+  * \param openair0_cfg RF frontend parameters set by application
+@@ -1083,7 +1130,7 @@ extern "C" {
+     device->trx_set_freq_func = trx_usrp_set_freq;
+     device->trx_set_gains_func   = trx_usrp_set_gains;
+     device->trx_write_init = trx_usrp_write_init;
+-
++    device->trx_soft_reset_func = trx_usrp_soft_reset;
+ 
+     // hotfix! to be checked later
+     //uhd::set_thread_priority_safe(1.0);
+diff --git a/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.usrpb210.conf b/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.usrpb210.conf
+index ec036d30ca..4e6712d05c 100644
+--- a/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.usrpb210.conf
++++ b/targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.usrpb210.conf
+@@ -25,15 +25,15 @@ gNBs =
+     {
+  #spCellConfigCommon
+ 
+-      physCellId                                                    = 0;
++      physCellId                                                    = 8;
+ 
+ #  downlinkConfigCommon
+     #frequencyInfoDL
+       # this is 3600 MHz + 43 PRBs@30kHz SCS (same as initial BWP)
+-      absoluteFrequencySSB                                             = 641280;
++      absoluteFrequencySSB                                             = 638688;
+       dl_frequencyBand                                                 = 78;
+       # this is 3600 MHz
+-      dl_absoluteFrequencyPointA                                       = 640008;
++      dl_absoluteFrequencyPointA                                       = 637416;
+       #scs-SpecificCarrierList
+         dl_offstToCarrier                                              = 0;
+ # subcarrierSpacing
+@@ -191,6 +191,7 @@ L1s = (
+ RUs = (
+ {
+   local_rf       = "yes"
++#sdr_addrs = "serial=30E8AC9"
+   nb_tx          = 1
+   nb_rx          = 1
+   att_tx         = 12;
