@@ -12,6 +12,18 @@ This repository is everything needed to rerun it: the operator console that depl
 
 ![Data path from the internet through the OAI 5GC and CU on the ground, over one of three F1 transports (Ethernet, Wi-Fi with GRE, or 5G with WireGuard via a donor cell), to the airborne DU, the USRP B210 and the handset](wiki/assets/images/architecture.svg)
 
+## At a glance
+
+![Animated oai-lab session with fictional addresses: choose the Jetson DU, launch the Ethernet F1 split, change the PWS warning text, then stop the lab](docs/assets/operator-console.svg)
+
+| Category | Configuration |
+|---|---|
+| Access DUs | MiniPC, Raspberry Pi, Jetson |
+| F1 transports | Ethernet, Wi-Fi/GRE, Quectel/WireGuard |
+| Access radio | USRP B210 |
+| Workflows | Split CU/DU, monolithic reference, PWS updates, validation, rollback |
+| Operator interface | `./oai-lab` |
+
 ## Results
 
 Mean handset downlink in Mbps, 20 trials per configuration (400 throughput observations in total, downlink and uplink):
@@ -50,18 +62,6 @@ Two DUs behind one ground CU were checked as a first step. Larger fan-out and fl
 | [`docs/history/`](docs/history/) | Earlier Quectel backhaul setup |
 
 OpenAirInterface itself stays external and is pinned for each deployment. Weekly lab notebooks are in [kaust-5G-research](https://github.com/promaaa/kaust-5G-research); the SCTP kernel for the Jetson DU is in [jetson-kernel-sctp](https://github.com/promaaa/jetson-kernel-sctp).
-
-## At a glance
-
-![Animated oai-lab session with fictional addresses: choose the Jetson DU, launch the Ethernet F1 split, change the PWS warning text, then stop the lab](docs/assets/operator-console.svg)
-
-| Category | Configuration |
-|---|---|
-| Access DUs | MiniPC, Raspberry Pi, Jetson |
-| F1 transports | Ethernet, Wi-Fi/GRE, Quectel/WireGuard |
-| Access radio | USRP B210 |
-| Workflows | Split CU/DU, monolithic reference, PWS updates, validation, rollback |
-| Operator interface | `./oai-lab` |
 
 ## Quick start
 
