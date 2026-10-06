@@ -10,7 +10,7 @@ On a battery-powered UAV cell, every gram and watt spent on radio-access compute
 
 This repository is everything needed to rerun it: the operator console that deploys, validates and rolls back each configuration, the OpenAirInterface patches (including Public Warning System alerts over F1), configuration templates, the operator wiki and the paper source.
 
-![Testbed with 5G backhaul: core, CU and donor cell on the ground host; Quectel modem, access DU, USRP B210 and handset in a Faraday cage](wiki/assets/images/schema-architecture.png)
+![Data path from the internet through the OAI 5GC and CU on the ground, over one of three F1 transports (Ethernet, Wi-Fi with GRE, or 5G with WireGuard via a donor cell), to the airborne DU, the USRP B210 and the handset](wiki/assets/images/architecture.svg)
 
 ## Results
 
@@ -24,7 +24,7 @@ Mean handset downlink in Mbps, 20 trials per configuration (400 throughput obser
 
 Monolithic x86 gNB reference: 189.2 Mbps. Uplink ranges from 9.8 to 22.6 Mbps.
 
-<img src="docs/assets/throughput.png" alt="Handset downlink and uplink throughput across the ten configurations, from the paper" width="560">
+![Mean handset downlink (a) and uplink (b) for each DU host and F1 transport, with the monolithic reference as a dashed line](docs/assets/throughput.svg)
 
 - The Jetson keeps 88.4 % of the x86 DU's Ethernet downlink, and 87.5–89.0 % across all three F1 links.
 - 5G/WireGuard backhaul keeps 76.4–77.1 % of each host's wired downlink.
@@ -53,7 +53,7 @@ OpenAirInterface itself stays external and is pinned for each deployment. Weekly
 
 ## At a glance
 
-![Operator console main menu](docs/assets/operator-console.png)
+![Animated oai-lab session with fictional addresses: choose the Jetson DU, launch the Ethernet F1 split, change the PWS warning text, then stop the lab](docs/assets/operator-console.svg)
 
 | Category | Configuration |
 |---|---|

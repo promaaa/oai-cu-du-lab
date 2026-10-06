@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 566" width="1200" height="566" font-family="'Times New Roman', Times, 'Nimbus Roman', 'Liberation Serif', serif">
+<title>Testbed data path drawn as a monochrome journal figure</title>
+<rect width="1200" height="566" fill="#FFFFFF"/>
+<line x1="630" y1="44" x2="630" y2="372" stroke="#000000" stroke-width="1.2" stroke-dasharray="22 6 3 6"/>
+<text x="612" y="56" font-size="15" letter-spacing="1.2" fill="#000000" text-anchor="end">GROUND SEGMENT</text>
+<text x="648" y="56" font-size="15" letter-spacing="1.2" fill="#000000" text-anchor="start">AIRBORNE SEGMENT</text>
+<path d="M70,210 H290" fill="none" stroke="#000000" stroke-width="2.2"/>
+<path d="M930,210 H978" fill="none" stroke="#000000" stroke-width="2.2"/>
+<path d="M350,195 H372 L462,105 H772 L862,195 H870" fill="none" stroke="#000000" stroke-width="2.2" stroke-dasharray="11 6"/>
+<path d="M350,210 H870" fill="none" stroke="#000000" stroke-width="2.2"/>
+<path d="M350,225 H372 L462,315 H772 L862,225 H870" fill="none" stroke="#000000" stroke-width="2.2" stroke-dasharray="13 5 2.5 5"/>
+<circle cx="70" cy="210" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="2"/>
+<text x="70" y="192" font-size="15" letter-spacing="1.2" fill="#000000" text-anchor="middle">INTERNET</text>
+<circle cx="190" cy="210" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="2"/>
+<text x="190" y="192" font-size="15" letter-spacing="1.2" fill="#000000" text-anchor="middle">OAI 5GC</text>
+<rect x="290.0" y="175.0" width="60" height="70" fill="#FFFFFF" stroke="#000000" stroke-width="2.2"/>
+<text x="320" y="216" font-size="18" font-style="normal" font-weight="normal" fill="#000000" text-anchor="middle">CU</text>
+<text x="320" y="268" font-size="16" font-style="italic" font-weight="normal" fill="#000000" text-anchor="middle">RRC, PDCP</text>
+<rect x="870.0" y="175.0" width="60" height="70" fill="#FFFFFF" stroke="#000000" stroke-width="2.2"/>
+<text x="900" y="216" font-size="18" font-style="normal" font-weight="normal" fill="#000000" text-anchor="middle">DU</text>
+<text x="900" y="268" font-size="16" font-style="italic" font-weight="normal" fill="#000000" text-anchor="middle">RLC, MAC, PHY</text>
+<text x="320" y="164" font-size="15" letter-spacing="1.2" fill="#000000" text-anchor="middle">OAI</text>
+<text x="900" y="164" font-size="15" letter-spacing="1.2" fill="#000000" text-anchor="middle">OAI</text>
+<circle cx="560" cy="105" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="2"/>
+<text x="560" y="89" font-size="15" letter-spacing="1.2" fill="#000000" text-anchor="middle">GRE</text>
+<circle cx="680" cy="105" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="2"/>
+<text x="680" y="89" font-size="15" letter-spacing="1.2" fill="#000000" text-anchor="middle">WI-FI</text>
+<circle cx="560" cy="210" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="2"/>
+<text x="560" y="240" font-size="15" letter-spacing="1.2" fill="#000000" text-anchor="middle">MTU 9000</text>
+<circle cx="490" cy="315" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="2"/>
+<text x="490" y="345" font-size="15" letter-spacing="1.2" fill="#000000" text-anchor="middle">WIREGUARD</text>
+<circle cx="568" cy="315" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="2"/>
+<text x="568" y="299" font-size="15" letter-spacing="1.2" fill="#000000" text-anchor="middle">DONOR CELL</text>
+<circle cx="690" cy="315" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="2"/>
+<text x="690" y="345" font-size="15" letter-spacing="1.2" fill="#000000" text-anchor="middle">RM500Q-GL</text>
+<text x="784" y="93" font-size="17" font-style="italic" font-weight="normal" fill="#000000" text-anchor="start">51.8 Mb/s</text>
+<text x="680" y="200" font-size="17" font-style="italic" font-weight="normal" fill="#000000" text-anchor="start">99.4 Mb/s</text>
+<text x="784" y="345" font-size="17" font-style="italic" font-weight="normal" fill="#000000" text-anchor="start">76.2 Mb/s</text>
+<rect x="978.0" y="188.0" width="64" height="44" fill="#FFFFFF" stroke="#000000" stroke-width="2.2"/>
+<text x="1010" y="216" font-size="18" font-style="normal" font-weight="normal" fill="#000000" text-anchor="middle">B210</text>
+<path d="M1030,188 V154" fill="none" stroke="#000000" stroke-width="2"/>
+<path d="M1019,138 L1041,138 L1030,154 Z" fill="none" stroke="#000000" stroke-width="2"/>
+<text x="1010" y="258" font-size="16" font-style="italic" font-weight="normal" fill="#000000" text-anchor="middle">USB 3, n78</text>
+<rect x="1107.0" y="188.0" width="56" height="44" fill="#FFFFFF" stroke="#000000" stroke-width="2.2"/>
+<text x="1135" y="216" font-size="18" font-style="normal" font-weight="normal" fill="#000000" text-anchor="middle">UE</text>
+<path d="M1135,188 V154" fill="none" stroke="#000000" stroke-width="2"/>
+<path d="M1124,138 L1146,138 L1135,154 Z" fill="none" stroke="#000000" stroke-width="2"/>
+<path d="M1046,148 H1119" fill="none" stroke="#000000" stroke-width="2" stroke-dasharray="2 5"/>
+<text x="1083" y="138" font-size="16" font-style="italic" font-weight="normal" fill="#000000" text-anchor="middle">NR-Uu</text>
+<text x="1135" y="258" font-size="16" font-style="italic" font-weight="normal" fill="#000000" text-anchor="middle">Nothing Phone</text>
+<rect x="70" y="400" width="430" height="104" fill="#FFFFFF" stroke="#000000" stroke-width="1.2"/>
+<path d="M88,423 H148" fill="none" stroke="#000000" stroke-width="2.2"/>
+<text x="162" y="428" font-size="17" font-style="normal" font-weight="normal" fill="#000000" text-anchor="start">Ethernet, MTU 9000</text>
+<path d="M88,451 H148" fill="none" stroke="#000000" stroke-width="2.2" stroke-dasharray="11 6"/>
+<text x="162" y="456" font-size="17" font-style="normal" font-weight="normal" fill="#000000" text-anchor="start">Wi-Fi with GRE</text>
+<path d="M88,479 H148" fill="none" stroke="#000000" stroke-width="2.2" stroke-dasharray="13 5 2.5 5"/>
+<text x="162" y="484" font-size="17" font-style="normal" font-weight="normal" fill="#000000" text-anchor="start">5G modem with WireGuard, via donor cell</text>
+<text x="540" y="424" font-size="17" font-style="normal" font-weight="normal" fill="#000000" text-anchor="start">Rates: best mean handset downlink with the x86 DU, n = 20.</text>
+<text x="540" y="450" font-size="17" font-style="normal" font-weight="normal" fill="#000000" text-anchor="start">Monolithic gNB without F1: 189.2 Mb/s.</text>
+<text x="540" y="476" font-size="17" font-style="normal" font-weight="normal" fill="#000000" text-anchor="start">DU hosts: x86 mini PC, Jetson Orin Nano, Raspberry Pi 5.</text>
+<text x="70" y="544" font-size="18" fill="#000000">Fig. 1.  Data path of the split testbed. The 5GC and CU stay on the ground. One F1 transport per run reaches the airborne DU.</text>
+</svg>
